@@ -17,14 +17,16 @@ logger = logging.getLogger(__name__)
 
 
 async def _background_price_refresh():
-    """Non-blocking price refresh triggered on startup."""
+    """Non-blocking price refresh + snapshot triggered on startup."""
     try:
         from app.database import SessionLocal
         from app.services.price_service import PriceService
+        from app.services.snapshot_service import SnapshotService
         db = SessionLocal()
         try:
             result = PriceService(db).refresh_all()
             logger.info("Startup price refresh: %s", result)
+            SnapshotService(db).take_snapshot()
         finally:
             db.close()
     except Exception as e:
@@ -87,6 +89,7 @@ from app.api.returns import router as returns_router
 from app.api.prices import router as prices_router
 from app.api.imports import router as imports_router
 from app.api.tax import router as tax_router
+from app.api.snapshots import router as snapshots_router
 
 app.include_router(assets_router)
 app.include_router(transactions_router)
@@ -99,3 +102,4 @@ app.include_router(returns_router)
 app.include_router(prices_router)
 app.include_router(imports_router)
 app.include_router(tax_router)
+app.include_router(snapshots_router)

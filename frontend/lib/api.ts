@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { Asset, AssetType, Transaction, Valuation, FDDetail, Goal, GoalAllocation, ReturnResult, OverviewReturns, BreakdownResponse, LotsResponse, PaginatedTransactions, AllocationResponse, GainersResponse, ImportantData, BulkReturnResponse, TaxSummaryResponse, UnrealisedResponse, HarvestResponse } from '@/types'
+import { Asset, AssetType, Transaction, Valuation, FDDetail, Goal, GoalAllocation, ReturnResult, OverviewReturns, BreakdownResponse, LotsResponse, PaginatedTransactions, AllocationResponse, GainersResponse, ImportantData, BulkReturnResponse, TaxSummaryResponse, UnrealisedResponse, HarvestResponse, PortfolioSnapshot } from '@/types'
 
 const client = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
@@ -83,5 +83,11 @@ export const api = {
       client.get<UnrealisedResponse>('/tax/unrealised').then((r) => r.data),
     harvestOpportunities: () =>
       client.get<HarvestResponse>('/tax/harvest-opportunities').then((r) => r.data),
+  },
+  snapshots: {
+    list: (from?: string, to?: string) =>
+      client.get<PortfolioSnapshot[]>('/snapshots', { params: { from, to } }).then((r) => r.data),
+    take: () =>
+      client.post<{ date: string; total_value_inr: number }>('/snapshots').then((r) => r.data),
   },
 }

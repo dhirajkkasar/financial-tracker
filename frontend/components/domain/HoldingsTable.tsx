@@ -16,6 +16,8 @@ interface HoldingRow extends Asset {
   lt_realised_gain?: number | null
   taxable_interest?: number | null
   potential_tax_30pct?: number | null
+  price_is_stale?: boolean | null
+  price_fetched_at?: string | null
 }
 
 type HoldingsVariant = 'default' | 'fd-tax'
@@ -34,6 +36,21 @@ function PnlCell({ amount, pct }: { amount: number | null; pct?: number | null }
       <div className="text-sm">{pos ? '+' : ''}{formatINR(amount)}</div>
       {pct != null && <div className="text-[11px] opacity-70">{formatPct(pct)}</div>}
     </div>
+  )
+}
+
+function StaleIcon({ fetchedAt }: { fetchedAt?: string | null }) {
+  const title = fetchedAt
+    ? `Price last updated: ${new Date(fetchedAt).toLocaleString('en-IN')}`
+    : 'Price data may be stale'
+  return (
+    <span title={title} className="ml-1 inline-flex items-center">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="inline text-amber-400">
+        <path d="M6 1L11 10H1L6 1Z" fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />
+        <rect x="5.5" y="4.5" width="1" height="3" rx="0.4" fill="currentColor" />
+        <rect x="5.5" y="8.5" width="1" height="1" rx="0.4" fill="currentColor" />
+      </svg>
+    </span>
   )
 }
 
@@ -85,19 +102,33 @@ export function HoldingsTable({ assets, loading, variant = 'default' }: Holdings
             const currentPct = currentPnl != null && invested != null && invested > 0
               ? currentPnl / invested : null
 
+            const isInactive = !a.is_active
+
             return (
-              <tr key={a.id} className="border-b border-border last:border-0 transition-colors hover:bg-accent-subtle/40">
+              <tr key={a.id} className={`border-b border-border last:border-0 transition-colors hover:bg-accent-subtle/40 ${isInactive ? 'opacity-60' : ''}`}>
                 <td className="py-3 pr-4">
-                  <Link href={`/assets/${a.id}`} className="font-medium text-accent hover:underline">
-                    {a.name}
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    <Link href={`/assets/${a.id}`} className="font-medium text-accent hover:underline">
+                      {a.name}
+                    </Link>
+                    {isInactive && (
+                      <span className="rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider bg-border text-tertiary">
+                        Closed
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="py-3 pr-4 text-secondary">{ASSET_TYPE_LABELS[a.asset_type]}</td>
                 <td className="py-3 pr-4 text-right font-mono text-primary">
                   {invested != null ? formatINR(invested) : '—'}
                 </td>
                 <td className="py-3 pr-4 text-right font-mono text-primary">
-                  {current != null ? formatINR(current) : '—'}
+                  {current != null ? (
+                    <span className="inline-flex items-center justify-end gap-0.5">
+                      {formatINR(current)}
+                      {a.price_is_stale && <StaleIcon fetchedAt={a.price_fetched_at} />}
+                    </span>
+                  ) : '—'}
                 </td>
                 <td className="py-3 pr-4">
                   <PnlCell amount={currentPnl} pct={currentPct} />

@@ -113,6 +113,15 @@ export interface ReturnResult {
   // FD/RD tax fields
   taxable_interest?: number | null
   potential_tax_30pct?: number | null
+  // Price cache metadata
+  price_is_stale?: boolean | null
+  price_fetched_at?: string | null
+}
+
+export interface PortfolioSnapshot {
+  date: string
+  total_value_inr: number
+  breakdown: Record<string, number>
 }
 
 export interface BulkReturnResponse {

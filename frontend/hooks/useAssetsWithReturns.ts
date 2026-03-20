@@ -14,9 +14,11 @@ export interface AssetWithReturns extends Asset {
   lt_realised_gain?: number | null
   taxable_interest?: number | null
   potential_tax_30pct?: number | null
+  price_is_stale?: boolean | null
+  price_fetched_at?: string | null
 }
 
-export function useAssetsWithReturns(type?: AssetType | AssetType[], active = true) {
+export function useAssetsWithReturns(type?: AssetType | AssetType[], active: boolean | undefined = true) {
   const [assets, setAssets] = useState<AssetWithReturns[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -54,6 +56,8 @@ export function useAssetsWithReturns(type?: AssetType | AssetType[], active = tr
             lt_realised_gain: r?.lt_realised_gain ?? undefined,
             taxable_interest: r?.taxable_interest ?? undefined,
             potential_tax_30pct: r?.potential_tax_30pct ?? undefined,
+            price_is_stale: r?.price_is_stale ?? undefined,
+            price_fetched_at: r?.price_fetched_at ?? undefined,
           }
         })
         mapped.sort((a, b) => (b.current_value ?? -Infinity) - (a.current_value ?? -Infinity))

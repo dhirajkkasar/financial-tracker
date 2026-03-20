@@ -36,6 +36,9 @@ class ReturnResponse(BaseModel):
     # FD/RD tax fields
     taxable_interest: Optional[float] = None
     potential_tax_30pct: Optional[float] = None
+    # Price cache metadata
+    price_is_stale: Optional[bool] = None
+    price_fetched_at: Optional[str] = None  # ISO datetime string
 
 
 class LotResponse(BaseModel):

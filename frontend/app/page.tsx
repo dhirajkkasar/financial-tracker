@@ -3,10 +3,12 @@ import { useOverview } from '@/hooks/useOverview'
 import { useBreakdown } from '@/hooks/useBreakdown'
 import { useAllocation } from '@/hooks/useAllocation'
 import { useGainers } from '@/hooks/useGainers'
+import { useSnapshots } from '@/hooks/useSnapshots'
 import { StatCard } from '@/components/ui/StatCard'
 import { StatCardSkeleton } from '@/components/ui/Skeleton'
 import { AllocationDonut } from '@/components/charts/AllocationDonut'
 import { AssetTypeDonut } from '@/components/charts/AssetTypeDonut'
+import { NetWorthChart } from '@/components/charts/NetWorthChart'
 import { formatINR, formatXIRR, formatPct } from '@/lib/formatters'
 import { ASSET_TYPE_LABELS } from '@/constants'
 import Link from 'next/link'
@@ -20,6 +22,7 @@ export default function OverviewPage() {
   const { breakdown, loading: breakdownLoading } = useBreakdown()
   const { data: allocation, loading: allocLoading } = useAllocation()
   const { data: gainersData, loading: gainersLoading } = useGainers(5)
+  const { data: snapshots, loading: snapshotsLoading } = useSnapshots()
 
   const gain = overview ? overview.total_current_value - overview.total_invested : null
   const gainHighlight = gain === null ? 'neutral' : gain >= 0 ? 'positive' : 'negative'
@@ -57,6 +60,12 @@ export default function OverviewPage() {
             <StatCard label="XIRR" value={formatXIRR(overview?.xirr ?? null)} />
           </>
         )}
+      </div>
+
+      {/* Net Worth Chart */}
+      <div className={card} style={cardStyle}>
+        <h2 className="mb-4 text-[10px] font-semibold uppercase tracking-[0.12em] text-tertiary">Net Worth Over Time</h2>
+        <NetWorthChart data={snapshots} loading={snapshotsLoading} />
       </div>
 
       {/* Two donuts */}

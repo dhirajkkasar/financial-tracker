@@ -11,6 +11,7 @@ from app.engine.returns import (
     compute_xirr, compute_cagr, compute_absolute_return,
     OUTFLOW_TYPES, INFLOW_TYPES, EXCLUDED_TYPES,
 )
+from app.services.price_feed import STALE_MINUTES
 from app.engine.fd_engine import compute_fd_maturity, compute_fd_current_value, compute_rd_maturity
 from app.engine.ppf_epf_engine import get_latest_valuation
 from app.engine.lot_engine import match_lots_fifo, compute_lot_unrealised, compute_gains_summary
@@ -225,6 +226,16 @@ class ReturnsService:
             except Exception as e:
                 logger.warning("Error computing gain summary for asset %d: %s", asset_id, str(e))
 
+        # Price staleness metadata
+        price_is_stale = None
+        price_fetched_at = None
+        if price_cache:
+            from datetime import datetime, timedelta
+            threshold = STALE_MINUTES.get(asset.asset_type)
+            if threshold is not None:
+                price_is_stale = datetime.utcnow() - price_cache.fetched_at > timedelta(minutes=threshold)
+            price_fetched_at = price_cache.fetched_at.isoformat()
+
         result = {
             "asset_id": asset.id,
             "asset_type": asset_type,
@@ -234,6 +245,8 @@ class ReturnsService:
             "total_invested": total_invested,
             "current_value": effective_current,
             "message": None,
+            "price_is_stale": price_is_stale,
+            "price_fetched_at": price_fetched_at,
         }
         result.update(gains_summary)
         return result

@@ -1,4 +1,5 @@
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
@@ -72,10 +73,10 @@ class PriceService:
         return cache
 
     def refresh_all(self) -> dict:
-        """Refresh prices for all active assets that have a fetcher. Returns counts."""
+        """Refresh prices for all active assets in parallel (fetch) then sequential (write)."""
         assets = self.asset_repo.list(active=True)
 
-        # Bulk-resolve NPS scheme codes in one /api/schemes call before the loop
+        # Bulk-resolve NPS scheme codes in one /api/schemes call before the parallel fetch
         nps_fetcher = self.fetchers.get(AssetType.NPS)
         if isinstance(nps_fetcher, NPSNavFetcher):
             nps_assets = [a for a in assets if a.asset_type == AssetType.NPS]
@@ -88,16 +89,49 @@ class PriceService:
                 if any(getattr(a, "_resolved_nps_scheme_code", None) for a in nps_assets):
                     self.db.commit()
 
-        refreshed, skipped, failed = 0, 0, 0
-        for asset in assets:
-            if asset.asset_type not in self.fetchers:
-                skipped += 1
-                continue
-            result = self.refresh_asset(asset.id)
-            if result:
-                refreshed += 1
-            else:
+        fetchable = [(a, self.fetchers[a.asset_type]) for a in assets if a.asset_type in self.fetchers]
+        skipped = len(assets) - len(fetchable)
+
+        # Phase 1: parallel fetch — no DB access inside workers
+        def _fetch(asset_fetcher):
+            asset, fetcher = asset_fetcher
+            try:
+                return asset, fetcher.fetch(asset)
+            except Exception as e:
+                logger.warning("refresh_all: fetch error for asset %s: %s", asset.id, e)
+                return asset, None
+
+        workers = min(10, len(fetchable)) if fetchable else 1
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            fetch_results = list(pool.map(_fetch, fetchable))
+
+        # Phase 2: sequential DB writes
+        refreshed, failed = 0, 0
+        for asset, result in fetch_results:
+            if result is None:
+                cache = self.cache_repo.get_by_asset_id(asset.id)
+                if cache:
+                    cache.is_stale = True
                 failed += 1
+                continue
+
+            if hasattr(asset, "_resolved_scheme_code") and asset._resolved_scheme_code:
+                asset.mfapi_scheme_code = asset._resolved_scheme_code
+            if hasattr(asset, "_resolved_nps_scheme_code") and asset._resolved_nps_scheme_code:
+                asset.identifier = asset._resolved_nps_scheme_code
+
+            price_paise = round(result.price_inr * 100)
+            self.cache_repo.upsert(
+                asset_id=asset.id,
+                price_inr=price_paise,
+                source=result.source,
+                fetched_at=result.fetched_at,
+                is_stale=False,
+            )
+            logger.info("refresh_all: ₹%.2f for asset %s (%s)", result.price_inr, asset.id, asset.name)
+            refreshed += 1
+
+        self.db.commit()
         return {"refreshed": refreshed, "skipped": skipped, "failed": failed}
 
     def _is_stale(self, asset_type: AssetType, fetched_at: datetime) -> bool:

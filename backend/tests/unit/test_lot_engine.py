@@ -1,0 +1,226 @@
+"""
+Unit tests for FIFO lot engine (Phase 3.1).
+TDD: tests written first — RED before implementation.
+"""
+from dataclasses import dataclass
+from datetime import date
+from typing import Optional
+
+import pytest
+
+
+# ---------------------------------------------------------------------------
+# Minimal data shapes the engine will accept (mirrors what service will pass)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class FakeLot:
+    lot_id: str
+    asset_id: int
+    buy_date: date
+    units: float
+    buy_price_per_unit: float   # INR
+    buy_amount_inr: float       # absolute (positive)
+    jan31_2018_price: Optional[float] = None  # for grandfathering
+
+
+@dataclass
+class FakeSell:
+    date: date
+    units: float
+    amount_inr: float           # positive (inflow)
+
+
+from app.engine.lot_engine import (
+    match_lots_fifo,
+    compute_lot_unrealised,
+    get_tax_cost_basis,
+    EQUITY_STCG_DAYS,
+    STOCK_US_STCG_DAYS,
+    GOLD_STCG_DAYS,
+)
+
+
+# ---------------------------------------------------------------------------
+# match_lots_fifo
+# ---------------------------------------------------------------------------
+
+class TestMatchLotsFifo:
+    def _lot(self, lot_id, buy_date, units, price):
+        return FakeLot(
+            lot_id=lot_id, asset_id=1,
+            buy_date=buy_date, units=units,
+            buy_price_per_unit=price, buy_amount_inr=units * price,
+        )
+
+    def test_single_sell_consumes_earliest_lot_first(self):
+        lots = [
+            self._lot("A", date(2022, 1, 1), 10, 100.0),
+            self._lot("B", date(2023, 1, 1), 10, 200.0),
+        ]
+        sell = FakeSell(date=date(2024, 1, 1), units=10, amount_inr=1500.0)
+        matched = match_lots_fifo(lots, [sell])
+        # Lot A (earliest) should be consumed first
+        assert matched[0]["lot_id"] == "A"
+        assert matched[0]["units_sold"] == 10.0
+        assert matched[0]["sell_date"] == date(2024, 1, 1)
+
+    def test_partial_lot_consumption(self):
+        lots = [self._lot("A", date(2022, 1, 1), 10, 100.0)]
+        sell = FakeSell(date=date(2024, 1, 1), units=4, amount_inr=600.0)
+        matched = match_lots_fifo(lots, [sell])
+        assert len(matched) == 1
+        assert matched[0]["units_sold"] == 4.0
+        assert matched[0]["units_remaining"] == 6.0
+
+    def test_sell_spans_multiple_lots(self):
+        lots = [
+            self._lot("A", date(2022, 1, 1), 5, 100.0),
+            self._lot("B", date(2023, 1, 1), 5, 200.0),
+        ]
+        sell = FakeSell(date=date(2024, 1, 1), units=8, amount_inr=1200.0)
+        matched = match_lots_fifo(lots, [sell])
+        assert len(matched) == 2
+        assert matched[0]["lot_id"] == "A"
+        assert matched[0]["units_sold"] == 5.0
+        assert matched[1]["lot_id"] == "B"
+        assert matched[1]["units_sold"] == 3.0
+
+    def test_multiple_sells_deplete_lots_in_order(self):
+        lots = [
+            self._lot("A", date(2022, 1, 1), 10, 100.0),
+            self._lot("B", date(2023, 1, 1), 10, 200.0),
+        ]
+        sells = [
+            FakeSell(date=date(2023, 6, 1), units=10, amount_inr=1000.0),
+            FakeSell(date=date(2024, 1, 1), units=5, amount_inr=1500.0),
+        ]
+        matched = match_lots_fifo(lots, sells)
+        lot_ids = [m["lot_id"] for m in matched]
+        assert lot_ids[0] == "A"   # first sell takes lot A
+        assert lot_ids[1] == "B"   # second sell takes lot B
+
+    def test_no_sells_returns_empty(self):
+        lots = [self._lot("A", date(2022, 1, 1), 10, 100.0)]
+        assert match_lots_fifo(lots, []) == []
+
+    def test_sell_more_than_available_clips_to_available(self):
+        lots = [self._lot("A", date(2022, 1, 1), 5, 100.0)]
+        sell = FakeSell(date=date(2024, 1, 1), units=10, amount_inr=1000.0)
+        matched = match_lots_fifo(lots, [sell])
+        assert matched[0]["units_sold"] == 5.0  # capped at available
+
+
+# ---------------------------------------------------------------------------
+# compute_lot_unrealised
+# ---------------------------------------------------------------------------
+
+class TestComputeLotUnrealised:
+    def _lot(self, buy_date, units, price, asset_type="STOCK_IN"):
+        return FakeLot(
+            lot_id="X", asset_id=1,
+            buy_date=buy_date, units=units,
+            buy_price_per_unit=price, buy_amount_inr=units * price,
+        )
+
+    def test_unrealised_gain_positive(self):
+        lot = self._lot(date(2022, 1, 1), 10, 100.0)
+        result = compute_lot_unrealised(lot, current_price=150.0, asset_type="STOCK_IN", as_of=date(2024, 1, 1))
+        assert result["current_value"] == pytest.approx(1500.0)
+        assert result["unrealised_gain"] == pytest.approx(500.0)
+
+    def test_unrealised_loss_negative(self):
+        lot = self._lot(date(2022, 1, 1), 10, 200.0)
+        result = compute_lot_unrealised(lot, current_price=150.0, asset_type="STOCK_IN", as_of=date(2024, 1, 1))
+        assert result["unrealised_gain"] == pytest.approx(-500.0)
+
+    def test_equity_short_term_under_1_year(self):
+        result = compute_lot_unrealised(
+            self._lot(date(2023, 7, 1), 10, 100.0),
+            current_price=120.0, asset_type="STOCK_IN", as_of=date(2024, 1, 1)
+        )
+        assert result["is_short_term"] is True
+
+    def test_equity_long_term_over_1_year(self):
+        result = compute_lot_unrealised(
+            self._lot(date(2022, 1, 1), 10, 100.0),
+            current_price=150.0, asset_type="STOCK_IN", as_of=date(2024, 1, 1)
+        )
+        assert result["is_short_term"] is False
+
+    def test_us_stock_short_term_under_2_years(self):
+        result = compute_lot_unrealised(
+            self._lot(date(2023, 1, 1), 10, 100.0),
+            current_price=120.0, asset_type="STOCK_US", as_of=date(2024, 6, 1)
+        )
+        assert result["is_short_term"] is True
+
+    def test_us_stock_long_term_over_2_years(self):
+        result = compute_lot_unrealised(
+            self._lot(date(2021, 1, 1), 10, 100.0),
+            current_price=150.0, asset_type="STOCK_US", as_of=date(2024, 1, 1)
+        )
+        assert result["is_short_term"] is False
+
+    def test_gold_short_term_under_3_years(self):
+        result = compute_lot_unrealised(
+            self._lot(date(2022, 1, 1), 10, 100.0),
+            current_price=120.0, asset_type="GOLD", as_of=date(2024, 6, 1)
+        )
+        assert result["is_short_term"] is True
+
+    def test_gold_long_term_over_3_years(self):
+        result = compute_lot_unrealised(
+            self._lot(date(2020, 1, 1), 10, 100.0),
+            current_price=150.0, asset_type="GOLD", as_of=date(2024, 1, 1)
+        )
+        assert result["is_short_term"] is False
+
+    def test_holding_days_computed(self):
+        result = compute_lot_unrealised(
+            self._lot(date(2023, 1, 1), 10, 100.0),
+            current_price=110.0, asset_type="STOCK_IN", as_of=date(2024, 1, 1)
+        )
+        assert result["holding_days"] == 365
+
+
+# ---------------------------------------------------------------------------
+# get_tax_cost_basis (pre-2018 grandfathering)
+# ---------------------------------------------------------------------------
+
+class TestGetTaxCostBasis:
+    def test_post_2018_buy_uses_actual_price(self):
+        lot = FakeLot("X", 1, date(2019, 1, 1), 10, 100.0, 1000.0)
+        assert get_tax_cost_basis(lot, jan31_2018_price=None) == 100.0
+
+    def test_pre_2018_buy_jan31_higher_uses_jan31(self):
+        lot = FakeLot("X", 1, date(2016, 1, 1), 10, 80.0, 800.0)
+        assert get_tax_cost_basis(lot, jan31_2018_price=120.0) == 120.0
+
+    def test_pre_2018_buy_actual_higher_uses_actual(self):
+        lot = FakeLot("X", 1, date(2016, 1, 1), 10, 150.0, 1500.0)
+        assert get_tax_cost_basis(lot, jan31_2018_price=100.0) == 150.0
+
+    def test_pre_2018_buy_no_jan31_price_uses_actual(self):
+        lot = FakeLot("X", 1, date(2016, 1, 1), 10, 80.0, 800.0)
+        assert get_tax_cost_basis(lot, jan31_2018_price=None) == 80.0
+
+    def test_grandfathering_cutoff_is_jan31_2018(self):
+        # Bought on 2018-01-31 itself — still qualifies
+        lot = FakeLot("X", 1, date(2018, 1, 31), 10, 80.0, 800.0)
+        assert get_tax_cost_basis(lot, jan31_2018_price=120.0) == 120.0
+
+    def test_bought_after_jan31_2018_no_grandfathering(self):
+        lot = FakeLot("X", 1, date(2018, 2, 1), 10, 80.0, 800.0)
+        # jan31 price irrelevant — bought after cutoff
+        assert get_tax_cost_basis(lot, jan31_2018_price=120.0) == 80.0
+
+
+# ---------------------------------------------------------------------------
+# Constants sanity checks
+# ---------------------------------------------------------------------------
+
+def test_stcg_thresholds():
+    assert EQUITY_STCG_DAYS == 365
+    assert STOCK_US_STCG_DAYS == 730
+    assert GOLD_STCG_DAYS == 1095

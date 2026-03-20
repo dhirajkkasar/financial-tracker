@@ -1,0 +1,38 @@
+from dataclasses import dataclass, field
+from datetime import date
+from typing import Protocol, Optional
+
+
+@dataclass
+class ParsedTransaction:
+    """Represents a single parsed transaction from an import source."""
+    source: str                    # "zerodha", "nps", "cas"
+    asset_name: str                # human-readable name
+    asset_identifier: str          # ISIN for stocks, scheme name for NPS
+    asset_type: str                # "STOCK_IN", "NPS", "MF", etc.
+    txn_type: str                  # "BUY", "SELL", "CONTRIBUTION", etc.
+    date: date
+    units: Optional[float] = None
+    price_per_unit: Optional[float] = None
+    amount_inr: float = 0.0       # signed: negative=outflow, positive=inflow
+    charges_inr: float = 0.0
+    txn_id: str = ""               # unique, either native or SHA-256 hash
+    lot_id: Optional[str] = None
+    notes: Optional[str] = None
+    # Extra metadata for asset creation
+    isin: Optional[str] = None
+    exchange: Optional[str] = None
+    mfapi_scheme_code: Optional[str] = None
+
+
+@dataclass
+class ImportResult:
+    """Result of parsing a file."""
+    source: str
+    transactions: list[ParsedTransaction] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+
+class BaseImporter(Protocol):
+    def parse(self, file_bytes: bytes, filename: str = "") -> ImportResult: ...

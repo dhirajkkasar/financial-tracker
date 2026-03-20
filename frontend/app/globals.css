@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+@theme {
+  /* --- Typography --- */
+  --font-sans: var(--font-dm-sans, ui-sans-serif, system-ui, sans-serif);
+  --font-mono: var(--font-dm-mono, ui-monospace, "Courier New", monospace);
+  --font-serif: var(--font-dm-serif, ui-serif, Georgia, serif);
+
+  /* --- Color tokens (usable as Tailwind utilities: bg-page, text-primary, etc.) --- */
+  --color-page: #f5f5f2;
+  --color-card: #ffffff;
+  --color-border: #e5e5e0;
+
+  --color-primary: #1a1a18;
+  --color-secondary: #6b6b67;
+  --color-tertiary: #a0a09c;
+
+  --color-accent: #6366f1;
+  --color-accent-subtle: #eef2ff;
+
+  --color-gain: #059669;
+  --color-gain-subtle: #ecfdf5;
+  --color-loss: #dc2626;
+  --color-loss-subtle: #fef2f2;
+
+  --color-gold: #d97706;
+  --color-gold-subtle: #fffbeb;
+
+  /* --- Shadows --- */
+  --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.04);
+  --shadow-card-hover: 0 4px 12px 0 rgb(0 0 0 / 0.08);
+}
+
+/* CSS variables for non-Tailwind usage (charts, inline styles) */
+:root {
+  --gain: #059669;
+  --loss: #dc2626;
+  --accent: #6366f1;
+  --bg-card: #ffffff;
+  --border: #e5e5e0;
+}
+
+/* Tabular numbers globally — financial data aligns perfectly */
+* {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Heading elements use the serif display font */
+h1 {
+  font-family: var(--font-dm-serif), serif;
+  letter-spacing: -0.02em;
+}
+
+/* Staggered entrance animation */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.anim-card {
+  animation: fadeInUp 0.28s ease-out both;
+}
+.anim-card:nth-child(1) { animation-delay: 0ms; }
+.anim-card:nth-child(2) { animation-delay: 60ms; }
+.anim-card:nth-child(3) { animation-delay: 120ms; }
+.anim-card:nth-child(4) { animation-delay: 180ms; }
+
+/* Smooth number transitions (when value changes) */
+.num-transition {
+  transition: color 0.2s ease;
+}

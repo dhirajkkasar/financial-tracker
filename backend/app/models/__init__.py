@@ -6,6 +6,7 @@ from app.models.fd_detail import FDDetail, FDType, CompoundingType
 from app.models.interest_rate import InterestRate, InterestRateHistory, InstrumentType
 from app.models.goal import Goal, GoalAllocation
 from app.models.important_data import ImportantData, ImportantDataCategory
+from app.models.snapshot import PortfolioSnapshot
 
 __all__ = [
     "Asset", "AssetType", "AssetClass",
@@ -16,4 +17,5 @@ __all__ = [
     "InterestRate", "InterestRateHistory", "InstrumentType",
     "Goal", "GoalAllocation",
     "ImportantData", "ImportantDataCategory",
+    "PortfolioSnapshot",
 ]

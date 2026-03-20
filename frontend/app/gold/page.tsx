@@ -7,7 +7,7 @@ import { AssetSummaryCards } from '@/components/ui/AssetSummaryCards'
 
 export default function GoldPage() {
   const [activeOnly, setActiveOnly] = useState(true)
-  const { assets, loading } = useAssetsWithReturns(['GOLD', 'SGB'] as any, activeOnly ? true : undefined)
+  const { assets, loading } = useAssetsWithReturns(['GOLD', 'SGB'] as any, activeOnly)
   const { data: summary, loading: summaryLoading } = useOverview(['GOLD', 'SGB'])
   return (
     <div className="space-y-6">

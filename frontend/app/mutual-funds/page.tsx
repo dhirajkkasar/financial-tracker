@@ -7,7 +7,7 @@ import { AssetSummaryCards } from '@/components/ui/AssetSummaryCards'
 
 export default function MutualFundsPage() {
   const [activeOnly, setActiveOnly] = useState(true)
-  const { assets, loading } = useAssetsWithReturns('MF', activeOnly ? true : undefined)
+  const { assets, loading } = useAssetsWithReturns('MF', activeOnly)
   const { data: summary, loading: summaryLoading } = useOverview(['MF'])
   return (
     <div className="space-y-6">

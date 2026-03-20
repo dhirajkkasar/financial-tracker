@@ -18,16 +18,20 @@ export interface AssetWithReturns extends Asset {
   price_fetched_at?: string | null
 }
 
-export function useAssetsWithReturns(type?: AssetType | AssetType[], active: boolean | undefined = true) {
+export function useAssetsWithReturns(type?: AssetType | AssetType[], activeOnly = true) {
   const [assets, setAssets] = useState<AssetWithReturns[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // activeOnly=true → send active=true (filter to active only)
+  // activeOnly=false → omit active param (backend returns all assets)
+  const activeParam = activeOnly ? true : undefined
 
   useEffect(() => {
     setLoading(true)
     const types = Array.isArray(type) ? type : type ? [type] : [undefined as AssetType | undefined]
 
-    Promise.all(types.map((t) => api.assets.list({ type: t, active })))
+    Promise.all(types.map((t) => api.assets.list({ type: t, active: activeParam })))
       .then((results) => results.flat())
       .then(async (assetList) => {
         if (assetList.length === 0) {
@@ -65,7 +69,7 @@ export function useAssetsWithReturns(type?: AssetType | AssetType[], active: boo
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [type, active])
+  }, [type, activeParam])
 
   return { assets, loading, error }
 }

@@ -33,10 +33,11 @@ app/
 ├── api/          → HTTP only: parse request, call service, return response
 ├── services/     → Injectable classes: orchestrates repos + engines
 │   ├── price_feed.py      → MFAPIFetcher, YFinanceFetcher, GoldFetcher, NPSNavFetcher
-│   ├── price_service.py   → PriceService (get/refresh/refresh_all)
-│   ├── returns_service.py → ReturnsService (asset/overview/breakdown/lots/gainers)
-│   ├── import_service.py  → ImportService (preview/commit, idempotent)
-│   └── tax_service.py     → TaxService (summary/unrealised/harvest)
+│   ├── price_service.py         → PriceService (get/refresh/refresh_all)
+│   ├── returns_service.py       → ReturnsService (asset/overview/breakdown/lots/gainers)
+│   ├── import_service.py        → ImportService (preview/commit, idempotent)
+│   ├── ppf_epf_import_service.py → PPFEPFImportService (direct import, Valuation creation, EPS auto-create)
+│   └── tax_service.py           → TaxService (summary/unrealised/harvest)
 ├── engine/       → Pure functions only — no DB, no side effects
 │   ├── returns.py         → compute_xirr, compute_cagr, compute_absolute_return
 │   ├── lot_engine.py      → match_lots_fifo, compute_lot_unrealised, compute_gains_summary
@@ -48,7 +49,9 @@ app/
 ├── importers/    → One class per source format (BaseImporter protocol)
 │   ├── cas_parser.py
 │   ├── nps_csv_parser.py
-│   └── broker_csv_parser.py
+│   ├── broker_csv_parser.py
+│   ├── ppf_pdf_parser.py     → SBI PPF account statement PDF parser
+│   └── epf_pdf_parser.py     → EPFO member passbook PDF parser
 ├── models/       → SQLAlchemy ORM (one file per model)
 ├── schemas/      → Pydantic request/response schemas
 └── middleware/   → Error handler (AppError hierarchy → consistent JSON)
@@ -123,6 +126,11 @@ types/index.ts      → TypeScript types matching backend schemas
 - CASImporter, NPSImporter, ZerodhaImporter, GrowwImporter
 - ImportService: preview/commit with idempotent txn_id deduplication
 - Startup lifespan: background price refresh on server start
+- PPFPDFParser: SBI PPF account statement PDF → CONTRIBUTION transactions + closing Valuation
+- EPFPDFParser: EPFO passbook PDF → CONTRIBUTION/INTEREST/TRANSFER transactions + EPS sub-asset
+- PPFEPFImportService: direct import (no preview/commit), Valuation auto-creation, EPS asset auto-creation
+- TRANSFER transaction type added to TransactionType enum
+- POST /import/ppf-pdf and POST /import/epf-pdf endpoints
 
 ### ✅ Phase 3 — Returns, Allocation, Asset Detail
 - FIFO lot engine: match_lots_fifo, compute_lot_unrealised, compute_gains_summary
@@ -147,29 +155,32 @@ types/index.ts      → TypeScript types matching backend schemas
   (Equity / Debt / Gold / Real Estate), harvest table per asset with pagination
 - 55 unit tests + 14 integration tests for tax module
 
-### 🔲 Phase 6 — Cloud Deployment
-- [ ] T6.1.1 backend/Dockerfile (Python 3.11 slim, uvicorn)
-- [ ] T6.1.2 frontend/Dockerfile (Node 20 alpine)
-- [ ] T6.1.3 docker-compose.yml (backend + frontend + postgres)
-- [ ] T6.1.4 PostgreSQL compatibility audit
-- [ ] T6.1.5 DATABASE_URL env-var switching (WAL pragma only for SQLite)
-- [ ] T6.2.1 Bearer token auth middleware (API_TOKEN env var)
-- [ ] T6.2.2 Next.js login page + axios interceptor + 401 redirect
-- [ ] T6.3.1 GET /backup/sqlite — stream portfolio.db
-- [ ] T6.3.2 GET /backup/export — structured JSON export
-- [ ] T6.3.3 POST /backup/import — idempotent JSON import
-- [ ] T6.4.1 Docker build + health check verification
-- [ ] T6.4.2 Full test suite against PostgreSQL
+### ⏭️ Phase 6 — Cloud Deployment (Skipped for now — local-first use)
+- [ ] ~~T6.1.1 backend/Dockerfile (Python 3.11 slim, uvicorn)~~
+- [ ] ~~T6.1.2 frontend/Dockerfile (Node 20 alpine)~~
+- [ ] ~~T6.1.3 docker-compose.yml (backend + frontend + postgres)~~
+- [ ] ~~T6.1.4 PostgreSQL compatibility audit~~
+- [ ] ~~T6.1.5 DATABASE_URL env-var switching (WAL pragma only for SQLite)~~
+- [ ] ~~T6.2.1 Bearer token auth middleware (API_TOKEN env var)~~
+- [ ] ~~T6.2.2 Next.js login page + axios interceptor + 401 redirect~~
+- [ ] ~~T6.4.1 Docker build + health check verification~~
+- [ ] ~~T6.4.2 Full test suite against PostgreSQL~~
+- **Retained (useful locally):**
+  - [ ] T6.3.1 GET /backup/sqlite — stream portfolio.db (data safety)
+  - [ ] T6.3.2 GET /backup/export — structured JSON export
+  - [ ] T6.3.3 POST /backup/import — idempotent JSON import
 
-### 🔲 Phase 7 — Polish
-- [ ] T7.1.1 Important Data rich field templates per category
-- [ ] T7.2.1 PortfolioSnapshot model + daily cron
-- [ ] T7.2.3 NetWorthChart (Recharts LineChart)
-- [ ] T7.3.1 HoldingsTable: client-side column sorting
-- [ ] T7.3.2 HoldingsTable: "Show Inactive" toggle
-- [ ] T7.3.3 Transaction list: date range filter
-- [ ] T7.4.2 Async price refresh (asyncio.gather + httpx.AsyncClient)
-- [ ] T7.4.3 60-second in-memory cache on GET /overview
+### ⏭️ Phase 7 — Polish (Partially skipped)
+- [ ] ~~T7.1.1 Important Data rich field templates per category~~ (personal-info page already functional)
+- [ ] ~~T7.4.2 Async price refresh (asyncio.gather + httpx.AsyncClient)~~ (startup refresh already runs in background)
+- [ ] ~~T7.4.3 60-second in-memory cache on GET /overview~~ (premature optimization)
+- **Retained (genuinely useful):**
+  - [x] T7.2.1 PortfolioSnapshot model + snapshot taken on startup (SnapshotService, snapshot_repo, /snapshots API)
+  - [x] T7.2.3 NetWorthChart (Recharts AreaChart) — wired into Overview page via useSnapshots hook
+  - [x] T7.3.1 HoldingsTable: client-side column sorting (click header to sort asc/desc, nulls last)
+  - [x] T7.3.1a Overview "Summary by Asset Type" table: client-side column sorting
+  - [x] T7.3.2 HoldingsTable: "Show Inactive" toggle (per-page button, hidden by default)
+  - [ ] T7.3.3 Transaction list: date range filter
 
 ---
 

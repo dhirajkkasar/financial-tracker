@@ -259,10 +259,12 @@ Two-step flow: preview first (parse only, no DB write), then commit.
 | POST | `/import/nps-csv` | Upload NSDL NPS transaction CSV |
 | POST | `/import/broker-csv` | Upload Zerodha / Groww CSV. Pass `?broker=zerodha` |
 | POST | `/import/commit` | Commit a previously previewed import |
+| POST | `/import/ppf-pdf` | Upload SBI PPF account statement PDF (direct import, no preview step) |
+| POST | `/import/epf-pdf` | Upload EPFO member passbook PDF (direct import, no preview step) |
 
 All import endpoints accept `multipart/form-data` with a `file` field.
 
-**Preview response (all import types):**
+**Preview response (CAS / NPS / broker import types):**
 ```json
 {
   "preview_id": "abc123",
@@ -287,6 +289,45 @@ All import endpoints accept `multipart/form-data` with a `file` field.
 ```json
 { "preview_id": "abc123" }
 ```
+
+**POST `/import/ppf-pdf` response:**
+```json
+{
+  "inserted": 2,
+  "skipped": 0,
+  "valuation_created": true,
+  "valuation_value": 42947.0,
+  "valuation_date": "2018-12-28",
+  "account_number": "32256576916",
+  "errors": []
+}
+```
+
+Notes:
+- The PPF asset must already exist in the DB with `identifier` = account number stripped of leading zeros.
+- A Valuation entry is created from the closing balance on the statement date.
+- Returns 404 if no matching PPF asset is found.
+
+**POST `/import/epf-pdf` response:**
+```json
+{
+  "epf_inserted": 45,
+  "epf_skipped": 0,
+  "eps_inserted": 30,
+  "eps_skipped": 0,
+  "eps_asset_id": 12,
+  "eps_asset_created": true,
+  "epf_valuation_created": true,
+  "epf_valuation_value": 0.0,
+  "errors": []
+}
+```
+
+Notes:
+- The EPF asset must already exist with `identifier` = EPFO member ID (e.g. `PYKRP00192140000152747`).
+- An EPS sub-asset (type=EPF, identifier=`{member_id}_EPS`) is auto-created if not present.
+- EPF asset is marked `is_active=false` when net balance = 0.
+- Returns 404 if no matching EPF asset is found.
 
 ---
 

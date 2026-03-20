@@ -59,10 +59,11 @@ Hash must be **stable across re-imports** — never include internal DB IDs in t
 `STOCK_IN`, `STOCK_US`, `MF`, `FD`, `RD`, `PPF`, `EPF`, `NPS`, `GOLD`, `SGB`, `REAL_ESTATE`, `RSU`
 
 ### Transaction Types
-`BUY`, `SELL`, `SIP`, `REDEMPTION`, `DIVIDEND`, `INTEREST`, `CONTRIBUTION`, `WITHDRAWAL`, `SWITCH_IN`, `SWITCH_OUT`, `BONUS`, `SPLIT`, `VEST`
+`BUY`, `SELL`, `SIP`, `REDEMPTION`, `DIVIDEND`, `INTEREST`, `CONTRIBUTION`, `WITHDRAWAL`, `SWITCH_IN`, `SWITCH_OUT`, `BONUS`, `SPLIT`, `VEST`, `TRANSFER`
 
 - `SWITCH_IN` / `SWITCH_OUT` / `SPLIT` → excluded from XIRR calculations
 - `VEST` → RSU vesting event (treated as `STOCK_US`); perquisite tax noted in `notes` field
+- `TRANSFER` → EPF withdrawal/transfer out (Claim: Against PARA 57(1)); positive amount (inflow)
 
 ### RSUs
 - Asset type: `STOCK_US`
@@ -226,3 +227,52 @@ constants/index.ts  → Asset type labels, colors, thresholds, NAV_TABS — no m
 2. Frontend directory is `frontend/app/` (no `/src/` prefix — App Router directly in `frontend/`)
 3. NPS returns: moved from VALUATION_BASED to MARKET_BASED; NAV auto-fetched from npsnav.in
 4. `requirements.md` mentions React+Vite — project uses Next.js (ignore)
+
+---
+
+## PPF / EPF PDF Import (Phase 2 extension)
+
+### PPF PDF Parser (`backend/app/importers/ppf_pdf_parser.py`)
+- Parses SBI PPF account statement PDFs using `pdfplumber` table extraction
+- Account number extracted from "Account Number :" line, stripped of leading zeros
+- `txn_id`: `ppf_{ref_no}` when ref exists, else `ppf_{SHA256(acct|CONTRIBUTION|date|paise)}`
+- Returns `PPFImportResult` with extra fields: `account_number`, `closing_balance_inr`, `closing_balance_date`
+- All credit rows → `CONTRIBUTION` type, negative amount (outflow convention)
+- Service auto-creates one `Valuation` entry from the closing balance
+
+### EPF PDF Parser (`backend/app/importers/epf_pdf_parser.py`)
+- Parses EPFO member passbook PDFs (text-based, bilingual Hindi/English)
+- Extracts member_id, establishment_name, print_date (from Hindi `eqfnzr DD-MM-YYYY` line)
+- "Cont. For MMYYYY" rows → 3 transactions each:
+  - CONTRIBUTION to EPF asset (employee share, notes="Employee Share")
+  - CONTRIBUTION to EPF asset (employer share, notes="Employer Share")
+  - CONTRIBUTION to EPS asset (pension, notes="Pension Contribution")
+- "Int. Updated upto DD/MM/YYYY" rows → 1 combined INTEREST transaction (employee_int + employer_int)
+- "Claim: Against PARA 57(1)" row → 1 TRANSFER transaction using print_date
+- Zero-amount rows are skipped
+- Returns `EPFImportResult` with: `member_id`, `establishment_name`, `print_date`, `net_balance_inr`, grand totals
+
+### TRANSFER Transaction Type
+- Added `TRANSFER = "TRANSFER"` to `TransactionType` enum in `backend/app/models/transaction.py`
+- Alembic migration: `a1b2c3d4e5f6_add_transfer_transaction_type.py` (no-op for SQLite, ALTER TYPE for PostgreSQL)
+- Frontend `TransactionType` union in `frontend/types/index.ts` updated to include `'TRANSFER'`
+
+### EPS Asset Convention
+- Type: `EPF`
+- Name: `EPS — {establishment_name}` (e.g. "EPS — IBM INDIA PVT LTD")
+- Identifier: `{member_id}_EPS` (e.g. "PYKRP00192140000152747_EPS")
+- Auto-created by `PPFEPFImportService` during EPF import if not already present
+
+### PPFEPFImportService (`backend/app/services/ppf_epf_import_service.py`)
+- Direct import pattern (no preview/commit step)
+- `import_ppf(file_bytes)`: matches asset by identifier, deduplicates by txn_id, creates Valuation
+- `import_epf(file_bytes)`: matches EPF asset, finds-or-creates EPS asset, imports all transactions, creates EPF Valuation, marks EPF asset inactive when net_balance = 0
+- Both methods raise `NotFoundError` (→ HTTP 404) if the asset does not exist
+
+### API Endpoints
+- `POST /import/ppf-pdf` — returns `{inserted, skipped, valuation_created, valuation_value, valuation_date, account_number, errors}`
+- `POST /import/epf-pdf` — returns `{epf_inserted, epf_skipped, eps_inserted, eps_skipped, eps_asset_id, eps_asset_created, epf_valuation_created, epf_valuation_value, errors}`
+
+### EPF Page (frontend)
+- `frontend/app/epf/page.tsx` updated to split EPF assets from EPS assets (name starts with "EPS")
+- EPS sub-section shown below the main EPF holdings table with a description note

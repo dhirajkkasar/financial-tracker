@@ -1,4 +1,5 @@
 'use client'
+import { useState } from 'react'
 import { useOverview } from '@/hooks/useOverview'
 import { useBreakdown } from '@/hooks/useBreakdown'
 import { useAllocation } from '@/hooks/useAllocation'
@@ -26,6 +27,55 @@ export default function OverviewPage() {
 
   const gain = overview ? overview.total_current_value - overview.total_invested : null
   const gainHighlight = gain === null ? 'neutral' : gain >= 0 ? 'positive' : 'negative'
+
+  type BdSortKey = 'asset_type' | 'share' | 'total_invested' | 'total_current_value' | 'xirr' | 'current_pnl' | 'alltime_pnl'
+  type SortDir = 'asc' | 'desc'
+  const [bdSortKey, setBdSortKey] = useState<BdSortKey>('total_current_value')
+  const [bdSortDir, setBdSortDir] = useState<SortDir>('desc')
+
+  function bdHandleSort(key: BdSortKey) {
+    if (bdSortKey === key) setBdSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    else { setBdSortKey(key); setBdSortDir('desc') }
+  }
+
+  const totalInvested = overview?.total_invested ?? 0
+  const sortedBreakdown = [...breakdown].sort((a, b) => {
+    const nullLast = (v: number | string | null) =>
+      v == null ? (bdSortDir === 'asc' ? Infinity : -Infinity) : v
+    let av: number | string | null
+    let bv: number | string | null
+    switch (bdSortKey) {
+      case 'asset_type':          av = a.asset_type;          bv = b.asset_type; break
+      case 'share':               av = a.total_invested;      bv = b.total_invested; break
+      case 'total_invested':      av = a.total_invested;      bv = b.total_invested; break
+      case 'total_current_value': av = a.total_current_value; bv = b.total_current_value; break
+      case 'xirr':                av = a.xirr ?? null;        bv = b.xirr ?? null; break
+      case 'current_pnl':         av = a.current_pnl ?? null; bv = b.current_pnl ?? null; break
+      case 'alltime_pnl':         av = a.alltime_pnl ?? null; bv = b.alltime_pnl ?? null; break
+      default: return 0
+    }
+    if (typeof av === 'string' && typeof bv === 'string')
+      return bdSortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av)
+    const na = nullLast(av as number | null) as number
+    const nb = nullLast(bv as number | null) as number
+    return bdSortDir === 'asc' ? na - nb : nb - na
+  })
+
+  function BdTh({ k, label, align = 'right' }: { k: BdSortKey; label: string; align?: 'left' | 'right' }) {
+    const active = bdSortKey === k
+    return (
+      <th
+        onClick={() => bdHandleSort(k)}
+        className={`pb-3 text-[10px] font-semibold uppercase tracking-[0.1em] cursor-pointer select-none transition-colors ${align === 'right' ? 'text-right' : 'text-left'} ${active ? 'text-secondary' : 'text-tertiary hover:text-secondary'}`}
+      >
+        {label}
+        <span className="ml-0.5 inline-flex flex-col leading-none opacity-40" aria-hidden>
+          <span className={active && bdSortDir === 'asc' ? 'opacity-100' : ''}>▲</span>
+          <span className={active && bdSortDir === 'desc' ? 'opacity-100' : ''}>▼</span>
+        </span>
+      </th>
+    )
+  }
 
   // Map allocation response → AllocationDonut shape
   const allocationChartData = (allocation?.allocations ?? []).map((a) => ({
@@ -172,18 +222,17 @@ export default function OverviewPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border">
-                <th className={thClass}>Asset Type</th>
-                <th className={`${thClass} text-right`}>Share</th>
-                <th className={`${thClass} text-right`}>Invested</th>
-                <th className={`${thClass} text-right`}>Current Value</th>
-                <th className={`${thClass} text-right`}>XIRR</th>
-                <th className={`${thClass} text-right`}>Current P&amp;L</th>
-                <th className={`${thClass} text-right`}>All-time P&amp;L</th>
+                <BdTh k="asset_type" label="Asset Type" align="left" />
+                <BdTh k="share" label="Share" />
+                <BdTh k="total_invested" label="Invested" />
+                <BdTh k="total_current_value" label="Current Value" />
+                <BdTh k="xirr" label="XIRR" />
+                <BdTh k="current_pnl" label="Current P&L" />
+                <BdTh k="alltime_pnl" label="All-time P&L" />
               </tr>
             </thead>
             <tbody>
-              {breakdown.map((row) => {
-                const totalInvested = overview?.total_invested ?? 0
+              {sortedBreakdown.map((row) => {
                 const pct = totalInvested > 0 ? (row.total_invested / totalInvested) * 100 : 0
                 return (
                   <tr key={row.asset_type} className="border-b border-border last:border-0 hover:bg-accent-subtle/30 transition-colors">

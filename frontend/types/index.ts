@@ -7,7 +7,7 @@ export type AssetClass = 'EQUITY' | 'DEBT' | 'GOLD' | 'REAL_ESTATE' | 'MIXED'
 export type TransactionType =
   | 'BUY' | 'SELL' | 'SIP' | 'REDEMPTION' | 'DIVIDEND' | 'INTEREST'
   | 'CONTRIBUTION' | 'WITHDRAWAL' | 'SWITCH_IN' | 'SWITCH_OUT'
-  | 'BONUS' | 'SPLIT' | 'VEST'
+  | 'BONUS' | 'SPLIT' | 'VEST' | 'TRANSFER'
 
 export interface Asset {
   id: number
@@ -228,7 +228,7 @@ export interface ImportantData {
   id: number
   category: 'BANK' | 'MF_FOLIO' | 'IDENTITY' | 'INSURANCE' | 'ACCOUNT' | 'OTHER'
   label: string
-  fields_json: string
+  fields: Record<string, string> | null
   notes: string | null
 }
 

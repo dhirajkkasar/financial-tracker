@@ -7,7 +7,7 @@ import { AssetSummaryCards } from '@/components/ui/AssetSummaryCards'
 
 export default function UsStocksPage() {
   const [activeOnly, setActiveOnly] = useState(true)
-  const { assets, loading } = useAssetsWithReturns('STOCK_US', activeOnly ? true : undefined)
+  const { assets, loading } = useAssetsWithReturns('STOCK_US', activeOnly)
   const { data: summary, loading: summaryLoading } = useOverview(['STOCK_US'])
   return (
     <div className="space-y-6">

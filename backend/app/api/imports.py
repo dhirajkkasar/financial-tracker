@@ -8,6 +8,7 @@ from app.importers.cas_parser import CASImporter
 from app.importers.nps_csv_parser import NPSImporter
 from app.middleware.error_handler import NotFoundError, ValidationError
 from app.services.import_service import ImportService
+from app.services.ppf_epf_import_service import PPFEPFImportService
 
 router = APIRouter(prefix="/import", tags=["import"])
 
@@ -68,3 +69,45 @@ def commit_import(
     if result is None:
         raise NotFoundError(f"Preview '{body.preview_id}' not found or expired")
     return result
+
+
+@router.post("/ppf-pdf")
+async def import_ppf_pdf(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """
+    Import a PPF account statement PDF (SBI format).
+
+    The PPF asset must already exist in the DB with identifier = stripped account number
+    (leading zeros removed). Transactions are deduplicated by txn_id. A Valuation entry
+    is created from the closing balance on the statement date.
+
+    Returns {inserted, skipped, valuation_created, valuation_value, valuation_date,
+             account_number, errors}
+    """
+    file_bytes = await file.read()
+    svc = PPFEPFImportService(db)
+    return svc.import_ppf(file_bytes)
+
+
+@router.post("/epf-pdf")
+async def import_epf_pdf(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """
+    Import an EPFO Member Passbook PDF.
+
+    The EPF asset must already exist in the DB with identifier = member_id.
+    Auto-creates an EPS sub-asset (type=EPF, identifier=member_id_EPS) if not present.
+    Creates a Valuation for the EPF asset from the net balance.
+    Marks the EPF asset inactive when net balance = 0.
+
+    Returns {epf_inserted, epf_skipped, eps_inserted, eps_skipped,
+             eps_asset_id, eps_asset_created, epf_valuation_created,
+             epf_valuation_value, errors}
+    """
+    file_bytes = await file.read()
+    svc = PPFEPFImportService(db)
+    return svc.import_epf(file_bytes)

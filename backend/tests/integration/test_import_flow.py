@@ -27,6 +27,16 @@ def cas_pdf_bytes():
     return (FIXTURES / "test_cas.pdf").read_bytes()
 
 
+@pytest.fixture
+def ppf_pdf_bytes():
+    return (FIXTURES / "PPF_account_statement.pdf").read_bytes()
+
+
+@pytest.fixture
+def epf_pdf_bytes():
+    return (FIXTURES / "PYKRP00192140000152747.pdf").read_bytes()
+
+
 class TestBrokerCSVPreview:
     def test_preview_returns_new_and_duplicate_counts(self, client, zerodha_csv_bytes):
         resp = client.post(
@@ -193,3 +203,234 @@ class TestCASPDFPreview:
             files={"file": ("cas.pdf", cas_pdf_bytes, "application/pdf")},
         )
         assert resp.json()["new_count"] == 0
+
+
+class TestPPFImport:
+    def test_ppf_import_returns_200(self, client, ppf_pdf_bytes, db):
+        # Pre-create the PPF asset so the import can match it
+        from app.models.asset import Asset, AssetType, AssetClass
+        asset = Asset(
+            name="PPF — SBI",
+            identifier="32256576916",
+            asset_type=AssetType.PPF,
+            asset_class=AssetClass.DEBT,
+            currency="INR",
+        )
+        db.add(asset)
+        db.commit()
+
+        resp = client.post(
+            "/import/ppf-pdf",
+            files={"file": ("ppf.pdf", ppf_pdf_bytes, "application/pdf")},
+        )
+        assert resp.status_code == 200
+
+    def test_ppf_import_writes_two_transactions(self, client, ppf_pdf_bytes, db):
+        from app.models.asset import Asset, AssetType, AssetClass
+        asset = Asset(
+            name="PPF — SBI",
+            identifier="32256576916",
+            asset_type=AssetType.PPF,
+            asset_class=AssetClass.DEBT,
+            currency="INR",
+        )
+        db.add(asset)
+        db.commit()
+
+        resp = client.post(
+            "/import/ppf-pdf",
+            files={"file": ("ppf.pdf", ppf_pdf_bytes, "application/pdf")},
+        )
+        data = resp.json()
+        assert data["inserted"] == 2
+        assert data["skipped"] == 0
+
+    def test_ppf_import_creates_valuation(self, client, ppf_pdf_bytes, db):
+        from app.models.asset import Asset, AssetType, AssetClass
+        asset = Asset(
+            name="PPF — SBI",
+            identifier="32256576916",
+            asset_type=AssetType.PPF,
+            asset_class=AssetClass.DEBT,
+            currency="INR",
+        )
+        db.add(asset)
+        db.commit()
+
+        resp = client.post(
+            "/import/ppf-pdf",
+            files={"file": ("ppf.pdf", ppf_pdf_bytes, "application/pdf")},
+        )
+        data = resp.json()
+        assert data["valuation_created"] is True
+        # Closing balance = 42947.00 INR
+        assert data["valuation_value"] == 42947.0
+
+    def test_ppf_reimport_is_idempotent(self, client, ppf_pdf_bytes, db):
+        from app.models.asset import Asset, AssetType, AssetClass
+        asset = Asset(
+            name="PPF — SBI",
+            identifier="32256576916",
+            asset_type=AssetType.PPF,
+            asset_class=AssetClass.DEBT,
+            currency="INR",
+        )
+        db.add(asset)
+        db.commit()
+
+        # First import
+        client.post(
+            "/import/ppf-pdf",
+            files={"file": ("ppf.pdf", ppf_pdf_bytes, "application/pdf")},
+        )
+        # Second import — should skip duplicates
+        resp = client.post(
+            "/import/ppf-pdf",
+            files={"file": ("ppf.pdf", ppf_pdf_bytes, "application/pdf")},
+        )
+        data = resp.json()
+        assert data["inserted"] == 0
+        assert data["skipped"] == 2
+
+    def test_ppf_import_no_asset_returns_404(self, client, ppf_pdf_bytes):
+        resp = client.post(
+            "/import/ppf-pdf",
+            files={"file": ("ppf.pdf", ppf_pdf_bytes, "application/pdf")},
+        )
+        assert resp.status_code == 404
+
+
+class TestEPFImport:
+    def test_epf_import_returns_200(self, client, epf_pdf_bytes, db):
+        from app.models.asset import Asset, AssetType, AssetClass
+        asset = Asset(
+            name="EPF — IBM INDIA PVT LTD",
+            identifier="PYKRP00192140000152747",
+            asset_type=AssetType.EPF,
+            asset_class=AssetClass.DEBT,
+            currency="INR",
+        )
+        db.add(asset)
+        db.commit()
+
+        resp = client.post(
+            "/import/epf-pdf",
+            files={"file": ("epf.pdf", epf_pdf_bytes, "application/pdf")},
+        )
+        assert resp.status_code == 200
+
+    def test_epf_import_writes_transactions(self, client, epf_pdf_bytes, db):
+        from app.models.asset import Asset, AssetType, AssetClass
+        asset = Asset(
+            name="EPF — IBM INDIA PVT LTD",
+            identifier="PYKRP00192140000152747",
+            asset_type=AssetType.EPF,
+            asset_class=AssetClass.DEBT,
+            currency="INR",
+        )
+        db.add(asset)
+        db.commit()
+
+        resp = client.post(
+            "/import/epf-pdf",
+            files={"file": ("epf.pdf", epf_pdf_bytes, "application/pdf")},
+        )
+        data = resp.json()
+        assert data["epf_inserted"] > 0
+        assert data["epf_skipped"] == 0
+
+    def test_epf_import_creates_eps_asset(self, client, epf_pdf_bytes, db):
+        from app.models.asset import Asset, AssetType, AssetClass
+        asset = Asset(
+            name="EPF — IBM INDIA PVT LTD",
+            identifier="PYKRP00192140000152747",
+            asset_type=AssetType.EPF,
+            asset_class=AssetClass.DEBT,
+            currency="INR",
+        )
+        db.add(asset)
+        db.commit()
+
+        resp = client.post(
+            "/import/epf-pdf",
+            files={"file": ("epf.pdf", epf_pdf_bytes, "application/pdf")},
+        )
+        data = resp.json()
+        assert data["eps_asset_created"] is True
+        assert data["eps_asset_id"] is not None
+
+    def test_epf_import_creates_epf_valuation(self, client, epf_pdf_bytes, db):
+        from app.models.asset import Asset, AssetType, AssetClass
+        asset = Asset(
+            name="EPF — IBM INDIA PVT LTD",
+            identifier="PYKRP00192140000152747",
+            asset_type=AssetType.EPF,
+            asset_class=AssetClass.DEBT,
+            currency="INR",
+        )
+        db.add(asset)
+        db.commit()
+
+        resp = client.post(
+            "/import/epf-pdf",
+            files={"file": ("epf.pdf", epf_pdf_bytes, "application/pdf")},
+        )
+        data = resp.json()
+        assert data["epf_valuation_created"] is True
+        # Net balance = 0 (fully transferred)
+        assert data["epf_valuation_value"] == 0.0
+
+    def test_epf_import_marks_asset_inactive_when_zero_balance(self, client, epf_pdf_bytes, db):
+        from app.models.asset import Asset, AssetType, AssetClass
+        asset = Asset(
+            name="EPF — IBM INDIA PVT LTD",
+            identifier="PYKRP00192140000152747",
+            asset_type=AssetType.EPF,
+            asset_class=AssetClass.DEBT,
+            currency="INR",
+        )
+        db.add(asset)
+        db.commit()
+        asset_id = asset.id
+
+        client.post(
+            "/import/epf-pdf",
+            files={"file": ("epf.pdf", epf_pdf_bytes, "application/pdf")},
+        )
+
+        db.expire_all()
+        updated_asset = db.query(Asset).filter(Asset.id == asset_id).first()
+        assert updated_asset.is_active is False
+
+    def test_epf_reimport_is_idempotent(self, client, epf_pdf_bytes, db):
+        from app.models.asset import Asset, AssetType, AssetClass
+        asset = Asset(
+            name="EPF — IBM INDIA PVT LTD",
+            identifier="PYKRP00192140000152747",
+            asset_type=AssetType.EPF,
+            asset_class=AssetClass.DEBT,
+            currency="INR",
+        )
+        db.add(asset)
+        db.commit()
+
+        # First import
+        client.post(
+            "/import/epf-pdf",
+            files={"file": ("epf.pdf", epf_pdf_bytes, "application/pdf")},
+        )
+        # Second import — all duplicates
+        resp = client.post(
+            "/import/epf-pdf",
+            files={"file": ("epf.pdf", epf_pdf_bytes, "application/pdf")},
+        )
+        data = resp.json()
+        assert data["epf_inserted"] == 0
+        assert data["epf_skipped"] > 0
+
+    def test_epf_import_no_asset_returns_404(self, client, epf_pdf_bytes):
+        resp = client.post(
+            "/import/epf-pdf",
+            files={"file": ("epf.pdf", epf_pdf_bytes, "application/pdf")},
+        )
+        assert resp.status_code == 404

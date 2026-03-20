@@ -13,11 +13,12 @@ from app.database import SessionLocal
 import scripts.seed_interest_rates as _sir
 import scripts.seed_demo_data as _sdd
 import scripts.seed_historical_sips as _shs
+import scripts.seed_closed_positions as _scp
 
 
 def main():
     print("=" * 60)
-    print("Step 1/3 — Interest rates")
+    print("Step 1/4 — Interest rates")
     print("=" * 60)
     db = SessionLocal()
     try:
@@ -27,15 +28,21 @@ def main():
 
     print()
     print("=" * 60)
-    print("Step 2/3 — Demo assets (deposits, PPF, EPF, NPS, gold …)")
+    print("Step 2/4 — Demo assets (deposits, PPF, EPF, NPS, gold …)")
     print("=" * 60)
     _sdd.main()
 
     print()
     print("=" * 60)
-    print("Step 3/3 — Historical SIPs & stock BUY lots")
+    print("Step 3/4 — Historical SIPs & stock BUY lots")
     print("=" * 60)
     _shs.main()
+
+    print()
+    print("=" * 60)
+    print("Step 4/4 — Closed positions (inactive stocks, MFs, matured FDs)")
+    print("=" * 60)
+    _scp.main()
 
     print()
     print("All done. Database is ready.")

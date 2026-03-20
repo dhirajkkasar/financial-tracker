@@ -7,7 +7,7 @@ import { AssetSummaryCards } from '@/components/ui/AssetSummaryCards'
 
 export default function NpsPage() {
   const [activeOnly, setActiveOnly] = useState(true)
-  const { assets, loading } = useAssetsWithReturns('NPS', activeOnly ? true : undefined)
+  const { assets, loading } = useAssetsWithReturns('NPS', activeOnly)
   const { data: summary, loading: summaryLoading } = useOverview(['NPS'])
   return (
     <div className="space-y-6">

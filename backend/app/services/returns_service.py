@@ -430,10 +430,22 @@ class ReturnsService:
             inactive_pnl = 0.0
             for inactive_asset in inactive_by_type.get(asset_type, []):
                 try:
-                    txns = self.txn_repo.list_by_asset(inactive_asset.id)
-                    inactive_pnl += sum(
-                        t.amount_inr for t in txns if t.type.value not in EXCLUDED_TYPES
-                    ) / 100.0
+                    if asset_type in FD_BASED_TYPES:
+                        # For FDs/RDs the raw transaction net gives wrong P&L because
+                        # the INTEREST txn holds only the interest portion, not the returned
+                        # principal. Use the formula-based returns instead.
+                        r = self._compute_fd_returns(inactive_asset)
+                        cv = r.get("current_value") or 0.0
+                        inv = r.get("total_invested") or 0.0
+                        inactive_pnl += cv - inv
+                    else:
+                        # For lot-based assets (stocks, MFs, gold …) the net of all
+                        # non-excluded transactions gives the correct realized P&L:
+                        # BUY outflows (negative) + SELL inflows (positive) = profit/loss.
+                        txns = self.txn_repo.list_by_asset(inactive_asset.id)
+                        inactive_pnl += sum(
+                            t.amount_inr for t in txns if t.type.value not in EXCLUDED_TYPES
+                        ) / 100.0
                 except Exception as e:
                     logger.warning("Error computing inactive P&L for asset %d: %s", inactive_asset.id, str(e))
 

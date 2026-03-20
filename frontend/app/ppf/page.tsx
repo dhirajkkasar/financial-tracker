@@ -7,7 +7,7 @@ import { AssetSummaryCards } from '@/components/ui/AssetSummaryCards'
 
 export default function PpfPage() {
   const [activeOnly, setActiveOnly] = useState(true)
-  const { assets, loading } = useAssetsWithReturns('PPF', activeOnly ? true : undefined)
+  const { assets, loading } = useAssetsWithReturns('PPF', activeOnly)
   const { data: summary, loading: summaryLoading } = useOverview(['PPF'])
   return (
     <div className="space-y-6">

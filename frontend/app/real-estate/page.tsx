@@ -7,7 +7,7 @@ import { AssetSummaryCards } from '@/components/ui/AssetSummaryCards'
 
 export default function RealEstatePage() {
   const [activeOnly, setActiveOnly] = useState(true)
-  const { assets, loading } = useAssetsWithReturns('REAL_ESTATE', activeOnly ? true : undefined)
+  const { assets, loading } = useAssetsWithReturns('REAL_ESTATE', activeOnly)
   const { data: summary, loading: summaryLoading } = useOverview(['REAL_ESTATE'])
   return (
     <div className="space-y-6">

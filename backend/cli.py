@@ -423,8 +423,6 @@ def build_parser() -> argparse.ArgumentParser:
     # ── utilities ─────────────────────────────────────────────────────────────
     sub.add_parser("refresh-prices", help="Trigger price refresh for all assets")
     sub.add_parser("snapshot", help="Take a portfolio snapshot now")
-    sub.add_parser("fix-inactive", help="Scan all stocks and mark fully-exited ones as inactive")
-
     return parser
 
 
@@ -489,10 +487,6 @@ def main():
 
     elif args.command == "snapshot":
         cmd_snapshot()
-
-    elif args.command == "fix-inactive":
-        result = _api("post", "/assets/fix-inactive-stocks")
-        print(f"✓ fix-inactive: {result['fixed']} marked inactive out of {result['total_checked']} checked")
 
     else:
         parser.print_help()

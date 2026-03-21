@@ -434,3 +434,69 @@ class TestEPFImport:
             files={"file": ("epf.pdf", epf_pdf_bytes, "application/pdf")},
         )
         assert resp.status_code == 404
+
+
+class TestBrokerCSVAutoInactive:
+    def _make_csv(self, rows: list[dict]) -> bytes:
+        import io, csv
+        if not rows:
+            return b""
+        buf = io.StringIO()
+        writer = csv.DictWriter(buf, fieldnames=rows[0].keys())
+        writer.writeheader()
+        writer.writerows(rows)
+        return buf.getvalue().encode()
+
+    def _zerodha_row(self, symbol, isin, trade_type, qty, price, trade_id):
+        return {
+            "symbol": symbol,
+            "isin": isin,
+            "trade_date": "2024-01-15",
+            "exchange": "NSE",
+            "segment": "EQ",
+            "series": "EQ",
+            "trade_type": trade_type,
+            "auction": "false",
+            "quantity": str(qty),
+            "price": str(price),
+            "trade_id": trade_id,
+            "order_id": f"ORD{trade_id}",
+            "order_execution_time": "2024-01-15T10:00:00",
+        }
+
+    def _import(self, client, csv_bytes):
+        resp = client.post(
+            "/import/broker-csv?broker=zerodha",
+            files={"file": ("test.csv", csv_bytes, "text/csv")},
+        )
+        assert resp.status_code == 200
+        preview_id = resp.json()["preview_id"]
+        resp = client.post("/import/commit", json={"preview_id": preview_id})
+        assert resp.status_code == 200
+        return resp.json()
+
+    def test_fully_sold_stock_marked_inactive(self, client):
+        """BUY 10 + SELL 10 → is_active=False after commit."""
+        rows = [
+            self._zerodha_row("TESTCO", "INE999X01234", "buy", 10, 100.0, "T_INACT_001"),
+            self._zerodha_row("TESTCO", "INE999X01234", "sell", 10, 120.0, "T_INACT_002"),
+        ]
+        self._import(client, self._make_csv(rows))
+
+        assets = client.get("/assets?type=STOCK_IN").json()
+        testco = next((a for a in assets if a.get("identifier") == "INE999X01234"), None)
+        assert testco is not None, "Asset not created"
+        assert testco["is_active"] is False, "Fully-sold stock should be inactive"
+
+    def test_partially_sold_stock_stays_active(self, client):
+        """BUY 10 + SELL 5 → is_active=True (5 shares remain)."""
+        rows = [
+            self._zerodha_row("PARTIAL", "INE888X01234", "buy", 10, 200.0, "T_PART_001"),
+            self._zerodha_row("PARTIAL", "INE888X01234", "sell", 5, 250.0, "T_PART_002"),
+        ]
+        self._import(client, self._make_csv(rows))
+
+        assets = client.get("/assets?type=STOCK_IN").json()
+        partial = next((a for a in assets if a.get("identifier") == "INE888X01234"), None)
+        assert partial is not None, "Asset not created"
+        assert partial["is_active"] is True, "Partially-sold stock should stay active"

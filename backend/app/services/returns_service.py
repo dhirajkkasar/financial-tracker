@@ -354,8 +354,9 @@ class ReturnsService:
                 logger.warning("Error computing gain summary for asset %d: %s", asset_id, str(e))
 
         # total_invested = cost basis of CURRENTLY HELD shares (open lots only).
-        # SGB exception: lot computation is skipped for SGB (tax-exempt on maturity), so fall back
-        # to the all-buy total to avoid showing ₹0 Invested for held SGB positions.
+        # SGB exception: FIFO lot engine is intentionally not run for SGB (government bonds held to
+        # maturity are tax-exempt; granular lot tracking does not apply). Fall back to summing all
+        # outflow transactions so the "Invested" column shows the actual purchase cost.
         if asset_type == "SGB":
             total_invested = sum(
                 abs(txn.amount_inr / 100.0)

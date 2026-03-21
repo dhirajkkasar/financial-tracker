@@ -309,6 +309,7 @@ def test_total_invested_uses_open_lots_cost_basis():
     svc.txn_repo = MagicMock()
     svc.txn_repo.list_by_asset.return_value = [buy_txn, sell_txn]
     svc.price_repo = MagicMock()
+    svc.cas_snap_repo = MagicMock()
     price_mock = MagicMock()
     price_mock.price_inr = 200_000   # ₹2000 per share in paise
     price_mock.fetched_at = datetime.utcnow()

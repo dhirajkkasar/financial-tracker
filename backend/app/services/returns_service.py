@@ -3,6 +3,7 @@ import logging
 from sqlalchemy.orm import Session
 
 from app.repositories.asset_repo import AssetRepository
+from app.repositories.cas_snapshot_repo import CasSnapshotRepository
 from app.repositories.transaction_repo import TransactionRepository
 from app.repositories.valuation_repo import ValuationRepository
 from app.repositories.fd_repo import FDRepository
@@ -35,6 +36,7 @@ class ReturnsService:
         self.val_repo = ValuationRepository(db)
         self.fd_repo = FDRepository(db)
         self.price_repo = PriceCacheRepository(db)
+        self.cas_snap_repo = CasSnapshotRepository(db)
 
     def get_asset_returns(self, asset_id: int) -> dict:
         from app.middleware.error_handler import NotFoundError
@@ -44,7 +46,9 @@ class ReturnsService:
 
         asset_type = asset.asset_type.value
 
-        if asset_type in MARKET_BASED_TYPES:
+        if asset_type == "MF":
+            return self._compute_mf_returns(asset)
+        elif asset_type in MARKET_BASED_TYPES:
             return self._compute_market_based_returns(asset)
         elif asset_type in FD_BASED_TYPES:
             return self._compute_fd_returns(asset)
@@ -53,6 +57,171 @@ class ReturnsService:
         else:
             # Fallback: try market-based
             return self._compute_market_based_returns(asset)
+
+    def _compute_mf_returns(self, asset) -> dict:
+        """
+        Compute returns for MF assets using CAS snapshot as authoritative source.
+
+        Current value:
+          - snapshot < 30 days old  → use snapshot.market_value directly
+          - snapshot ≥ 30 days old  → snapshot.closing_units × latest price_cache NAV
+        Current P&L  = current_value − snapshot.total_cost  (from CAS)
+        All-time P&L = current_p_l + realised gains (FIFO lot engine)
+        """
+        from app.middleware.error_handler import ValidationError
+
+        asset_id = asset.id
+        asset_type = asset.asset_type.value
+
+        snapshot = self.cas_snap_repo.get_latest_by_asset_id(asset_id)
+        if snapshot is None:
+            raise ValidationError(
+                f"No CAS snapshot found for '{asset.name}'. "
+                "Please import your CAS PDF statement first."
+            )
+
+        transactions = self.txn_repo.list_by_asset(asset_id)
+        filtered_txns = [t for t in transactions if t.type.value not in EXCLUDED_TYPES]
+
+        # Build XIRR cashflows from full transaction history
+        cashflows = []
+        total_invested_txn = 0.0
+        for txn in filtered_txns:
+            amount_inr = txn.amount_inr / 100.0
+            if txn.type.value in OUTFLOW_TYPES:
+                cashflows.append((txn.date, amount_inr))
+                total_invested_txn += abs(amount_inr)
+            elif txn.type.value in INFLOW_TYPES:
+                cashflows.append((txn.date, amount_inr))
+
+        # --- Fully redeemed fund ---
+        if snapshot.closing_units == 0:
+            gains_summary = self._mf_gains_summary(asset_id, asset_type, transactions)
+            realised = self._sum_realised(gains_summary)
+            # cashflows already has outflows + inflows; no terminal value since fully redeemed
+            xirr = compute_xirr(cashflows) if len(cashflows) >= 2 else None
+            return {
+                "asset_id": asset_id,
+                "asset_type": asset_type,
+                "total_invested": total_invested_txn,
+                "current_value": 0,
+                "current_p_l": None,
+                "all_time_p_l": realised if realised is not None else None,
+                "xirr": xirr,
+                "cagr": None,
+                "absolute_return": None,
+                "message": "Fully redeemed",
+                "price_is_stale": None,
+                "price_fetched_at": None,
+                "st_unrealised_gain": None,
+                "lt_unrealised_gain": None,
+                "st_realised_gain": gains_summary.get("st_realised_gain"),
+                "lt_realised_gain": gains_summary.get("lt_realised_gain"),
+            }
+
+        # --- Active fund: determine current value ---
+        snapshot_age_days = (date.today() - snapshot.date).days
+
+        if snapshot_age_days < 30:
+            current_value = snapshot.market_value_inr / 100.0
+            price_is_stale = False
+            price_fetched_at = snapshot.date.isoformat()
+        else:
+            price_cache = self.price_repo.get_by_asset_id(asset_id)
+            if price_cache:
+                current_value = snapshot.closing_units * (price_cache.price_inr / 100.0)
+                price_is_stale = (date.today() - snapshot.date).days > 30
+                price_fetched_at = price_cache.fetched_at.isoformat()
+            else:
+                # Best available: stale snapshot market value
+                current_value = snapshot.market_value_inr / 100.0
+                price_is_stale = True
+                price_fetched_at = snapshot.date.isoformat()
+
+        total_cost = snapshot.total_cost_inr / 100.0
+        current_p_l = current_value - total_cost
+
+        # Validate against lot engine (log warning only; use CAS value)
+        gains_summary = self._mf_gains_summary(asset_id, asset_type, transactions)
+        lot_unrealised = self._sum_unrealised(gains_summary)
+        if lot_unrealised is not None and abs(total_cost) > 0:
+            divergence = abs(current_p_l - lot_unrealised) / max(abs(total_cost), 1)
+            if divergence > 0.05:
+                logger.warning(
+                    "MF asset %d '%s': CAS current P&L %.2f differs %.1f%% from lot engine %.2f",
+                    asset_id, asset.name, current_p_l, divergence * 100, lot_unrealised,
+                )
+
+        realised = self._sum_realised(gains_summary)
+        all_time_p_l = current_p_l + (realised or 0.0)
+
+        # XIRR: add current value as final inflow
+        if current_value > 0:
+            cashflows.append((date.today(), current_value))
+        xirr = compute_xirr(cashflows) if len(cashflows) >= 2 else None
+
+        # CAGR
+        cagr = None
+        if filtered_txns and total_invested_txn > 0 and current_value > 0:
+            oldest = min(filtered_txns, key=lambda t: t.date)
+            years = (date.today() - oldest.date).days / 365.0
+            ratio = current_value / total_invested_txn
+            if years > 0 and ratio > 0:
+                cagr = round(ratio ** (1 / years) - 1, 6)
+
+        abs_return = compute_absolute_return(total_invested_txn, current_value) if total_invested_txn > 0 else None
+
+        return {
+            "asset_id": asset_id,
+            "asset_type": asset_type,
+            "total_invested": total_cost,   # CAS cost basis, not raw txn sum
+            "current_value": current_value,
+            "current_p_l": current_p_l,
+            "all_time_p_l": all_time_p_l,
+            "xirr": xirr,
+            "cagr": cagr,
+            "absolute_return": abs_return,
+            "message": None,
+            "price_is_stale": price_is_stale,
+            "price_fetched_at": price_fetched_at,
+            # Unrealised gains intentionally null — CAS cost basis used for current P&L
+            # (lot-engine unrealised uses different cost basis and would disagree)
+            "st_unrealised_gain": None,
+            "lt_unrealised_gain": None,
+            # Realised gains from lot engine are still valid for all-time P&L
+            "st_realised_gain": gains_summary.get("st_realised_gain"),
+            "lt_realised_gain": gains_summary.get("lt_realised_gain"),
+        }
+
+    def _mf_gains_summary(self, asset_id: int, asset_type: str, transactions: list) -> dict:
+        """Run lot engine for MF, return gains dict (silently returns nulls on error)."""
+        try:
+            open_lots, matched_sells = self._build_lots_and_sells(asset_id, asset_type, transactions)
+            return compute_gains_summary(open_lots, matched_sells, asset_type)
+        except Exception as e:
+            logger.warning("Error computing gain summary for MF asset %d: %s", asset_id, str(e))
+            return {
+                "st_unrealised_gain": None,
+                "lt_unrealised_gain": None,
+                "st_realised_gain": None,
+                "lt_realised_gain": None,
+            }
+
+    @staticmethod
+    def _sum_unrealised(gains: dict) -> float | None:
+        st = gains.get("st_unrealised_gain")
+        lt = gains.get("lt_unrealised_gain")
+        if st is None and lt is None:
+            return None
+        return (st or 0.0) + (lt or 0.0)
+
+    @staticmethod
+    def _sum_realised(gains: dict) -> float | None:
+        st = gains.get("st_realised_gain")
+        lt = gains.get("lt_realised_gain")
+        if st is None and lt is None:
+            return None
+        return (st or 0.0) + (lt or 0.0)
 
     def _build_lots_and_sells(self, asset_id: int, asset_type: str, transactions: list):
         """
@@ -155,7 +324,6 @@ class ReturnsService:
 
         # Build cashflows (convert paise to INR)
         cashflows = []
-        total_invested = 0.0
 
         for txn in filtered_txns:
             amount_inr = txn.amount_inr / 100.0  # paise to INR
@@ -165,10 +333,37 @@ class ReturnsService:
                 # DB stores as negative paise for outflows
                 # For XIRR, outflow = negative
                 cashflows.append((txn.date, amount_inr))  # already negative in DB
-                total_invested += abs(amount_inr)
             elif txn_type in INFLOW_TYPES:
                 # DB stores as positive paise for inflows
                 cashflows.append((txn.date, amount_inr))  # already positive in DB
+
+        # Compute lot gain summary (skip for SGB — tax-exempt on maturity)
+        # Must run BEFORE total_invested so open_lots is available.
+        gains_summary = {
+            "st_unrealised_gain": None,
+            "lt_unrealised_gain": None,
+            "st_realised_gain": None,
+            "lt_realised_gain": None,
+        }
+        open_lots = []
+        if asset_type != "SGB":
+            try:
+                open_lots, matched_sells = self._build_lots_and_sells(asset_id, asset_type, transactions)
+                gains_summary = compute_gains_summary(open_lots, matched_sells, asset_type)
+            except Exception as e:
+                logger.warning("Error computing gain summary for asset %d: %s", asset_id, str(e))
+
+        # total_invested = cost basis of CURRENTLY HELD shares (open lots only).
+        # SGB exception: lot computation is skipped for SGB (tax-exempt on maturity), so fall back
+        # to the all-buy total to avoid showing ₹0 Invested for held SGB positions.
+        if asset_type == "SGB":
+            total_invested = sum(
+                abs(txn.amount_inr / 100.0)
+                for txn in filtered_txns
+                if txn.type.value in OUTFLOW_TYPES
+            )
+        else:
+            total_invested = sum(lot["buy_amount_inr"] for lot in open_lots)
 
         # Get current price from cache
         price_cache = self.price_repo.get_by_asset_id(asset_id)
@@ -211,20 +406,6 @@ class ReturnsService:
                 oldest = min(filtered_txns, key=lambda t: t.date)
                 years = (date.today() - oldest.date).days / 365.0
                 cagr = compute_cagr(total_invested, effective_current, years)
-
-        # Compute lot gain summary (skip for SGB — tax-exempt on maturity)
-        gains_summary = {
-            "st_unrealised_gain": None,
-            "lt_unrealised_gain": None,
-            "st_realised_gain": None,
-            "lt_realised_gain": None,
-        }
-        if asset_type != "SGB":
-            try:
-                open_lots, matched_sells = self._build_lots_and_sells(asset_id, asset_type, transactions)
-                gains_summary = compute_gains_summary(open_lots, matched_sells, asset_type)
-            except Exception as e:
-                logger.warning("Error computing gain summary for asset %d: %s", asset_id, str(e))
 
         # Price staleness metadata
         price_is_stale = None
@@ -557,7 +738,8 @@ class ReturnsService:
             "total_taxable_interest": 0.0,
             "total_potential_tax": 0.0,
         }
-        has_any_gain = False
+        has_any_unrealised = False
+        has_any_realised = False
         has_any_interest = False
 
         for asset in assets:
@@ -572,20 +754,28 @@ class ReturnsService:
                     total_current_value += current
 
                 # Reconstruct cashflows for portfolio XIRR
-                asset_type = asset.asset_type.value
+                # Must include both outflows (negative) AND inflows (redemptions, dividends)
+                # so that partial redemptions are accounted for before adding terminal value.
                 transactions = self.txn_repo.list_by_asset(asset.id)
                 filtered_txns = [t for t in transactions if t.type.value not in EXCLUDED_TYPES]
                 for txn in filtered_txns:
                     amount_inr = txn.amount_inr / 100.0
-                    if txn.type.value in OUTFLOW_TYPES:
+                    if txn.type.value in OUTFLOW_TYPES or txn.type.value in INFLOW_TYPES:
                         all_cashflows.append((txn.date, amount_inr))
 
-                # Accumulate gain fields
-                for key in ("st_unrealised_gain", "lt_unrealised_gain", "st_realised_gain", "lt_realised_gain"):
+                # Accumulate unrealised and realised separately so a 0-unrealised asset
+                # (e.g. MF where we null out unrealised) does not suppress realised totals
+                for key in ("st_unrealised_gain", "lt_unrealised_gain"):
                     v = result.get(key)
                     if v is not None:
                         totals[key] += v
-                        has_any_gain = True
+                        has_any_unrealised = True
+
+                for key in ("st_realised_gain", "lt_realised_gain"):
+                    v = result.get(key)
+                    if v is not None:
+                        totals[key] += v
+                        has_any_realised = True
 
                 ti = result.get("taxable_interest")
                 pt = result.get("potential_tax_30pct")
@@ -611,10 +801,10 @@ class ReturnsService:
             "total_current_value": total_current_value,
             "absolute_return": abs_return,
             "xirr": portfolio_xirr,
-            "st_unrealised_gain": totals["st_unrealised_gain"] if has_any_gain else None,
-            "lt_unrealised_gain": totals["lt_unrealised_gain"] if has_any_gain else None,
-            "st_realised_gain": totals["st_realised_gain"] if has_any_gain else None,
-            "lt_realised_gain": totals["lt_realised_gain"] if has_any_gain else None,
+            "st_unrealised_gain": totals["st_unrealised_gain"] if has_any_unrealised else None,
+            "lt_unrealised_gain": totals["lt_unrealised_gain"] if has_any_unrealised else None,
+            "st_realised_gain": totals["st_realised_gain"] if has_any_realised else None,
+            "lt_realised_gain": totals["lt_realised_gain"] if has_any_realised else None,
             "total_taxable_interest": totals["total_taxable_interest"] if has_any_interest else None,
             "total_potential_tax": totals["total_potential_tax"] if has_any_interest else None,
         }

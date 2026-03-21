@@ -20,6 +20,12 @@ PREVIEW_TTL_MINUTES = 15
 
 LOT_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST"}
 
+# Unit-flow types for STOCK_IN/STOCK_US inactive detection.
+# SPLIT, BONUS, DIVIDEND, INTEREST, TRANSFER are intentionally excluded — they do not
+# change the number of units held for stock assets.
+_STOCK_UNIT_ADD_TYPES = {"BUY", "SIP", "VEST"}
+_STOCK_UNIT_SUB_TYPES = {"SELL", "REDEMPTION"}
+
 ASSET_CLASS_MAP: dict[str, AssetClass] = {
     "STOCK_IN": AssetClass.EQUITY,
     "STOCK_US": AssetClass.EQUITY,
@@ -99,7 +105,7 @@ class ImportService:
 
         created = 0
         skipped = 0
-        touched_stock_asset_ids: set[int] = set()
+        touched_stock_assets: dict[int, "Asset"] = {}
 
         for txn in parsed_txns:
             if txn_repo.get_by_txn_id(txn.txn_id):
@@ -108,7 +114,7 @@ class ImportService:
 
             asset = self._find_or_create_asset(asset_repo, txn)
             if txn.asset_type in {"STOCK_IN", "STOCK_US"}:
-                touched_stock_asset_ids.add(asset.id)
+                touched_stock_assets[asset.id] = asset
             amount_paise = round(txn.amount_inr * 100)
             charges_paise = round(txn.charges_inr * 100)
 
@@ -154,20 +160,20 @@ class ImportService:
             )
 
         # Auto-mark fully-exited stock assets as inactive
-        _UNIT_ADD_TYPES = {"BUY", "SIP", "VEST"}
-        _UNIT_SUB_TYPES = {"SELL", "REDEMPTION"}
-        for asset_id in touched_stock_asset_ids:
-            stock_asset = asset_repo.get_by_id(asset_id)
-            if stock_asset is None:
-                continue
+        for asset_id, stock_asset in touched_stock_assets.items():
             all_txns = txn_repo.list_by_asset(asset_id)
             net_units = sum(
-                (t.units or 0.0) if t.type.value in _UNIT_ADD_TYPES
-                else -(t.units or 0.0) if t.type.value in _UNIT_SUB_TYPES
+                (t.units or 0.0) if t.type.value in _STOCK_UNIT_ADD_TYPES
+                else -(t.units or 0.0) if t.type.value in _STOCK_UNIT_SUB_TYPES
                 else 0.0
                 for t in all_txns
             )
-            if net_units <= 1e-6 and stock_asset.is_active:
+            if net_units < -1e-6:
+                logger.warning(
+                    "Asset %d '%s' has negative net_units=%.4f — possible data issue; skipping auto-inactive",
+                    asset_id, stock_asset.name, net_units,
+                )
+            elif net_units <= 1e-6 and stock_asset.is_active:
                 stock_asset.is_active = False
                 logger.info(
                     "Auto-marked asset %d '%s' inactive (net_units=%.4f)",

@@ -154,16 +154,16 @@ class ImportService:
             )
 
         # Auto-mark fully-exited stock assets as inactive
-        _STOCK_OUTFLOWS = {"BUY", "SIP", "VEST"}
-        _STOCK_INFLOWS = {"SELL", "REDEMPTION"}
+        _UNIT_ADD_TYPES = {"BUY", "SIP", "VEST"}
+        _UNIT_SUB_TYPES = {"SELL", "REDEMPTION"}
         for asset_id in touched_stock_asset_ids:
             stock_asset = asset_repo.get_by_id(asset_id)
             if stock_asset is None:
                 continue
             all_txns = txn_repo.list_by_asset(asset_id)
             net_units = sum(
-                (t.units or 0.0) if t.type.value in _STOCK_OUTFLOWS
-                else -(t.units or 0.0) if t.type.value in _STOCK_INFLOWS
+                (t.units or 0.0) if t.type.value in _UNIT_ADD_TYPES
+                else -(t.units or 0.0) if t.type.value in _UNIT_SUB_TYPES
                 else 0.0
                 for t in all_txns
             )

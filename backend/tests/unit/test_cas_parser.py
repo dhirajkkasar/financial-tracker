@@ -79,3 +79,54 @@ class TestCASImporter:
         result = importer.parse(cas_bytes)
         assert result.source == "cas"
         assert all(t.source == "cas" for t in result.transactions)
+
+    # --- Snapshot extraction tests ---
+
+    def test_parse_extracts_snapshots(self, importer, cas_bytes):
+        result = importer.parse(cas_bytes)
+        assert len(result.snapshots) > 0
+
+    def test_all_snapshots_have_isin(self, importer, cas_bytes):
+        result = importer.parse(cas_bytes)
+        assert all(s.isin for s in result.snapshots)
+
+    def test_snapshot_fields_for_active_fund(self, importer, cas_bytes):
+        # HDFC Multi Cap: Closing Unit Balance: 17,292.257 NAV on 18-Mar-2026: INR 18.505
+        # Total Cost Value: 340,000.00  Market Value on 18-Mar-2026: INR 319,993.22
+        result = importer.parse(cas_bytes)
+        hdfc = next((s for s in result.snapshots if "HDFC Multi Cap" in s.asset_name), None)
+        assert hdfc is not None
+        assert abs(hdfc.closing_units - 17292.257) < 0.001
+        assert abs(hdfc.nav_price_inr - 18.505) < 0.001
+        assert abs(hdfc.market_value_inr - 319993.22) < 0.01
+        assert abs(hdfc.total_cost_inr - 340000.00) < 0.01
+
+    def test_snapshot_fields_for_parag_parikh(self, importer, cas_bytes):
+        # Parag Parikh Flexi Cap: 26,580.939 units, NAV 89.3756, cost 1,655,390.87, mktval 2,375,687.37
+        result = importer.parse(cas_bytes)
+        pp = next((s for s in result.snapshots if "Parag Parikh Flexi Cap" in s.asset_name), None)
+        assert pp is not None
+        assert abs(pp.closing_units - 26580.939) < 0.001
+        assert abs(pp.nav_price_inr - 89.3756) < 0.0001
+        assert abs(pp.market_value_inr - 2375687.37) < 0.01
+        assert abs(pp.total_cost_inr - 1655390.87) < 0.01
+
+    def test_snapshot_zero_units_for_redeemed_fund(self, importer, cas_bytes):
+        # Aditya Birla, HDFC ELSS, etc. all have closing_units = 0
+        result = importer.parse(cas_bytes)
+        redeemed = [s for s in result.snapshots if s.closing_units == 0.0]
+        assert len(redeemed) > 0
+
+    def test_snapshot_isin_matches_fund_isin(self, importer, cas_bytes):
+        result = importer.parse(cas_bytes)
+        # Parag Parikh Flexi Cap ISIN
+        pp = next((s for s in result.snapshots if "Parag Parikh Flexi Cap" in s.asset_name), None)
+        assert pp is not None
+        assert pp.isin == "INF879O01027"
+
+    def test_snapshot_date_parsed(self, importer, cas_bytes):
+        from datetime import date
+        result = importer.parse(cas_bytes)
+        # Most snapshots in this CAS are dated 18-Mar-2026
+        dates = {s.date for s in result.snapshots if s.closing_units > 0}
+        assert date(2026, 3, 18) in dates

@@ -57,7 +57,7 @@ async def import_cas_pdf(
 ):
     file_bytes = await file.read()
     result = CASImporter().parse(file_bytes, file.filename or "")
-    return svc.preview(result.transactions)
+    return svc.preview(result.transactions, preview_snapshots=result.snapshots)
 
 
 @router.post("/commit")

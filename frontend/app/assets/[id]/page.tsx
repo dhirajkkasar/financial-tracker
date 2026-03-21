@@ -78,10 +78,19 @@ export default function AssetDetailPage() {
 
   if (!asset) return <p className="text-loss">Asset not found</p>
 
-  const gain = returns && returns.total_invested && returns.current_value != null
-    ? returns.current_value - returns.total_invested
+  const invested = returns?.total_invested ?? null
+  const isFullyRedeemed = asset.asset_type === 'MF' && !asset.is_active
+
+  const currentPnl = !isFullyRedeemed && returns && invested != null && returns.current_value != null
+    ? returns.current_value - invested
     : null
-  const gainHighlight = gain === null ? 'neutral' : gain >= 0 ? 'positive' : 'negative'
+  const allTimePnl = isFullyRedeemed
+    ? (returns?.st_realised_gain ?? 0) + (returns?.lt_realised_gain ?? 0)
+    : currentPnl != null
+      ? currentPnl + (returns?.st_realised_gain ?? 0) + (returns?.lt_realised_gain ?? 0)
+      : null
+  const currentPnlHighlight = currentPnl === null ? 'neutral' : currentPnl >= 0 ? 'positive' : 'negative'
+  const allTimePnlHighlight = allTimePnl === null ? 'neutral' : allTimePnl >= 0 ? 'positive' : 'negative'
 
   const showLots = LOT_BASED_TYPES.has(asset.asset_type)
   const showFD = FD_TYPES.has(asset.asset_type) && fdDetail != null && returns != null
@@ -115,19 +124,36 @@ export default function AssetDetailPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard label="Invested" value={formatINR(returns?.total_invested ?? 0)} />
-        <StatCard label="Current Value" value={formatINR(returns?.current_value ?? 0)} />
-        <StatCard
-          label="Gain / Loss"
-          value={gain !== null ? formatINR(gain) : '—'}
-          sub={gain !== null && (returns?.total_invested ?? 0) > 0
-            ? formatPct(gain / returns!.total_invested!)
-            : undefined}
-          highlight={gainHighlight}
-        />
-        <StatCard label="XIRR" value={formatXIRR(returns?.xirr ?? null)} />
-      </div>
+      {isFullyRedeemed ? (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <StatCard label="Invested" value={formatINR(invested ?? 0)} />
+          <StatCard
+            label="All-time P&L"
+            value={allTimePnl !== null ? formatINR(allTimePnl) : '—'}
+            highlight={allTimePnlHighlight}
+          />
+          <StatCard label="XIRR" value={formatXIRR(returns?.xirr ?? null)} />
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+          <StatCard label="Invested" value={formatINR(invested ?? 0)} />
+          <StatCard label="Current Value" value={formatINR(returns?.current_value ?? 0)} />
+          <StatCard
+            label="Current P&L"
+            value={currentPnl !== null ? formatINR(currentPnl) : '—'}
+            sub={currentPnl !== null && (invested ?? 0) > 0
+              ? formatPct(currentPnl / invested!)
+              : undefined}
+            highlight={currentPnlHighlight}
+          />
+          <StatCard
+            label="All-time P&L"
+            value={allTimePnl !== null ? formatINR(allTimePnl) : '—'}
+            highlight={allTimePnlHighlight}
+          />
+          <StatCard label="XIRR" value={formatXIRR(returns?.xirr ?? null)} />
+        </div>
+      )}
 
       {/* Message (PPF/EPF no valuation, etc.) */}
       {returns?.message && (

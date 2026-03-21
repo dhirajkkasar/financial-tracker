@@ -43,3 +43,9 @@ addopts = "--cov=app --cov-report=term-missing"
 
 [tool.coverage.run]
 omit = ["tests/*", "scripts/*", "alembic/*"]
+
+[dependency-groups]
+dev = [
+    "requests>=2.32.5",
+    "requests-mock>=1.12.1",
+]

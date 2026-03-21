@@ -3,7 +3,6 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { Asset } from '@/types'
 import { formatINR, formatPct } from '@/lib/formatters'
-import { ASSET_TYPE_LABELS } from '@/constants'
 import { Skeleton } from '@/components/ui/Skeleton'
 
 interface HoldingRow extends Asset {
@@ -29,7 +28,7 @@ interface HoldingRow extends Asset {
 type HoldingsVariant = 'default' | 'fd-tax'
 
 type SortKey =
-  | 'name' | 'asset_type' | 'total_invested' | 'current_value'
+  | 'name' | 'total_invested' | 'current_value'
   | 'current_pnl' | 'alltime_pnl' | 'xirr'
   | 'start_date' | 'maturity_date' | 'interest_rate_pct'
   | 'taxable_interest' | 'potential_tax_30pct'
@@ -87,10 +86,15 @@ function computeRow(a: HoldingRow) {
   const current_pnl = hasLotGains
     ? (a.st_unrealised_gain ?? 0) + (a.lt_unrealised_gain ?? 0)
     : current != null && invested != null ? current - invested : null
-  const alltime_pnl = hasLotGains
-    ? (a.st_unrealised_gain ?? 0) + (a.lt_unrealised_gain ?? 0) +
-      (a.st_realised_gain ?? 0) + (a.lt_realised_gain ?? 0)
-    : current_pnl
+  // Inactive (closed/redeemed): all-time P&L = realised gains only — no current value to factor in
+  // Active: current P&L + realised gains
+  const alltime_pnl = !a.is_active
+    ? (a.st_realised_gain != null || a.lt_realised_gain != null)
+      ? (a.st_realised_gain ?? 0) + (a.lt_realised_gain ?? 0)
+      : null
+    : current_pnl != null
+      ? current_pnl + (a.st_realised_gain ?? 0) + (a.lt_realised_gain ?? 0)
+      : null
   return { invested, current, current_pnl, alltime_pnl }
 }
 
@@ -105,9 +109,8 @@ function sortAssets(assets: HoldingRow[], key: SortKey, dir: SortDir): HoldingRo
     let bv: number | string | null
 
     switch (key) {
-      case 'name':        av = a.name;                   bv = b.name; break
-      case 'asset_type':  av = a.asset_type;             bv = b.asset_type; break
-      case 'total_invested': av = ra.invested;           bv = rb.invested; break
+      case 'name':           av = a.name;        bv = b.name; break
+      case 'total_invested': av = ra.invested;  bv = rb.invested; break
       case 'current_value':  av = ra.current;            bv = rb.current; break
       case 'current_pnl':    av = ra.current_pnl;        bv = rb.current_pnl; break
       case 'alltime_pnl':    av = ra.alltime_pnl;        bv = rb.alltime_pnl; break
@@ -155,14 +158,14 @@ export function HoldingsTable({ assets, loading, variant = 'default' }: Holdings
     )
   }
 
-  if (loading) {
+  if (loading && assets.length === 0) {
     return (
       <div className="space-y-3">
         {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
       </div>
     )
   }
-  if (assets.length === 0) {
+  if (!loading && assets.length === 0) {
     return <p className="py-10 text-center text-sm text-tertiary">No holdings yet</p>
   }
   const sorted = sortAssets(assets, sortKey, sortDir)
@@ -172,8 +175,7 @@ export function HoldingsTable({ assets, loading, variant = 'default' }: Holdings
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border">
-            {th('name', 'Name', 'text-left')}
-            {th('asset_type', 'Type', 'text-left')}
+            {th('name', 'Name', 'text-left w-[56ch]')}
             {th('total_invested', 'Invested', 'text-right')}
             {th('current_value', 'Current Value', 'text-right')}
             {th('current_pnl', 'Current P&L', 'text-right')}
@@ -205,9 +207,9 @@ export function HoldingsTable({ assets, loading, variant = 'default' }: Holdings
 
             return (
               <tr key={a.id} className={`border-b border-border last:border-0 transition-colors ${isInactive ? 'bg-slate-50 text-slate-400 hover:bg-slate-100' : 'hover:bg-accent-subtle/40'}`}>
-                <td className="py-3 pr-4">
-                  <div className="flex items-center gap-2">
-                    <Link href={`/assets/${a.id}`} className="font-medium text-accent hover:underline">
+                <td className="py-3 pr-4 w-[56ch]">
+                  <div className="flex items-start gap-2">
+                    <Link href={`/assets/${a.id}`} className="font-medium text-accent hover:underline break-words">
                       {a.name}
                     </Link>
                     {isInactive && (
@@ -217,7 +219,6 @@ export function HoldingsTable({ assets, loading, variant = 'default' }: Holdings
                     )}
                   </div>
                 </td>
-                <td className="py-3 pr-4">{ASSET_TYPE_LABELS[a.asset_type]}</td>
                 <td className="py-3 pr-4 text-right font-mono">
                   {invested != null ? formatINR(invested) : '—'}
                 </td>

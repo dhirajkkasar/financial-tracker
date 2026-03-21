@@ -26,10 +26,23 @@ class ParsedTransaction:
 
 
 @dataclass
+class ParsedFundSnapshot:
+    """Closing balance summary extracted from a CAS PDF per fund."""
+    isin: str
+    asset_name: str
+    date: date                  # NAV date from CAS
+    closing_units: float
+    nav_price_inr: float        # INR per unit (not paise)
+    market_value_inr: float     # total INR
+    total_cost_inr: float       # cost basis INR
+
+
+@dataclass
 class ImportResult:
     """Result of parsing a file."""
     source: str
     transactions: list[ParsedTransaction] = field(default_factory=list)
+    snapshots: list[ParsedFundSnapshot] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 

@@ -47,3 +47,4 @@ class Asset(Base):
     price_cache: Mapped["PriceCache | None"] = relationship("PriceCache", back_populates="asset", uselist=False, cascade="all, delete-orphan")
     fd_detail: Mapped["FDDetail | None"] = relationship("FDDetail", back_populates="asset", uselist=False, cascade="all, delete-orphan")
     goal_allocations: Mapped[list] = relationship("GoalAllocation", back_populates="asset", cascade="all, delete-orphan")
+    cas_snapshots: Mapped[list] = relationship("CasSnapshot", back_populates="asset", cascade="all, delete-orphan")

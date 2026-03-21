@@ -28,11 +28,8 @@ export function AssetSummaryCards({ data, loading }: AssetSummaryCardsProps) {
     ? ((data!.st_unrealised_gain ?? 0) + (data!.lt_unrealised_gain ?? 0))
     : current - invested
 
-  // All-time P&L: unrealized + realized
-  const allTimePnl = hasLotGains
-    ? ((data!.st_unrealised_gain ?? 0) + (data!.lt_unrealised_gain ?? 0) +
-       (data!.st_realised_gain ?? 0) + (data!.lt_realised_gain ?? 0))
-    : current - invested
+  // All-time P&L: current P&L + realized gains
+  const allTimePnl = currentPnl + ((data?.st_realised_gain ?? 0) + (data?.lt_realised_gain ?? 0))
 
   const hasInterest = data != null && data.total_taxable_interest != null
 

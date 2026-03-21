@@ -7,7 +7,7 @@ from typing import Optional
 
 import pdfplumber
 
-from app.importers.base import ParsedTransaction, ImportResult
+from app.importers.base import ParsedTransaction, ParsedFundSnapshot, ImportResult
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,12 @@ class CASImporter:
     NUMBER_TOKEN = re.compile(r"[\d,]+\.\d+")
     STAMP_DUTY_PATTERN = re.compile(r"\*\*\*\s*Stamp Duty\s*\*\*\*")
     SCHEME_PREFIX_PATTERN = re.compile(r"^[A-Z0-9]+[A-Z]-")
+    CLOSING_BALANCE_PATTERN = re.compile(
+        r"Closing Unit Balance:\s*([\d,]+\.?\d*)"
+        r"\s+NAV on (\d{2}-[A-Za-z]{3}-\d{4}):\s*INR\s*([\d,]+\.?\d*)"
+        r"\s+Total Cost Value:\s*([\d,]+\.?\d*)"
+        r"\s+Market Value on \d{2}-[A-Za-z]{3}-\d{4}:\s*INR\s*([\d,]+\.?\d*)"
+    )
 
     def parse(self, file_bytes: bytes, filename: str = "") -> ImportResult:
         result = ImportResult(source="cas")
@@ -76,9 +82,14 @@ class CASImporter:
                 in_transactions = True
                 continue
 
-            # Closing balance → end of transaction section
+            # Closing balance → end of transaction section; extract snapshot
             if "Closing Unit Balance:" in stripped:
                 in_transactions = False
+                snap = self._parse_closing_balance(
+                    stripped, current_isin, current_scheme_name
+                )
+                if snap:
+                    result.snapshots.append(snap)
                 continue
 
             # No transactions marker
@@ -193,6 +204,32 @@ class CASImporter:
             amount_inr=amount_inr,
             txn_id=txn_id,
             notes=description,
+        )
+
+    def _parse_closing_balance(
+        self, line: str, isin: Optional[str], scheme_name: Optional[str]
+    ) -> Optional[ParsedFundSnapshot]:
+        if not isin:
+            return None
+        m = self.CLOSING_BALANCE_PATTERN.search(line)
+        if not m:
+            return None
+        try:
+            closing_units = float(m.group(1).replace(",", ""))
+            nav_date = datetime.strptime(m.group(2), "%d-%b-%Y").date()
+            nav_price = float(m.group(3).replace(",", ""))
+            total_cost = float(m.group(4).replace(",", ""))
+            market_value = float(m.group(5).replace(",", ""))
+        except (ValueError, IndexError):
+            return None
+        return ParsedFundSnapshot(
+            isin=isin,
+            asset_name=scheme_name or isin,
+            date=nav_date,
+            closing_units=closing_units,
+            nav_price_inr=nav_price,
+            market_value_inr=market_value,
+            total_cost_inr=total_cost,
         )
 
     def _map_transaction_type(self, description: str) -> str:

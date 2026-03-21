@@ -113,7 +113,7 @@ class TestFixInactiveStocks:
         resp = client.post("/assets/fix-inactive-stocks")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["fixed"] >= 1
+        assert data["fixed"] == 1
         assert "total_checked" in data
 
         # Reload and verify

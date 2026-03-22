@@ -281,6 +281,22 @@ def cmd_list_assets() -> list:
     return assets
 
 
+def cmd_fetch_corp_actions(asset_id: int | None = None) -> dict:
+    if asset_id is not None:
+        result = _api("post", f"/corp-actions/fetch-asset/{asset_id}")
+        print(f"✓ Corp actions for asset {asset_id}: "
+              f"bonus={result.get('bonus_created', 0)}, "
+              f"split={result.get('split_applied', 0)}, "
+              f"dividend={result.get('dividend_created', 0)}")
+    else:
+        result = _api("post", "/corp-actions/fetch-all")
+        print(f"✓ Corp actions (all stocks): "
+              f"bonus={result.get('bonus_created', 0)}, "
+              f"split={result.get('split_applied', 0)}, "
+              f"dividend={result.get('dividend_created', 0)}")
+    return result
+
+
 def cmd_refresh_prices() -> dict:
     result = _api("post", "/prices/refresh-all")
     print("✓ Price refresh triggered")
@@ -423,6 +439,13 @@ def build_parser() -> argparse.ArgumentParser:
     # ── utilities ─────────────────────────────────────────────────────────────
     sub.add_parser("refresh-prices", help="Trigger price refresh for all assets")
     sub.add_parser("snapshot", help="Take a portfolio snapshot now")
+
+    # ── fetch-corp-actions ────────────────────────────────────────────────────
+    p_corp = sub.add_parser("fetch-corp-actions",
+                            help="Fetch and apply NSE corporate actions (bonus/split/dividend)")
+    p_corp.add_argument("--asset-id", type=int, default=None, dest="asset_id",
+                        help="Specific asset ID; omit to process all STOCK_IN assets")
+
     return parser
 
 
@@ -481,6 +504,9 @@ def main():
             parser.parse_args(["list", "--help"])
         elif args.resource == "assets":
             cmd_list_assets()
+
+    elif args.command == "fetch-corp-actions":
+        cmd_fetch_corp_actions(args.asset_id)
 
     elif args.command == "refresh-prices":
         cmd_refresh_prices()

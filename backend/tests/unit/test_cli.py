@@ -456,3 +456,30 @@ class TestSnapshot:
         requests_mock.post(f"{BASE}/snapshots/take", json={"date": "2025-03-20", "total_value_inr": 5000000.0})
         cli.cmd_snapshot()
         assert requests_mock.last_request.path == "/snapshots/take"
+
+
+# ── fetch-corp-actions ────────────────────────────────────────────────────────
+
+CORP_RESULT = {"bonus_created": 0, "bonus_skipped": 0, "split_applied": 0,
+               "split_skipped": 0, "dividend_created": 0, "dividend_skipped": 0}
+
+
+class TestFetchCorpActions:
+    def test_calls_fetch_all_when_no_asset_id(self, requests_mock):
+        requests_mock.post(f"{BASE}/corp-actions/fetch-all", json=CORP_RESULT)
+        cli.cmd_fetch_corp_actions(asset_id=None)
+        assert requests_mock.last_request.path == "/corp-actions/fetch-all"
+
+    def test_calls_fetch_asset_when_asset_id_given(self, requests_mock):
+        requests_mock.post(f"{BASE}/corp-actions/fetch-asset/5", json=CORP_RESULT)
+        cli.cmd_fetch_corp_actions(asset_id=5)
+        assert requests_mock.last_request.path == "/corp-actions/fetch-asset/5"
+
+    def test_parser_no_asset_id(self):
+        args = cli.build_parser().parse_args(["fetch-corp-actions"])
+        assert args.command == "fetch-corp-actions"
+        assert args.asset_id is None
+
+    def test_parser_with_asset_id(self):
+        args = cli.build_parser().parse_args(["fetch-corp-actions", "--asset-id", "42"])
+        assert args.asset_id == 42

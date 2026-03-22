@@ -51,8 +51,9 @@ def parse_corp_action_subject(subject: str) -> dict | None:
         new_fv = float(split_match.group(2))
         return {"kind": "SPLIT", "ratio": old_fv / new_fv}
 
-    # DIVIDEND: e.g. "Interim Dividend - Rs 3 Per Share", "Dividend Rs. 1.50 Per Share"
-    div_match = re.search(r"(?i)dividend.*?rs\.?\s*([\d.]+)", subject)
+    # DIVIDEND: e.g. "Interim Dividend - Rs 3 Per Share", "Dividend Re. 1 Per Share"
+    # Matches both "Rs." (≥₹1) and "Re." (sub-₹1) rupee notations used by NSE.
+    div_match = re.search(r"(?i)dividend.*?r[se]\.?\s*([\d.]+)", subject)
     if div_match:
         per_share = float(div_match.group(1))
         return {"kind": "DIVIDEND", "per_share_inr": per_share}
@@ -185,6 +186,8 @@ class CorpActionsService:
                 self._apply_bonus(asset, isin, txns, ex_date, parsed["ratio"], result)
             elif kind == "SPLIT":
                 self._apply_split(asset, isin, txns, ex_date, parsed["ratio"], result)
+                # Reload txns so subsequent bonus/dividend in same batch see updated units.
+                txns = self.txn_repo.list_by_asset(asset.id)
             elif kind == "DIVIDEND":
                 self._apply_dividend(asset, isin, txns, ex_date, parsed["per_share_inr"], result)
 
@@ -225,18 +228,28 @@ class CorpActionsService:
             return
 
         updated = 0
+        # Rescale all buy-side AND sell-side transactions before ex_date so that
+        # unit counts remain consistent after the split (e.g. BUY 10 → 50 and
+        # SELL 5 → 25 for a 5:1 split).
         for t in txns:
             if t.date >= ex_date:
                 continue
-            if t.type.value not in ("BUY", "SIP", "VEST"):
-                continue
-            t.units = (t.units or 0.0) * ratio
-            t.price_per_unit = (
-                (t.price_per_unit or 0.0) / ratio
-                if (t.price_per_unit or 0.0) > 0
-                else 0.0
-            )
-            updated += 1
+            if t.type.value in ("BUY", "SIP", "VEST"):
+                t.units = (t.units or 0.0) * ratio
+                t.price_per_unit = (
+                    (t.price_per_unit or 0.0) / ratio
+                    if (t.price_per_unit or 0.0) > 0
+                    else 0.0
+                )
+                updated += 1
+            elif t.type.value in ("SELL", "REDEMPTION"):
+                t.units = (t.units or 0.0) * ratio
+                t.price_per_unit = (
+                    (t.price_per_unit or 0.0) / ratio
+                    if (t.price_per_unit or 0.0) > 0
+                    else 0.0
+                )
+                updated += 1
 
         self.txn_repo.create(
             txn_id=marker_id,
@@ -248,8 +261,8 @@ class CorpActionsService:
             amount_inr=0,
             charges_inr=0,
             notes=(
-                f"Corporate action: Split ratio {ratio}:1 (auto-imported from NSE). "
-                f"Updated {updated} BUY transactions."
+                f"Corporate action: Split ratio {ratio}:1 (NSE). "
+                f"Updated {updated} transactions."
             ),
         )
         self.db.commit()

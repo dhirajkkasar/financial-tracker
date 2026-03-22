@@ -49,6 +49,12 @@ class TestParseCorpActionSubject:
         r = parse_corp_action_subject("Dividend Rs. 1.50 Per Share")
         assert r["per_share_inr"] == pytest.approx(1.5)
 
+    def test_dividend_re_notation(self):
+        from app.services.corp_actions_service import parse_corp_action_subject
+        r = parse_corp_action_subject("Interim Dividend Re. 0.50 Per Share")
+        assert r["kind"] == "DIVIDEND"
+        assert r["per_share_inr"] == pytest.approx(0.5)
+
     def test_buyback_returns_none(self):
         from app.services.corp_actions_service import parse_corp_action_subject
         assert parse_corp_action_subject("Buyback of Shares") is None
@@ -166,140 +172,4 @@ class TestNSECorpActionFetcherParseExDate:
         from app.services.corp_actions_service import NSECorpActionFetcher
         assert NSECorpActionFetcher.parse_ex_date("") is None
 
-
-class TestCorpActionsServiceApply:
-    """Tests that use a real DB session (db fixture) but mock NSECorpActionFetcher.fetch."""
-
-    def _setup_asset_with_buy(self, db):
-        from app.models.asset import Asset, AssetType, AssetClass
-        from app.models.transaction import Transaction, TransactionType
-        a = Asset(name="TCS", identifier="INE467B01029",
-                  asset_type=AssetType.STOCK_IN, asset_class=AssetClass.EQUITY,
-                  currency="INR", is_active=True)
-        db.add(a)
-        db.flush()
-        db.add(Transaction(
-            txn_id="tcs_buy_001", asset_id=a.id, type=TransactionType.BUY,
-            date=date(2020, 1, 1), units=10.0, price_per_unit=2000.0,
-            amount_inr=-2000000, charges_inr=0,
-        ))
-        db.commit()
-        db.refresh(a)
-        return a
-
-    def test_bonus_creates_transaction(self, db):
-        from app.services.corp_actions_service import CorpActionsService
-        from app.models.transaction import Transaction, TransactionType
-        asset = self._setup_asset_with_buy(db)
-
-        svc = CorpActionsService(db)
-        svc.fetcher.fetch = MagicMock(return_value=[{
-            "exDate": "01-JUN-2021",
-            "subject": "Bonus 1:1",
-        }])
-
-        result = svc.process_asset(asset)
-        assert result["bonus_created"] == 1
-
-        bonus_txn = db.query(Transaction).filter_by(
-            asset_id=asset.id, type=TransactionType.BONUS
-        ).first()
-        assert bonus_txn is not None
-        assert bonus_txn.units == pytest.approx(10.0)  # 10 held × 1:1 ratio
-        assert bonus_txn.amount_inr == 0
-
-    def test_bonus_idempotent(self, db):
-        from app.services.corp_actions_service import CorpActionsService
-        asset = self._setup_asset_with_buy(db)
-        mock_data = [{"exDate": "01-JUN-2021", "subject": "Bonus 1:1"}]
-
-        svc = CorpActionsService(db)
-        svc.fetcher.fetch = MagicMock(return_value=mock_data)
-        r1 = svc.process_asset(asset)
-
-        svc2 = CorpActionsService(db)
-        svc2.fetcher.fetch = MagicMock(return_value=mock_data)
-        r2 = svc2.process_asset(asset)
-
-        assert r1["bonus_created"] == 1
-        assert r2["bonus_skipped"] == 1
-
-    def test_split_updates_buy_transaction(self, db):
-        from app.services.corp_actions_service import CorpActionsService
-        from app.models.transaction import Transaction, TransactionType
-        asset = self._setup_asset_with_buy(db)
-
-        svc = CorpActionsService(db)
-        svc.fetcher.fetch = MagicMock(return_value=[{
-            "exDate": "01-APR-2021",
-            "subject": "Sub-Division / Split From Rs 10/- To Rs 2/-",
-        }])
-
-        result = svc.process_asset(asset)
-        assert result["split_applied"] == 1
-
-        # Original BUY units should be 10 × 5 = 50
-        buy_txn = db.query(Transaction).filter_by(
-            asset_id=asset.id, type=TransactionType.BUY
-        ).first()
-        assert buy_txn.units == pytest.approx(50.0)
-        assert buy_txn.price_per_unit == pytest.approx(400.0)  # 2000 / 5
-
-    def test_split_idempotent(self, db):
-        from app.services.corp_actions_service import CorpActionsService
-        asset = self._setup_asset_with_buy(db)
-        mock_data = [{"exDate": "01-APR-2021", "subject": "Sub-Division / Split From Rs 10/- To Rs 2/-"}]
-
-        svc = CorpActionsService(db)
-        svc.fetcher.fetch = MagicMock(return_value=mock_data)
-        r1 = svc.process_asset(asset)
-
-        svc2 = CorpActionsService(db)
-        svc2.fetcher.fetch = MagicMock(return_value=mock_data)
-        r2 = svc2.process_asset(asset)
-
-        assert r1["split_applied"] == 1
-        assert r2["split_skipped"] == 1
-
-    def test_dividend_creates_transaction(self, db):
-        from app.services.corp_actions_service import CorpActionsService
-        from app.models.transaction import Transaction, TransactionType
-        asset = self._setup_asset_with_buy(db)
-
-        svc = CorpActionsService(db)
-        svc.fetcher.fetch = MagicMock(return_value=[{
-            "exDate": "15-MAR-2021",
-            "subject": "Interim Dividend - Rs 25 Per Share",
-        }])
-
-        result = svc.process_asset(asset)
-        assert result["dividend_created"] == 1
-
-        div_txn = db.query(Transaction).filter_by(
-            asset_id=asset.id, type=TransactionType.DIVIDEND
-        ).first()
-        assert div_txn is not None
-        assert div_txn.amount_inr == 25000  # 10 units × 25 INR × 100 paise
-
-    def test_action_outside_holding_period_skipped(self, db):
-        """Corporate action after all shares sold → not applied."""
-        from app.models.transaction import Transaction, TransactionType
-        from app.services.corp_actions_service import CorpActionsService
-        asset = self._setup_asset_with_buy(db)
-        # Sell all shares before the corporate action ex_date
-        db.add(Transaction(
-            txn_id="tcs_sell_001", asset_id=asset.id, type=TransactionType.SELL,
-            date=date(2020, 6, 1), units=10.0, price_per_unit=2200.0,
-            amount_inr=2200000, charges_inr=0,
-        ))
-        db.commit()
-
-        svc = CorpActionsService(db)
-        svc.fetcher.fetch = MagicMock(return_value=[{
-            "exDate": "01-JAN-2022",  # after full sell in June 2020
-            "subject": "Bonus 1:1",
-        }])
-
-        result = svc.process_asset(asset)
-        assert result["bonus_created"] == 0
-        assert result["bonus_skipped"] == 0  # not even attempted
+# Integration tests (DB-backed) are in tests/integration/test_corp_actions_service.py

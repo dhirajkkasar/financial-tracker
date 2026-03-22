@@ -21,9 +21,9 @@ PREVIEW_TTL_MINUTES = 15
 LOT_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST"}
 
 # Unit-flow types for STOCK_IN/STOCK_US inactive detection.
-# SPLIT, BONUS, DIVIDEND, INTEREST, TRANSFER are intentionally excluded — they do not
+# SPLIT, DIVIDEND, INTEREST, TRANSFER are intentionally excluded — they do not
 # change the number of units held for stock assets.
-_STOCK_UNIT_ADD_TYPES = {"BUY", "SIP", "VEST"}
+_STOCK_UNIT_ADD_TYPES = {"BUY", "SIP", "VEST", "BONUS"}
 _STOCK_UNIT_SUB_TYPES = {"SELL", "REDEMPTION"}
 
 ASSET_CLASS_MAP: dict[str, AssetClass] = {
@@ -187,20 +187,48 @@ class ImportService:
 
 
     def _find_or_create_asset(self, asset_repo: AssetRepository, txn: ParsedTransaction) -> Asset:
-        """Find an existing asset by identifier or create a new one."""
+        """Find an existing asset by identifier or create a new one.
+
+        Lookup order:
+        1. ISIN match (preferred — stable across ticker renames)
+        2. Ticker/name match within the same asset_type (fallback when ISIN is absent,
+           e.g. old BSE 2018 tradebooks that exported without ISIN)
+
+        TODO: BSE vs NSE ticker name divergence (e.g. "ASHOK LEYL." vs "ASHOKLEY") means
+        the same company can still create separate assets when both ISIN and name differ.
+        Fix requires a canonical name/alias table or CDSL demat statement import.
+
+        TODO: ISIN changes due to corporate restructuring (HDFC Bank merger, IRCTC split)
+        cause the same company to appear as two assets with different ISINs. These must be
+        merged manually or resolved via NSE corporate action data once that feature is built.
+
+        TODO: Missing buys (IPO allotments, off-market transfers) have no CSV record so
+        sold shares create assets with only SELL transactions and negative net_units.
+        Fix requires importing CDSL/NSDL demat statement as authoritative source.
+        """
+        asset_type = AssetType(txn.asset_type)
+        asset_class = ASSET_CLASS_MAP.get(txn.asset_type, AssetClass.EQUITY)
+
         if txn.asset_identifier:
             existing = self.db.query(Asset).filter(
                 Asset.identifier == txn.asset_identifier
             ).first()
             if existing:
                 return existing
-
-        asset_type = AssetType(txn.asset_type)
-        asset_class = ASSET_CLASS_MAP.get(txn.asset_type, AssetClass.EQUITY)
+        else:
+            # No ISIN — fall back to exact ticker/name match within the same asset type.
+            # Prevents duplicate assets when the same stock appears across multiple CSV rows
+            # with an empty ISIN field (old BSE tradebook format).
+            existing = self.db.query(Asset).filter(
+                Asset.name == txn.asset_name,
+                Asset.asset_type == asset_type,
+            ).first()
+            if existing:
+                return existing
 
         return asset_repo.create(
             name=txn.asset_name,
-            identifier=txn.asset_identifier,
+            identifier=txn.asset_identifier or None,
             asset_type=asset_type,
             asset_class=asset_class,
             currency="INR",

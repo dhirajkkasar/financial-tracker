@@ -500,3 +500,44 @@ class TestBrokerCSVAutoInactive:
         partial = next((a for a in assets if a.get("identifier") == "INE888X01234"), None)
         assert partial is not None, "Asset not created"
         assert partial["is_active"] is True, "Partially-sold stock should stay active"
+
+    def test_stock_with_bonus_stays_active_when_net_units_positive(self, db):
+        """BUY 5 + BONUS 20 + SELL 5 → net_units = 20 → should stay is_active=True."""
+        from app.models.asset import Asset, AssetType, AssetClass
+        from app.models.transaction import Transaction, TransactionType
+        from app.services.import_service import _STOCK_UNIT_ADD_TYPES, _STOCK_UNIT_SUB_TYPES
+        from datetime import date
+
+        asset = Asset(
+            name="BONUSCO", identifier="INE111B01000",
+            asset_type=AssetType.STOCK_IN, asset_class=AssetClass.EQUITY, currency="INR",
+            is_active=True,
+        )
+        db.add(asset)
+        db.flush()
+
+        db.add(Transaction(
+            txn_id="b_buy_001", asset_id=asset.id, type=TransactionType.BUY,
+            date=date(2020, 1, 1), units=5.0, price_per_unit=100.0,
+            amount_inr=-50000, charges_inr=0,
+        ))
+        db.add(Transaction(
+            txn_id="b_bonus_001", asset_id=asset.id, type=TransactionType.BONUS,
+            date=date(2021, 1, 1), units=20.0, price_per_unit=0.0,
+            amount_inr=0, charges_inr=0,
+        ))
+        db.add(Transaction(
+            txn_id="b_sell_001", asset_id=asset.id, type=TransactionType.SELL,
+            date=date(2022, 1, 1), units=5.0, price_per_unit=150.0,
+            amount_inr=75000, charges_inr=0,
+        ))
+        db.commit()
+
+        all_txns = db.query(Transaction).filter_by(asset_id=asset.id).all()
+        net_units = sum(
+            (t.units or 0.0) if t.type.value in _STOCK_UNIT_ADD_TYPES
+            else -(t.units or 0.0) if t.type.value in _STOCK_UNIT_SUB_TYPES
+            else 0.0
+            for t in all_txns
+        )
+        assert net_units == pytest.approx(20.0), f"Expected 20.0, got {net_units}"

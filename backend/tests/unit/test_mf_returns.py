@@ -321,3 +321,44 @@ def test_total_invested_uses_open_lots_cost_basis():
     assert abs(result["total_invested"] - 90_000.0) < 1.0, (
         f"Expected ₹90,000, got {result['total_invested']}"
     )
+
+
+def test_total_units_with_bonus_not_subtracted(db):
+    """BUY 5 + BONUS 20 → current_value = 25 × price, not (5-20) × price."""
+    from app.models.asset import Asset, AssetType, AssetClass
+    from app.models.transaction import Transaction, TransactionType
+    from app.models.price_cache import PriceCache
+    from app.services.returns_service import ReturnsService
+    from datetime import date, datetime
+
+    asset = Asset(name="TESTCO", identifier="INE999Z01111",
+                  asset_type=AssetType.STOCK_IN, asset_class=AssetClass.EQUITY, currency="INR")
+    db.add(asset)
+    db.flush()
+
+    db.add(Transaction(
+        txn_id="test_buy_bonus_001", asset_id=asset.id, type=TransactionType.BUY,
+        date=date(2020, 1, 1), units=5.0, price_per_unit=100.0, amount_inr=-50000,
+        charges_inr=0,
+    ))
+    db.add(Transaction(
+        txn_id="test_bonus_001", asset_id=asset.id, type=TransactionType.BONUS,
+        date=date(2021, 6, 1), units=20.0, price_per_unit=0.0, amount_inr=0,
+        charges_inr=0,
+    ))
+    db.add(PriceCache(
+        asset_id=asset.id,
+        price_inr=15000,  # 150 INR × 100 paise
+        fetched_at=datetime.utcnow(),
+        source="test",
+        is_stale=False,
+    ))
+    db.commit()
+
+    svc = ReturnsService(db)
+    result = svc.get_asset_returns(asset.id)
+    # current_value = 25 units × 150 INR = 3750 INR
+    assert result["current_value"] is not None
+    assert abs(result["current_value"] - 3750.0) < 1.0, (
+        f"Expected ~3750, got {result['current_value']} — BONUS units not added"
+    )

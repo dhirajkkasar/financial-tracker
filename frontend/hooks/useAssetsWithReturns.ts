@@ -8,6 +8,8 @@ export interface AssetWithReturns extends Asset {
   current_value?: number
   gain?: number          // absolute_return decimal (e.g. 0.15 = 15%)
   xirr?: number | null
+  total_units?: number | null
+  avg_price?: number | null
   st_unrealised_gain?: number | null
   lt_unrealised_gain?: number | null
   st_realised_gain?: number | null
@@ -54,6 +56,8 @@ export function useAssetsWithReturns(type?: AssetType | AssetType[], activeOnly 
             current_value: r?.current_value ?? undefined,
             gain: r?.absolute_return ?? undefined,
             xirr: r?.xirr ?? undefined,
+            total_units: r?.total_units ?? undefined,
+            avg_price: r?.avg_price ?? undefined,
             st_unrealised_gain: r?.st_unrealised_gain ?? undefined,
             lt_unrealised_gain: r?.lt_unrealised_gain ?? undefined,
             st_realised_gain: r?.st_realised_gain ?? undefined,

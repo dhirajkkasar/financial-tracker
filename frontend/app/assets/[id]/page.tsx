@@ -9,7 +9,7 @@ import { Pagination } from '@/components/ui/Pagination'
 import { TaxLotTable } from '@/components/domain/TaxLotTable'
 import { FDDetailCard } from '@/components/domain/FDDetailCard'
 import { useLots } from '@/hooks/useLots'
-import { formatINR, formatXIRR, formatDate, formatPct } from '@/lib/formatters'
+import { formatINR, formatINR2, formatXIRR, formatDate, formatPct } from '@/lib/formatters'
 import { ASSET_TYPE_LABELS } from '@/constants'
 
 const card = 'rounded-xl border border-border bg-card p-5'
@@ -79,7 +79,8 @@ export default function AssetDetailPage() {
   if (!asset) return <p className="text-loss">Asset not found</p>
 
   const invested = returns?.total_invested ?? null
-  const isFullyRedeemed = asset.asset_type === 'MF' && !asset.is_active
+  // Fully closed: any inactive lot-based asset where position is fully unwound
+  const isFullyRedeemed = !asset.is_active && LOT_BASED_TYPES.has(asset.asset_type)
 
   const currentPnl = !isFullyRedeemed && returns && invested != null && returns.current_value != null
     ? returns.current_value - invested
@@ -89,6 +90,8 @@ export default function AssetDetailPage() {
     : currentPnl != null
       ? currentPnl + (returns?.st_realised_gain ?? 0) + (returns?.lt_realised_gain ?? 0)
       : null
+  const totalUnits = returns?.total_units ?? null
+  const avgPrice = returns?.avg_price ?? null
   const currentPnlHighlight = currentPnl === null ? 'neutral' : currentPnl >= 0 ? 'positive' : 'negative'
   const allTimePnlHighlight = allTimePnl === null ? 'neutral' : allTimePnl >= 0 ? 'positive' : 'negative'
 
@@ -152,6 +155,13 @@ export default function AssetDetailPage() {
             highlight={allTimePnlHighlight}
           />
           <StatCard label="XIRR" value={formatXIRR(returns?.xirr ?? null)} />
+        </div>
+      )}
+      {/* Units and avg cost — active market-based assets only */}
+      {asset.is_active && totalUnits != null && (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          <StatCard label="Units Held" value={totalUnits.toLocaleString('en-IN', { maximumFractionDigits: 4 })} />
+          <StatCard label="Avg Cost / Unit" value={avgPrice != null ? formatINR2(avgPrice) : '—'} />
         </div>
       )}
 

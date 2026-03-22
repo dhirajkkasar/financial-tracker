@@ -5,6 +5,14 @@ export const formatINR = (amount: number): string =>
     maximumFractionDigits: 0,
   }).format(amount)
 
+export const formatINR2 = (amount: number): string =>
+  new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount)
+
 export const formatPct = (value: number, signed = true): string =>
   `${signed && value > 0 ? '+' : ''}${(value * 100).toFixed(2)}%`
 

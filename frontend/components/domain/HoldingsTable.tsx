@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { Asset } from '@/types'
-import { formatINR, formatPct } from '@/lib/formatters'
+import { formatINR, formatINR2, formatPct } from '@/lib/formatters'
 import { Skeleton } from '@/components/ui/Skeleton'
 
 interface HoldingRow extends Asset {
@@ -10,6 +10,8 @@ interface HoldingRow extends Asset {
   total_invested?: number
   gain?: number
   xirr?: number | null
+  total_units?: number | null
+  avg_price?: number | null
   st_unrealised_gain?: number | null
   lt_unrealised_gain?: number | null
   st_realised_gain?: number | null
@@ -30,6 +32,7 @@ type HoldingsVariant = 'default' | 'fd-tax'
 type SortKey =
   | 'name' | 'total_invested' | 'current_value'
   | 'current_pnl' | 'alltime_pnl' | 'xirr'
+  | 'total_units' | 'avg_price'
   | 'start_date' | 'maturity_date' | 'interest_rate_pct'
   | 'taxable_interest' | 'potential_tax_30pct'
 
@@ -39,6 +42,7 @@ interface HoldingsTableProps {
   assets: HoldingRow[]
   loading: boolean
   variant?: HoldingsVariant
+  showUnits?: boolean
 }
 
 function PnlCell({ amount, pct, dim }: { amount: number | null; pct?: number | null; dim?: boolean }) {
@@ -115,6 +119,8 @@ function sortAssets(assets: HoldingRow[], key: SortKey, dir: SortDir): HoldingRo
       case 'current_pnl':    av = ra.current_pnl;        bv = rb.current_pnl; break
       case 'alltime_pnl':    av = ra.alltime_pnl;        bv = rb.alltime_pnl; break
       case 'xirr':           av = a.xirr ?? null;        bv = b.xirr ?? null; break
+      case 'total_units':    av = a.total_units ?? null; bv = b.total_units ?? null; break
+      case 'avg_price':      av = a.avg_price ?? null;   bv = b.avg_price ?? null; break
       case 'start_date':     av = a.start_date ?? null;  bv = b.start_date ?? null; break
       case 'maturity_date':  av = a.maturity_date ?? null; bv = b.maturity_date ?? null; break
       case 'interest_rate_pct': av = a.interest_rate_pct ?? null; bv = b.interest_rate_pct ?? null; break
@@ -132,7 +138,7 @@ function sortAssets(assets: HoldingRow[], key: SortKey, dir: SortDir): HoldingRo
   })
 }
 
-export function HoldingsTable({ assets, loading, variant = 'default' }: HoldingsTableProps) {
+export function HoldingsTable({ assets, loading, variant = 'default', showUnits = false }: HoldingsTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>('current_value')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
 
@@ -175,9 +181,11 @@ export function HoldingsTable({ assets, loading, variant = 'default' }: Holdings
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border">
-            {th('name', 'Name', 'text-left w-[56ch]')}
+            {th('name', 'Name', 'text-left w-[16ch]')}
             {th('total_invested', 'Invested', 'text-right')}
             {th('current_value', 'Current Value', 'text-right')}
+            {showUnits && th('total_units', 'Units', 'text-right')}
+            {showUnits && th('avg_price', 'Avg Cost', 'text-right')}
             {th('current_pnl', 'Current P&L', 'text-right')}
             {variant !== 'fd-tax' && (
               <>
@@ -207,7 +215,7 @@ export function HoldingsTable({ assets, loading, variant = 'default' }: Holdings
 
             return (
               <tr key={a.id} className={`border-b border-border last:border-0 transition-colors ${isInactive ? 'bg-slate-50 text-slate-400 hover:bg-slate-100' : 'hover:bg-accent-subtle/40'}`}>
-                <td className="py-3 pr-4 w-[56ch]">
+                <td className="py-3 pr-4 w-[16ch]">
                   <div className="flex items-start gap-2">
                     <Link href={`/assets/${a.id}`} className="font-medium text-accent hover:underline break-words">
                       {a.name}
@@ -220,16 +228,26 @@ export function HoldingsTable({ assets, loading, variant = 'default' }: Holdings
                   </div>
                 </td>
                 <td className="py-3 pr-4 text-right font-mono">
-                  {invested != null ? formatINR(invested) : '—'}
+                  {isInactive && !invested ? '—' : invested != null ? formatINR(invested) : '—'}
                 </td>
                 <td className="py-3 pr-4 text-right font-mono">
-                  {current != null ? (
+                  {isInactive && !current ? '—' : current != null ? (
                     <span className="inline-flex items-center justify-end gap-0.5">
                       {formatINR(current)}
                       {a.price_is_stale && !isInactive && <StaleIcon fetchedAt={a.price_fetched_at} />}
                     </span>
                   ) : '—'}
                 </td>
+                {showUnits && (
+                  <td className="py-3 pr-4 text-right font-mono text-sm">
+                    {!isInactive && a.total_units != null ? a.total_units.toLocaleString('en-IN', { maximumFractionDigits: 4 }) : '—'}
+                  </td>
+                )}
+                {showUnits && (
+                  <td className="py-3 pr-4 text-right font-mono text-sm">
+                    {!isInactive && a.avg_price != null ? formatINR2(a.avg_price) : '—'}
+                  </td>
+                )}
                 <td className="py-3 pr-4">
                   {isInactive ? <span className="text-slate-400">—</span> : <PnlCell amount={currentPnl} pct={currentPct} />}
                 </td>

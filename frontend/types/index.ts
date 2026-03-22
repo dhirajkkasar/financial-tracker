@@ -105,6 +105,9 @@ export interface ReturnResult {
   maturity_amount: number | null
   accrued_value_today: number | null
   days_to_maturity: number | null
+  // Currently held units and average cost (market-based assets only)
+  total_units?: number | null
+  avg_price?: number | null
   // Lot-based gain breakdown (null for non-lot assets or SGB)
   st_unrealised_gain?: number | null
   lt_unrealised_gain?: number | null

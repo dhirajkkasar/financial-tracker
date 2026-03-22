@@ -11,6 +11,13 @@ logger = logging.getLogger(__name__)
 class ZerodhaImporter:
     """Parses Zerodha tradebook CSV files."""
 
+    # Gold ETFs traded on NSE — classified as GOLD (price via NSE ticker, shown in Gold tab)
+    _GOLD_ETF_SYMBOLS: frozenset[str] = frozenset({
+        "GOLDBEES", "GOLDSHARE", "IPGETF", "PGULD", "GOLDCASE",
+        "BSLGOLDETF", "LICMFGOLD", "KOTAKGOLD", "HDFCGOLD",
+        "AXISGOLD", "NIPPONIGOLD", "SBIGOLD", "GOLD1D",
+    })
+
     def parse(self, file_bytes: bytes, filename: str = "") -> ImportResult:
         result = ImportResult(source="zerodha")
         try:
@@ -25,6 +32,17 @@ class ZerodhaImporter:
         except Exception as e:
             result.errors.append(f"Failed to read CSV: {e}")
         return result
+
+    def _classify_asset_type(self, symbol: str, isin: str) -> str:
+        """Infer asset_type from symbol/ISIN for Zerodha equity trades."""
+        sym = symbol.strip().upper()
+        # Sovereign Gold Bonds: NSE symbols start with 'SGB'
+        if sym.startswith("SGB"):
+            return "GOLD"
+        # Gold ETFs: exact match against known tickers
+        if sym in self._GOLD_ETF_SYMBOLS:
+            return "GOLD"
+        return "STOCK_IN"
 
     def _parse_row(self, row: dict) -> ParsedTransaction:
         symbol = row["symbol"].strip()
@@ -43,13 +61,14 @@ class ZerodhaImporter:
             amount_inr = amount   # inflow (SELL)
 
         txn_type = "BUY" if trade_type == "BUY" else "SELL"
+        asset_type = self._classify_asset_type(symbol, isin)
 
         return ParsedTransaction(
             source="zerodha",
             asset_name=symbol,
             asset_identifier=isin,
             isin=isin,
-            asset_type="STOCK_IN",
+            asset_type=asset_type,
             txn_type=txn_type,
             date=trade_date,
             units=quantity,

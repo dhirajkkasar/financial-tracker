@@ -231,7 +231,7 @@ class ReturnsService:
         from dataclasses import dataclass
         from typing import Optional as Opt
 
-        LOT_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST"}
+        LOT_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST", "BONUS"}
         SELL_TYPES = {"SELL", "REDEMPTION"}
 
         @dataclass
@@ -254,13 +254,15 @@ class ReturnsService:
         for txn in sorted(transactions, key=lambda t: t.date):
             txn_type = txn.type.value
             if txn_type in LOT_TYPES and txn.units:
-                price = abs(txn.amount_inr / 100.0) / txn.units if txn.units else 0
+                # BONUS shares have 0 cost basis (amount_inr=0 in DB)
+                is_bonus = txn_type == "BONUS"
+                price = 0.0 if is_bonus else (abs(txn.amount_inr / 100.0) / txn.units if txn.units else 0)
                 lots.append(_Lot(
                     lot_id=txn.lot_id or str(txn.id),
                     buy_date=txn.date,
                     units=txn.units,
-                    buy_price_per_unit=txn.price_per_unit or price,
-                    buy_amount_inr=abs(txn.amount_inr / 100.0),
+                    buy_price_per_unit=0.0 if is_bonus else (txn.price_per_unit or price),
+                    buy_amount_inr=0.0 if is_bonus else abs(txn.amount_inr / 100.0),
                 ))
             elif txn_type in SELL_TYPES and txn.units:
                 sells.append(_Sell(
@@ -370,14 +372,14 @@ class ReturnsService:
         price_cache = self.price_repo.get_by_asset_id(asset_id)
         current_value = None
 
-        if price_cache:
-            # price_inr is per unit in paise; need to compute total units
+        total_units = sum(
+            t.units or 0 for t in filtered_txns if t.type.value in UNIT_ADD_TYPES
+        ) - sum(
+            t.units or 0 for t in filtered_txns if t.type.value in UNIT_SUB_TYPES
+        )
+        avg_price = total_invested / total_units if total_units > 0 else None
 
-            total_units = sum(
-                t.units or 0 for t in filtered_txns if t.type.value in UNIT_ADD_TYPES
-            ) - sum(
-                t.units or 0 for t in filtered_txns if t.type.value in UNIT_SUB_TYPES
-            )
+        if price_cache:
             current_price_inr = price_cache.price_inr / 100.0
             current_value = total_units * current_price_inr
 
@@ -425,6 +427,8 @@ class ReturnsService:
             "absolute_return": abs_return,
             "total_invested": total_invested,
             "current_value": effective_current,
+            "total_units": total_units if total_units > 0 else None,
+            "avg_price": avg_price,
             "message": None,
             "price_is_stale": price_is_stale,
             "price_fetched_at": price_fetched_at,
@@ -609,7 +613,12 @@ class ReturnsService:
             active_realized = (overview.get("st_realised_gain") or 0.0) + (overview.get("lt_realised_gain") or 0.0)
 
             inactive_pnl = 0.0
+            # For FD/RD types with active assets, get_overview() already included
+            # inactive FD gains in st_realised_gain — skip the loop to avoid double-counting.
+            skip_inactive_fd = asset_type in FD_BASED_TYPES and asset_type in active_by_type
             for inactive_asset in inactive_by_type.get(asset_type, []):
+                if skip_inactive_fd:
+                    continue
                 try:
                     if asset_type in FD_BASED_TYPES:
                         # For FDs/RDs the raw transaction net gives wrong P&L because
@@ -624,6 +633,16 @@ class ReturnsService:
                         # non-excluded transactions gives the correct realized P&L:
                         # BUY outflows (negative) + SELL inflows (positive) = profit/loss.
                         txns = self.txn_repo.list_by_asset(inactive_asset.id)
+                        # Skip assets with no BUY/outflow transactions — these have no
+                        # cost basis (e.g. imported SELL-only due to missing tradebook)
+                        # and would falsely inflate all-time P&L.
+                        has_outflow = any(t.type.value in OUTFLOW_TYPES for t in txns)
+                        if not has_outflow:
+                            logger.info(
+                                "Skipping inactive asset %d (%s) from all-time P&L: no outflow transactions",
+                                inactive_asset.id, inactive_asset.name,
+                            )
+                            continue
                         inactive_pnl += sum(
                             t.amount_inr for t in txns if t.type.value not in EXCLUDED_TYPES
                         ) / 100.0
@@ -789,6 +808,32 @@ class ReturnsService:
             except Exception as e:
                 logger.warning("Error computing returns for asset %d: %s", asset.id, str(e))
                 continue
+
+        # Add realized interest from inactive (matured) FD/RD assets.
+        # These are excluded from total_invested/total_current_value so that
+        # current P&L stays active-only, but their earned interest must appear
+        # in all-time P&L via st_realised_gain.
+        inactive_fd_assets = self.asset_repo.list(active=False)
+        if asset_types:
+            inactive_fd_assets = [
+                a for a in inactive_fd_assets
+                if a.asset_type.value in asset_types and a.asset_type.value in FD_BASED_TYPES
+            ]
+        else:
+            inactive_fd_assets = [
+                a for a in inactive_fd_assets if a.asset_type.value in FD_BASED_TYPES
+            ]
+        for asset in inactive_fd_assets:
+            try:
+                r = self._compute_fd_returns(asset)
+                cv = r.get("current_value") or 0.0
+                inv = r.get("total_invested") or 0.0
+                realized_interest = cv - inv
+                if realized_interest != 0:
+                    totals["st_realised_gain"] += realized_interest
+                    has_any_realised = True
+            except Exception as e:
+                logger.warning("Error computing inactive FD returns for asset %d: %s", asset.id, str(e))
 
         # Add today's total_current_value as final inflow for portfolio XIRR
         if total_current_value > 0:

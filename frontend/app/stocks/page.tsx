@@ -26,7 +26,7 @@ export default function StocksPage() {
       </div>
       <AssetSummaryCards data={summary} loading={summaryLoading} />
       <div className="rounded-xl border bg-white p-5 shadow-sm">
-        <HoldingsTable assets={assets} loading={loading} />
+        <HoldingsTable assets={assets} loading={loading} showUnits />
       </div>
     </div>
   )

@@ -142,14 +142,29 @@ class YFinanceFetcher:
 
 
 class GoldFetcher:
-    """Fetches gold price from yfinance GC=F and converts to INR/gram."""
+    """Fetches gold price.
+
+    - Gold ETFs (GOLDBEES, etc.): fetched directly from NSE via yfinance (price per ETF unit).
+    - Physical gold, SGBs, other GOLD assets: GC=F → INR/gram (1 unit = 1 gram).
+    """
+
+    # NSE-listed gold ETFs whose unit price ≠ 1 gram — fetch via NSE ticker instead of GC=F
+    _GOLD_ETF_TICKERS: frozenset[str] = frozenset({
+        "GOLDBEES", "GOLDSHARE", "IPGETF", "PGULD", "GOLDCASE",
+        "BSLGOLDETF", "LICMFGOLD", "KOTAKGOLD", "HDFCGOLD",
+        "AXISGOLD", "NIPPONIGOLD", "SBIGOLD", "GOLD1D", "MAFANG",
+    })
 
     def fetch(self, asset: Asset) -> PriceResult | None:
+        ticker_name = (asset.name or "").strip().upper()
+        if ticker_name in self._GOLD_ETF_TICKERS:
+            # Use NSE market price for gold ETFs (unit price ≠ 1 gram)
+            return YFinanceFetcher(suffix=".NS", use_name_as_ticker=True).fetch(asset)
         try:
             gold = yf.Ticker("GC=F")
             forex = yf.Ticker("USDINR=X")
-            price_usd_oz = gold.fast_info.get("last_price")
-            rate = forex.fast_info.get("last_price")
+            price_usd_oz = YFinanceFetcher._get_price(gold)
+            rate = YFinanceFetcher._get_price(forex)
             if price_usd_oz is None or rate is None:
                 logger.warning("GoldFetcher: missing price or forex rate")
                 return None

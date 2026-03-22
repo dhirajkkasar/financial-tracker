@@ -541,3 +541,37 @@ class TestBrokerCSVAutoInactive:
             for t in all_txns
         )
         assert net_units == pytest.approx(20.0), f"Expected 20.0, got {net_units}"
+
+    def test_corp_actions_triggered_after_stock_import(self, client):
+        """After committing a Zerodha CSV, CorpActionsService.process_asset is called for each stock."""
+        from unittest.mock import patch, MagicMock
+        rows = [
+            self._zerodha_row("TRIGCO", "INE777T01000", "buy", 5, 300.0, "T_TRIG_001"),
+        ]
+        mock_instance = MagicMock()
+        mock_instance.process_asset.return_value = {}
+        # Lazy import inside commit() — patch the class in its home module
+        with patch(
+            "app.services.corp_actions_service.CorpActionsService",
+            return_value=mock_instance,
+        ):
+            self._import(client, self._make_csv(rows))
+
+        mock_instance.process_asset.assert_called_once()
+
+    def test_corp_actions_failure_does_not_break_import(self, client):
+        """If CorpActionsService raises, the import commit still returns 200."""
+        from unittest.mock import patch, MagicMock
+        rows = [
+            self._zerodha_row("ERRCO", "INE666E01000", "buy", 3, 100.0, "T_ERR_001"),
+        ]
+        mock_instance = MagicMock()
+        mock_instance.process_asset.side_effect = Exception("NSE connection timeout")
+        with patch(
+            "app.services.corp_actions_service.CorpActionsService",
+            return_value=mock_instance,
+        ):
+            result = self._import(client, self._make_csv(rows))
+
+        assert result["created_count"] == 1  # import succeeded despite corp actions error
+

@@ -180,6 +180,23 @@ class ImportService:
                     asset_id, stock_asset.name, net_units,
                 )
 
+        # Auto-trigger corporate actions for newly imported stock assets (non-blocking).
+        # NSE rate-limiting or network failures must not roll back a completed import.
+        if touched_stock_assets:
+            try:
+                from app.services.corp_actions_service import CorpActionsService
+                corp_svc = CorpActionsService(self.db)
+                for asset_id, stock_asset in touched_stock_assets.items():
+                    try:
+                        corp_svc.process_asset(stock_asset)
+                    except Exception as e:
+                        logger.warning(
+                            "Corp actions failed for asset %d '%s': %s",
+                            asset_id, stock_asset.name, e,
+                        )
+            except Exception as e:
+                logger.warning("CorpActionsService unavailable: %s", e)
+
         self.db.commit()
         del _PREVIEW_STORE[preview_id]
         return {"created_count": created, "skipped_count": skipped, "snapshot_count": snapshot_count}

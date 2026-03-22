@@ -83,4 +83,9 @@ def test_unit_add_types_includes_bonus():
 
 
 def test_unit_add_types_includes_buy_sip_vest():
-    assert {"BUY", "SIP", "VEST"}.issubset(UNIT_ADD_TYPES)
+    assert {"BUY", "SIP", "VEST", "CONTRIBUTION"}.issubset(UNIT_ADD_TYPES)
+
+
+def test_unit_add_types_excludes_sell_and_redemption():
+    assert "SELL" not in UNIT_ADD_TYPES
+    assert "REDEMPTION" not in UNIT_ADD_TYPES

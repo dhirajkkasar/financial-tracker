@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { api } from '@/lib/api'
 import { formatINR } from '@/lib/formatters'
 import { ASSET_TYPE_LABELS } from '@/constants'
-import { TaxSummaryResponse, UnrealisedResponse, HarvestResponse, TaxSummaryEntry, UnrealisedLot, HarvestOpportunity } from '@/types'
+import { TaxSummaryResponse, UnrealisedResponse, HarvestResponse, TaxSummaryEntry, UnrealisedLot, HarvestOpportunity, AssetType } from '@/types'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { Pagination } from '@/components/ui/Pagination'
 import Link from 'next/link'
@@ -274,7 +274,7 @@ export default function TaxPage() {
                         {row.asset_name}
                       </Link>
                     </td>
-                    <td className="py-2.5 pr-4 text-xs text-secondary">{ASSET_TYPE_LABELS[row.asset_type]}</td>
+                    <td className="py-2.5 pr-4 text-xs text-secondary">{ASSET_TYPE_LABELS[row.asset_type as AssetType]}</td>
                     <td className="py-2.5 pr-4 text-right font-mono text-loss">
                       {row.st_loss > 0 ? formatINR(row.st_loss) : '—'}
                     </td>

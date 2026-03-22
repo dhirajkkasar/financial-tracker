@@ -38,6 +38,12 @@ def create_fd_detail(asset_id: int, body: FDDetailCreate, db: Session = Depends(
     data["asset_id"] = asset_id
 
     fd = repo.create(**data)
+
+    if body.is_matured:
+        asset = asset_repo.get_by_id(asset_id)
+        asset.is_active = False
+        db.commit()
+
     return FDDetailResponse.from_orm_convert(fd)
 
 
@@ -58,4 +64,10 @@ def update_fd_detail(asset_id: int, body: FDDetailUpdate, db: Session = Depends(
         update_data["maturity_amount"] = round(update_data["maturity_amount"] * 100)
 
     fd = repo.update(fd, **update_data)
+
+    if body.is_matured is not None:
+        asset = asset_repo.get_by_id(asset_id)
+        asset.is_active = not body.is_matured
+        db.commit()
+
     return FDDetailResponse.from_orm_convert(fd)

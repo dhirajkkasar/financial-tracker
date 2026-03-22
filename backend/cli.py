@@ -131,7 +131,10 @@ def cmd_import_broker_csv(file_path: str, broker: str) -> dict:
 # ── Add commands ──────────────────────────────────────────────────────────────
 
 def cmd_add_fd(name: str, bank: str, principal: float, rate: float,
-               start: str, maturity: str, compounding: str) -> dict:
+               start: str, maturity: str, compounding: str, matured: bool = None) -> dict:
+    from datetime import date as _date
+    if matured is None:
+        matured = _date.fromisoformat(maturity) < _date.today()
     asset = _api("post", "/assets", json={
         "name": name, "asset_type": "FD", "asset_class": "DEBT", "currency": "INR",
     })
@@ -143,12 +146,14 @@ def cmd_add_fd(name: str, bank: str, principal: float, rate: float,
         "compounding": compounding,
         "start_date": start,
         "maturity_date": maturity,
+        "is_matured": matured,
     })
     txn = _api("post", f"/assets/{asset_id}/transactions", json={
         "type": "CONTRIBUTION", "date": start,
         "amount_inr": -principal, "charges_inr": 0.0,
     })
-    print(f"✓ FD created: {name} (id={asset_id}) — ₹{principal:,.0f} @ {rate}% until {maturity}")
+    status = "matured" if matured else "active"
+    print(f"✓ FD created: {name} (id={asset_id}) — ₹{principal:,.0f} @ {rate}% until {maturity} [{status}]")
     return txn
 
 
@@ -358,6 +363,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_fd.add_argument("--maturity", required=True, help="Maturity date YYYY-MM-DD")
     p_fd.add_argument("--compounding", default="QUARTERLY",
                       choices=["MONTHLY", "QUARTERLY", "HALF_YEARLY", "YEARLY"])
+    p_fd.add_argument("--matured", action="store_true", default=None,
+                      help="Mark as matured (auto-detected from maturity date if omitted)")
 
     # add rd
     p_rd = add_sub.add_parser("rd", help="Add a Recurring Deposit")
@@ -476,7 +483,7 @@ def main():
             return
         if args.kind == "fd":
             cmd_add_fd(args.name, args.bank, args.principal, args.rate,
-                       args.start, args.maturity, args.compounding)
+                       args.start, args.maturity, args.compounding, args.matured)
         elif args.kind == "rd":
             cmd_add_rd(args.name, args.bank, args.installment, args.rate,
                        args.start, args.maturity, args.compounding)

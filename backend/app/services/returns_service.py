@@ -10,7 +10,7 @@ from app.repositories.fd_repo import FDRepository
 from app.repositories.price_cache_repo import PriceCacheRepository
 from app.engine.returns import (
     compute_xirr, compute_cagr, compute_absolute_return,
-    OUTFLOW_TYPES, INFLOW_TYPES, EXCLUDED_TYPES, UNIT_ADD_TYPES,
+    OUTFLOW_TYPES, INFLOW_TYPES, EXCLUDED_TYPES, UNIT_ADD_TYPES, UNIT_SUB_TYPES,
 )
 from app.services.price_feed import STALE_MINUTES
 from app.engine.fd_engine import compute_fd_maturity, compute_fd_current_value, compute_rd_maturity
@@ -372,11 +372,11 @@ class ReturnsService:
 
         if price_cache:
             # price_inr is per unit in paise; need to compute total units
-            _UNIT_SUB_TYPES = {"SELL", "REDEMPTION"}
+
             total_units = sum(
                 t.units or 0 for t in filtered_txns if t.type.value in UNIT_ADD_TYPES
             ) - sum(
-                t.units or 0 for t in filtered_txns if t.type.value in _UNIT_SUB_TYPES
+                t.units or 0 for t in filtered_txns if t.type.value in UNIT_SUB_TYPES
             )
             current_price_inr = price_cache.price_inr / 100.0
             current_value = total_units * current_price_inr
@@ -699,11 +699,11 @@ class ReturnsService:
         if asset_type in MARKET_BASED_TYPES:
             price_cache = self.price_repo.get_by_asset_id(asset.id)
             if price_cache:
-                _UNIT_SUB_TYPES = {"SELL", "REDEMPTION"}
+    
                 total_units = sum(
                     t.units or 0 for t in filtered_txns if t.type.value in UNIT_ADD_TYPES
                 ) - sum(
-                    t.units or 0 for t in filtered_txns if t.type.value in _UNIT_SUB_TYPES
+                    t.units or 0 for t in filtered_txns if t.type.value in UNIT_SUB_TYPES
                 )
                 return total_units * (price_cache.price_inr / 100.0)
         elif asset_type in FD_BASED_TYPES:

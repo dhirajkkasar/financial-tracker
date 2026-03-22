@@ -11,6 +11,10 @@ EXCLUDED_TYPES = {"SWITCH_IN", "SWITCH_OUT", "SPLIT"}
 # (amount_inr=0 so numerically neutral for XIRR), but must also ADD to unit count.
 UNIT_ADD_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST", "BONUS"}
 
+# Types that REMOVE units from a holding (narrow: only actual unit sales).
+# Intentionally excludes DIVIDEND, INTEREST, WITHDRAWAL — those are cash inflows with no unit change.
+UNIT_SUB_TYPES = {"SELL", "REDEMPTION"}
+
 
 def compute_xirr(cashflows: list[tuple[date, float]]) -> float | None:
     """

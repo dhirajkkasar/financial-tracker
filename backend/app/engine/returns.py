@@ -7,6 +7,10 @@ OUTFLOW_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST"}
 INFLOW_TYPES = {"SELL", "REDEMPTION", "DIVIDEND", "INTEREST", "WITHDRAWAL", "BONUS"}
 EXCLUDED_TYPES = {"SWITCH_IN", "SWITCH_OUT", "SPLIT"}
 
+# Types that ADD units to a holding. BONUS is in INFLOW_TYPES for cashflow purposes
+# (amount_inr=0 so numerically neutral for XIRR), but must also ADD to unit count.
+UNIT_ADD_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST", "BONUS"}
+
 
 def compute_xirr(cashflows: list[tuple[date, float]]) -> float | None:
     """

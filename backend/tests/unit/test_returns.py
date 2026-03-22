@@ -1,7 +1,7 @@
 from datetime import date
 from app.engine.returns import (
     compute_xirr, compute_cagr, compute_absolute_return,
-    OUTFLOW_TYPES, INFLOW_TYPES, EXCLUDED_TYPES,
+    OUTFLOW_TYPES, INFLOW_TYPES, EXCLUDED_TYPES, UNIT_ADD_TYPES,
 )
 
 
@@ -76,3 +76,11 @@ def test_compute_xirr_convergence_failure_returns_none():
 
 def test_compute_cagr_zero_start_value_returns_none():
     assert compute_cagr(0.0, 150000.0, 3.0) is None
+
+
+def test_unit_add_types_includes_bonus():
+    assert "BONUS" in UNIT_ADD_TYPES
+
+
+def test_unit_add_types_includes_buy_sip_vest():
+    assert {"BUY", "SIP", "VEST"}.issubset(UNIT_ADD_TYPES)

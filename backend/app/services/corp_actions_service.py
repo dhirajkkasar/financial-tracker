@@ -210,7 +210,7 @@ class CorpActionsService:
             price_per_unit=0.0,
             amount_inr=0,
             charges_inr=0,
-            notes=f"Corporate action: Bonus {ratio}:1 (auto-imported from NSE)",
+            notes=f"Corporate action: Bonus {ratio}:1 (NSE)",
         )
         result["bonus_created"] += 1
         logger.info(

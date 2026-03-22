@@ -153,6 +153,11 @@ class TestNSECorpActionFetcherParseExDate:
         d = NSECorpActionFetcher.parse_ex_date("09-JAN-2020")
         assert d == date(2020, 1, 9)
 
+    def test_valid_date_dec(self):
+        from app.services.corp_actions_service import NSECorpActionFetcher
+        d = NSECorpActionFetcher.parse_ex_date("25-DEC-2021")
+        assert d == date(2021, 12, 25)
+
     def test_invalid_returns_none(self):
         from app.services.corp_actions_service import NSECorpActionFetcher
         assert NSECorpActionFetcher.parse_ex_date("not-a-date") is None
@@ -239,6 +244,22 @@ class TestCorpActionsServiceApply:
         ).first()
         assert buy_txn.units == pytest.approx(50.0)
         assert buy_txn.price_per_unit == pytest.approx(400.0)  # 2000 / 5
+
+    def test_split_idempotent(self, db):
+        from app.services.corp_actions_service import CorpActionsService
+        asset = self._setup_asset_with_buy(db)
+        mock_data = [{"exDate": "01-APR-2021", "subject": "Sub-Division / Split From Rs 10/- To Rs 2/-"}]
+
+        svc = CorpActionsService(db)
+        svc.fetcher.fetch = MagicMock(return_value=mock_data)
+        r1 = svc.process_asset(asset)
+
+        svc2 = CorpActionsService(db)
+        svc2.fetcher.fetch = MagicMock(return_value=mock_data)
+        r2 = svc2.process_asset(asset)
+
+        assert r1["split_applied"] == 1
+        assert r2["split_skipped"] == 1
 
     def test_dividend_creates_transaction(self, db):
         from app.services.corp_actions_service import CorpActionsService

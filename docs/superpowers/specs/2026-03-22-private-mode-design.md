@@ -17,7 +17,7 @@ A toggle in the top navigation bar that masks all raw INR monetary values with `
 - When **on**: all `formatINR` / `formatINR2` outputs replaced with `*****`
 - When **off**: all values shown normally
 - `formatPct`, `formatXIRR`, `formatGain`, `formatDate` — **unaffected**
-- Chart tooltips masked (they already call `formatINR` inside client components)
+- Chart tooltips masked (see note on chart files below)
 - Persists across page refreshes via `localStorage` key `privateMode`
 - Turning **off** requires `window.confirm("Exit private mode? Your portfolio values will be visible.")`
 - Turning **on** is instant (no confirm)
@@ -27,6 +27,8 @@ A toggle in the top navigation bar that masks all raw INR monetary values with `
 ## Architecture
 
 ### 1. `frontend/context/PrivateModeContext.tsx` (new file)
+
+Must begin with `'use client'` — uses `localStorage` on mount and `window.confirm` in `toggle()`, both browser-only APIs.
 
 ```
 PrivateModeContext
@@ -82,9 +84,9 @@ All components that currently call `formatINR` or `formatINR2` switch to the hoo
 |---|---|
 | `components/ui/AssetSummaryCards.tsx` | No — add it |
 | `components/domain/HoldingsTable.tsx` | No — add it |
-| `components/charts/NetWorthChart.tsx` | Yes |
-| `components/charts/AssetTypeDonut.tsx` | Yes |
-| `components/charts/AllocationDonut.tsx` | Yes |
+| `components/charts/NetWorthChart.tsx` | Yes — but uses local `formatINRCompact`, not `formatINR`; consume `usePrivateMode` directly and return `'*****'` when on |
+| `components/charts/AssetTypeDonut.tsx` | Yes — same local `formatINRCompact` pattern |
+| `components/charts/AllocationDonut.tsx` | Yes — same local `formatINRCompact` pattern |
 | `components/domain/TaxLotTable.tsx` | No — add it |
 | `components/domain/FDDetailCard.tsx` | No — add it |
 | `components/domain/GoalCard.tsx` | No — add it |

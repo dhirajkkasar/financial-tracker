@@ -38,4 +38,4 @@ frontend/out/
 # Strava side project (separate repo, not part of this project)
 strava-interval-tracking/
 
-backend/fixtures/
+backend/fixtures/.worktrees/

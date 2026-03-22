@@ -90,6 +90,7 @@ from app.api.prices import router as prices_router
 from app.api.imports import router as imports_router
 from app.api.tax import router as tax_router
 from app.api.snapshots import router as snapshots_router
+from app.api.corp_actions import router as corp_actions_router
 
 app.include_router(assets_router)
 app.include_router(transactions_router)
@@ -103,3 +104,4 @@ app.include_router(prices_router)
 app.include_router(imports_router)
 app.include_router(tax_router)
 app.include_router(snapshots_router)
+app.include_router(corp_actions_router)

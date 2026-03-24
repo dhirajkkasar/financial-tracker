@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { Asset } from '@/types'
-import { formatPct } from '@/lib/formatters'
+import { formatPct, formatMFCategory } from '@/lib/formatters'
 import { usePrivateMoney } from '@/hooks/usePrivateMoney'
 import { Skeleton } from '@/components/ui/Skeleton'
 
@@ -44,6 +44,7 @@ interface HoldingsTableProps {
   loading: boolean
   variant?: HoldingsVariant
   showUnits?: boolean
+  showCategory?: boolean
 }
 
 function PnlCell({ amount, pct, dim, fmt }: { amount: number | null; pct?: number | null; dim?: boolean; fmt: (n: number) => string }) {
@@ -139,7 +140,7 @@ function sortAssets(assets: HoldingRow[], key: SortKey, dir: SortDir): HoldingRo
   })
 }
 
-export function HoldingsTable({ assets, loading, variant = 'default', showUnits = false }: HoldingsTableProps) {
+export function HoldingsTable({ assets, loading, variant = 'default', showUnits = false, showCategory = false }: HoldingsTableProps) {
   const { formatINR, formatINR2 } = usePrivateMoney()
   const [sortKey, setSortKey] = useState<SortKey>('current_value')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
@@ -184,6 +185,11 @@ export function HoldingsTable({ assets, loading, variant = 'default', showUnits 
         <thead>
           <tr className="border-b border-border">
             {th('name', 'Name', 'text-left w-[16ch]')}
+            {showCategory && (
+              <th className="pb-2.5 pr-4 text-[10px] font-semibold uppercase tracking-[0.1em] text-tertiary">
+                Category
+              </th>
+            )}
             {th('total_invested', 'Invested', 'text-right')}
             {th('current_value', 'Current Value', 'text-right')}
             {showUnits && th('total_units', 'Units', 'text-right')}
@@ -229,6 +235,11 @@ export function HoldingsTable({ assets, loading, variant = 'default', showUnits 
                     )}
                   </div>
                 </td>
+                {showCategory && (
+                  <td className="py-3 pr-4 text-sm text-secondary">
+                    {formatMFCategory(a.scheme_category)}
+                  </td>
+                )}
                 <td className="py-3 pr-4 text-right font-mono">
                   {isInactive && !invested ? '—' : invested != null ? formatINR(invested) : '—'}
                 </td>

@@ -1,4 +1,5 @@
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
@@ -99,7 +100,9 @@ class PriceService:
         fetchable = [(a, self.fetchers[a.asset_type]) for a in assets if a.asset_type in self.fetchers]
         skipped = len(assets) - len(fetchable)
 
-        # Phase 1: parallel fetch — no DB access inside workers
+        mf_fetchable = [(a, f) for a, f in fetchable if a.asset_type == AssetType.MF]
+        other_fetchable = [(a, f) for a, f in fetchable if a.asset_type != AssetType.MF]
+
         def _fetch(asset_fetcher):
             asset, fetcher = asset_fetcher
             try:
@@ -108,9 +111,17 @@ class PriceService:
                 logger.warning("refresh_all: fetch error for asset %s: %s", asset.id, e)
                 return asset, None
 
-        workers = min(10, len(fetchable)) if fetchable else 1
+        # Non-MF assets: parallel fetch
+        workers = min(10, len(other_fetchable)) if other_fetchable else 1
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            fetch_results = list(pool.map(_fetch, fetchable))
+            fetch_results = list(pool.map(_fetch, other_fetchable))
+
+        # MF assets: sequential fetch with 60s delay to avoid mfapi.in throttling
+        for i, asset_fetcher in enumerate(mf_fetchable):
+            if i > 0:
+                logger.info("refresh_all: waiting 60s before next mfapi call (%d/%d)", i + 1, len(mf_fetchable))
+                time.sleep(60)
+            fetch_results.append(_fetch(asset_fetcher))
 
         # Phase 2: sequential DB writes
         refreshed, failed = 0, 0

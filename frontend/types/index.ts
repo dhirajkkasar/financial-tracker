@@ -17,6 +17,7 @@ export interface Asset {
   asset_class: AssetClass
   currency: string
   is_active: boolean
+  scheme_category: string | null
   notes: string | null
   created_at: string
 }

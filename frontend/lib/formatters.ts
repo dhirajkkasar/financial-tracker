@@ -26,3 +26,14 @@ export const formatDate = (iso: string): string =>
 
 export const formatGain = (gain: number | null): string =>
   gain === null ? '—' : formatPct(gain)
+
+/** Strip mfapi.in scheme_category prefix and return the sub-type label.
+ *  "Equity Scheme - Large Cap Fund" → "Large Cap Fund"
+ *  "Debt Scheme - Liquid Fund"      → "Liquid Fund"
+ *  null / undefined                 → "—"
+ */
+export function formatMFCategory(raw: string | null | undefined): string {
+  if (!raw) return '—'
+  const match = raw.match(/^[^-]+-\s*(.+)$/)
+  return match ? match[1].trim() : raw
+}

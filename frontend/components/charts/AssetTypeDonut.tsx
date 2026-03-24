@@ -36,12 +36,14 @@ export function AssetTypeDonut({ data, loading }: AssetTypeDonutProps) {
     return <div className="flex h-48 items-center justify-center text-sm text-tertiary">No allocation data</div>
   }
 
-  const total = data.reduce((sum, d) => sum + d.total_invested, 0)
-  const chartData = data.map((entry) => ({
-    name: ASSET_TYPE_LABELS[entry.asset_type] ?? entry.asset_type,
-    value: entry.total_invested,
-    asset_type: entry.asset_type,
-  }))
+  const total = data.reduce((sum, d) => sum + (d.total_current_value ?? 0), 0)
+  const chartData = data
+    .filter((entry) => (entry.total_current_value ?? 0) > 0)
+    .map((entry) => ({
+      name: ASSET_TYPE_LABELS[entry.asset_type] ?? entry.asset_type,
+      value: entry.total_current_value,
+      asset_type: entry.asset_type,
+    }))
 
   return (
     <ResponsiveContainer width="100%" height={240}>

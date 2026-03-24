@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Financial Portfolio Tracker — Claude Context
 
 ## Project Overview
@@ -7,20 +11,64 @@ Personal, local-first, single-user investment portfolio tracker.
 - **DB:** SQLite locally → PostgreSQL in cloud (one `DATABASE_URL` env var switches)
 - **Execution plan:** `execution_plan.md` (7 phases; Phases 1–5 complete)
 
-## Running Locally
-```bash
-# Backend
-cd backend
-pip install -e .
-alembic upgrade head
-uvicorn app.main:app --reload
-# Interest rates seeded + price refresh triggered automatically on startup
+## Commands
 
-# Frontend
-cd frontend
-npm install
-npm run dev
+### Backend
+```bash
+cd backend
+
+# Install dependencies (uses uv lockfile)
+pip install -e ".[dev]"
+
+# Run dev server (seeds interest rates + refreshes prices on startup)
+uvicorn app.main:app --reload
+
+# Run all tests
+pytest
+
+# Run a single test file
+pytest tests/unit/test_fd_engine.py
+
+# Run a single test by name
+pytest tests/unit/test_fd_engine.py::test_function_name -v
+
+# Run with coverage report
+pytest --cov=app --cov-report=term-missing
+
+# Run only unit or integration tests
+pytest tests/unit/
+pytest tests/integration/
+
+# Create a new Alembic migration
+alembic revision --autogenerate -m "description"
+alembic upgrade head
+alembic downgrade -1
+
+# CLI helper (server must be running)
+python cli.py import ppf <file>
+python cli.py import epf <file>
+python cli.py import cas <file>
+python cli.py import nps <file>
+python cli.py import zerodha <file>
+python cli.py list assets
+python cli.py refresh-prices
+python cli.py snapshot
 ```
+
+### Frontend
+```bash
+cd frontend
+
+npm install
+npm run dev       # dev server at http://localhost:3000
+npm run build     # production build
+npm run lint      # ESLint
+```
+
+### Environment Variables
+- **Backend** (`backend/.env`): `DATABASE_URL=sqlite:///./portfolio.db`
+- **Frontend** (`frontend/.env.local`): `NEXT_PUBLIC_API_URL=http://localhost:8000`
+- **CLI**: `PORTFOLIO_API=http://localhost:8000` (override default)
 
 ## Authoritative Docs (in repo root)
 | File | Authority |

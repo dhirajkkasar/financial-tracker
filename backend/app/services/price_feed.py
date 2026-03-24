@@ -35,6 +35,10 @@ class MFAPIFetcher:
     BASE_URL = "https://api.mfapi.in/mf"
 
     def fetch(self, asset: Asset) -> PriceResult | None:
+        if not asset.is_active:
+            logger.info("MFAPIFetcher: skipping inactive asset %s", asset.name)
+            return None
+        
         try:
             scheme_code = asset.mfapi_scheme_code
             if not scheme_code:
@@ -45,7 +49,7 @@ class MFAPIFetcher:
                 # Caller (PriceService) will persist scheme_code back to asset
                 asset._resolved_scheme_code = str(scheme_code)
 
-            resp = httpx.get(f"{self.BASE_URL}/{scheme_code}", timeout=30)
+            resp = httpx.get(f"{self.BASE_URL}/{scheme_code}", timeout=60)
             if resp.status_code != 200:
                 logger.warning("MFAPIFetcher: HTTP %s for scheme %s", resp.status_code, scheme_code)
                 return None

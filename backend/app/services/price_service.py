@@ -36,6 +36,10 @@ class PriceService:
         if not asset:
             from app.middleware.error_handler import NotFoundError
             raise NotFoundError(f"Asset {asset_id} not found")
+        
+        if not asset.is_active:
+            logger.info("PriceService: skipping refresh for inactive asset %s (%s)", asset.id, asset.name)
+            return None
 
         fetcher = self.fetchers.get(asset.asset_type)
         if not fetcher:
@@ -119,8 +123,8 @@ class PriceService:
         # MF assets: sequential fetch with 60s delay to avoid mfapi.in throttling
         for i, asset_fetcher in enumerate(mf_fetchable):
             if i > 0:
-                logger.info("refresh_all: waiting 60s before next mfapi call (%d/%d)", i + 1, len(mf_fetchable))
-                time.sleep(60)
+                logger.info("refresh_all: waiting 61s before next mfapi call (%d/%d)", i + 1, len(mf_fetchable))
+                time.sleep(61)
             fetch_results.append(_fetch(asset_fetcher))
 
         # Phase 2: sequential DB writes

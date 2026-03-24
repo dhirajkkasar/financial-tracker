@@ -41,6 +41,7 @@ export default function OverviewPage() {
   }
 
   const totalInvested = overview?.total_invested ?? 0
+  const totalCurrentValue = overview?.total_current_value ?? 0
   const sortedBreakdown = [...breakdown].sort((a, b) => {
     const nullLast = (v: number | string | null) =>
       v == null ? (bdSortDir === 'asc' ? Infinity : -Infinity) : v
@@ -48,7 +49,7 @@ export default function OverviewPage() {
     let bv: number | string | null
     switch (bdSortKey) {
       case 'asset_type':          av = a.asset_type;          bv = b.asset_type; break
-      case 'share':               av = a.total_invested;      bv = b.total_invested; break
+      case 'share':               av = a.total_current_value; bv = b.total_current_value; break
       case 'total_invested':      av = a.total_invested;      bv = b.total_invested; break
       case 'total_current_value': av = a.total_current_value; bv = b.total_current_value; break
       case 'xirr':                av = a.xirr ?? null;        bv = b.xirr ?? null; break
@@ -235,7 +236,7 @@ export default function OverviewPage() {
             </thead>
             <tbody>
               {sortedBreakdown.map((row) => {
-                const pct = totalInvested > 0 ? (row.total_invested / totalInvested) * 100 : 0
+                const pct = totalCurrentValue > 0 ? ((row.total_current_value ?? 0) / totalCurrentValue) * 100 : 0
                 return (
                   <tr key={row.asset_type} className="border-b border-border last:border-0 hover:bg-accent-subtle/30 transition-colors">
                     <td className="py-3 pr-4 font-medium text-primary">{ASSET_TYPE_LABELS[row.asset_type]}</td>

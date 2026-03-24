@@ -652,7 +652,7 @@ class ReturnsService:
             alltime_pnl = current_pnl + active_realized + inactive_pnl
 
             total_invested = overview["total_invested"]
-            if total_invested > 0 or inactive_pnl != 0:
+            if total_invested > 0:
                 breakdown.append({
                     "asset_type": asset_type,
                     "total_invested": total_invested,
@@ -662,7 +662,7 @@ class ReturnsService:
                     "alltime_pnl": round(alltime_pnl, 2),
                 })
 
-        breakdown.sort(key=lambda x: x["total_invested"], reverse=True)
+        breakdown.sort(key=lambda x: x["total_current_value"] or 0, reverse=True)
         return {"breakdown": breakdown}
 
     # Only 4 allocation classes are used in the donut chart.
@@ -728,15 +728,36 @@ class ReturnsService:
         }
 
     def _get_current_value(self, asset) -> float | None:
-        """Helper: return current value for an asset (all types)."""
+        """Helper: return current value for an asset (all types).
+
+        MF: CAS snapshot market value (authoritative) → fallback to snapshot.closing_units × NAV
+            → fallback to stale snapshot market value. Returns None if no snapshot exists.
+        Other market-based: transaction units × price_cache NAV.
+        FD/RD: compound interest formula.
+        PPF/EPF/Real Estate: latest Valuation entry.
+        """
         asset_type = asset.asset_type.value
+
+        if asset_type == "MF":
+            snapshot = self.cas_snap_repo.get_latest_by_asset_id(asset.id)
+            if snapshot is None:
+                return None
+            if snapshot.closing_units == 0:
+                return 0.0
+            snapshot_age_days = (date.today() - snapshot.date).days
+            if snapshot_age_days < 30:
+                return snapshot.market_value_inr / 100.0
+            price_cache = self.price_repo.get_by_asset_id(asset.id)
+            if price_cache:
+                return snapshot.closing_units * (price_cache.price_inr / 100.0)
+            return snapshot.market_value_inr / 100.0
+
         transactions = self.txn_repo.list_by_asset(asset.id)
         filtered_txns = [t for t in transactions if t.type.value not in EXCLUDED_TYPES]
 
         if asset_type in MARKET_BASED_TYPES:
             price_cache = self.price_repo.get_by_asset_id(asset.id)
             if price_cache:
-    
                 total_units = sum(
                     t.units or 0 for t in filtered_txns if t.type.value in UNIT_ADD_TYPES
                 ) - sum(

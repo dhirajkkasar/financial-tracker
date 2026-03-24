@@ -34,131 +34,130 @@ def _upsert(db, category: ImportantDataCategory, label: str, fields: dict, notes
 def seed(db):
     # ── Personal Details ──────────────────────────────────────────────────────
     _upsert(db, ImportantDataCategory.IDENTITY, "Personal Details", {
-        "PAN": "BQEPK6167M",
-        "UID (Aadhaar)": "323027405718",
-        "Blood Group": "A+",
-        "Passport No.": "W1283885 (new) / J3592872 (old)",
-        "Passport Expiry": "20/06/2032",
-        "Driving License No.": "MH1520080052961",
-        "DL Expiry": "10/12/2028",
-        "Mobile Numbers": "8956223684 (Jio) / 7875311611 (BSNL)",
-        "Voters ID": "ZXS6393466",
+        "PAN": "AAAAA0000A",
+        "UID (Aadhaar)": "0000 0000 0000",
+        "Blood Group": "O+",
+        "Passport No.": "A0000000",
+        "Passport Expiry": "01/01/2030",
+        "Driving License No.": "MH00000000000000",
+        "DL Expiry": "01/01/2030",
+        "Mobile Numbers": "9000000000 (Primary) / 9000000001 (Secondary)",
+        "Voters ID": "ABC0000000",
     })
 
     # ── Employment Details ────────────────────────────────────────────────────
     _upsert(db, ImportantDataCategory.IDENTITY, "Employment Details", {
-        "Employee ID": "113135637",
-        "Work Email": "kasardk@amazon.com",
-        "UAN": "100932718301",
-        "EPF No.": "BGBNG00268580000306940",
-        "PRAN (NPS)": "110144447289",
+        "Employee ID": "EMP000000",
+        "Work Email": "john.doe@example.com",
+        "UAN": "100000000000",
+        "EPF No.": "AAAAA00000000000000000",
+        "PRAN (NPS)": "110000000000",
     }, notes="Employment Details")
 
     # ── Home Utilities ────────────────────────────────────────────────────────
     _upsert(db, ImportantDataCategory.OTHER, "Home Utilities", {
-        "Electricity Account No.": "170400003401",
-        "Property Tax ID": "O/A/01/03574042",
-        "Cable TV Account No.": "1298271642",
-        "Cable TV Provider": "Tata Sky",
-        "OTT Mobile No.": "8956223684",
+        "Electricity Account No.": "000000000000",
+        "Property Tax ID": "A/A/00/00000000",
+        "Cable TV Account No.": "0000000000",
+        "Cable TV Provider": "Cable Provider Name",
+        "OTT Mobile No.": "9000000000",
     }, notes="Home Utilities Details")
 
     # ── Property Details ──────────────────────────────────────────────────────
-    _upsert(db, ImportantDataCategory.OTHER, "Venezia Co-op Housing Society (Residential)", {
-        "Address": "B-901, SN 45/1, Near Pune-Banglore Highway, Baner, Pune 411045",
-        "Date Acquired": "09/11/2020",
-        "Index 2 No.": "11834/2020",
-        "Owners": "Dhiraj Kamlakar Kasar / Manisha Dhiraj Kasar",
-        "Home Loan (642166842)": "₹50,00,000 — Closed",
-        "Insurance Loan (656846651)": "₹1,12,000 — Closed",
-        "Top-up Loan (702991012)": "₹25,00,000 — Open | EMI ₹32,255",
-        "Loan Bank": "HDFC",
+    _upsert(db, ImportantDataCategory.OTHER, "Sample Residential Property", {
+        "Address": "Flat No. 101, Sample Society, City - 400001",
+        "Date Acquired": "01/01/2020",
+        "Index 2 No.": "00000/2020",
+        "Owners": "John Doe / Jane Doe",
+        "Home Loan (000000001)": "₹50,00,000 — Closed",
+        "Top-up Loan (000000002)": "₹10,00,000 — Open | EMI ₹15,000",
+        "Loan Bank": "Sample Bank",
     }, notes="Property Details")
 
-    _upsert(db, ImportantDataCategory.OTHER, "VTP Altitude (Commercial)", {
-        "Address": "Office No. 618, SR.NO 18/6, Village Thergaon, Taluka Mulashi, Pune - 411033",
-        "Date Acquired": "27/06/2024",
-        "Index 2 No.": "15153/2024",
-        "Owner": "Dhiraj Kamlakar Kasar HUF",
+    _upsert(db, ImportantDataCategory.OTHER, "Sample Commercial Property", {
+        "Address": "Office No. 201, Sample Plaza, City - 400002",
+        "Date Acquired": "01/01/2024",
+        "Index 2 No.": "00000/2024",
+        "Owner": "John Doe HUF",
         "Loan": "None",
     }, notes="Property Details")
 
     # ── Bank Accounts ─────────────────────────────────────────────────────────
     _upsert(db, ImportantDataCategory.BANK, "HDFC", {
-        "Account No.": "7941610064486",
+        "Account No.": "0000000000000",
         "Type": "Savings (Salary)",
-        "IFSC": "HDFC0000794",
-        "Branch": "Hinjewadi Phase 2, Pune",
-        "Customer ID / Login": "35697166",
-        "Nominee": "Manisha Kasar",
+        "IFSC": "HDFC0000000",
+        "Branch": "Sample Branch, City",
+        "Customer ID / Login": "00000000",
+        "Nominee": "Jane Doe",
     })
 
     _upsert(db, ImportantDataCategory.BANK, "SBI", {
-        "Account No.": "30466324987",
+        "Account No.": "00000000000",
         "Type": "Savings",
-        "IFSC": "SBIN0013547",
-        "Branch": "Pashan Near Balaji Square, Pune",
-        "Customer ID": "85297265080",
-        "Login ID": "dhirajkasar",
-        "Nominee": "Kamlakar Kasar",
+        "IFSC": "SBIN0000000",
+        "Branch": "Sample Branch, City",
+        "Customer ID": "00000000000",
+        "Login ID": "johndoe",
+        "Nominee": "John Doe Sr.",
     })
 
     _upsert(db, ImportantDataCategory.BANK, "SBI (PPF)", {
-        "Account No.": "32256576916",
+        "Account No.": "00000000000",
         "Type": "PPF",
-        "Branch": "Treasury Branch, Nashik",
-        "Customer ID": "85297265080",
-        "Login ID": "dhirajkasar",
-        "Nominee": "Kamlakar Kasar",
+        "Branch": "Treasury Branch, City",
+        "Customer ID": "00000000000",
+        "Login ID": "johndoe",
+        "Nominee": "John Doe Sr.",
     })
 
     _upsert(db, ImportantDataCategory.BANK, "ICICI (HUF)", {
-        "Account No.": "539701000207",
-        "Type": "HUF (Dhiraj Kamlakar Kasar HUF)",
-        "IFSC": "ICIC0005397",
-        "Branch": "Pancard Club Road, Baner, Pune",
-        "Customer ID / Login": "B597625786",
-        "Nominee": "Manisha Kasar",
+        "Account No.": "000000000000",
+        "Type": "HUF (John Doe HUF)",
+        "IFSC": "ICIC0000000",
+        "Branch": "Sample Branch, City",
+        "Customer ID / Login": "A000000000",
+        "Nominee": "Jane Doe",
     })
 
     # ── Insurance Details ─────────────────────────────────────────────────────
     _upsert(db, ImportantDataCategory.INSURANCE, "ICICI Prudential - iProtect Smart", {
-        "Insured": "Dhiraj Kamlakar Kasar",
+        "Insured": "John Doe",
         "Type": "Life Insurance",
-        "Policy No.": "A8598651",
-        "Annual Premium": "₹14,255",
-        "Due Date": "4th November",
+        "Policy No.": "A0000000",
+        "Annual Premium": "₹00,000",
+        "Due Date": "1st January",
         "Sum Assured": "₹1,00,00,000",
-        "CKYC": "60099997241440",
+        "CKYC": "00000000000000",
     })
 
-    _upsert(db, ImportantDataCategory.INSURANCE, "Vehicle Insurance - Tata Nexon", {
-        "Insured": "Dhiraj Kamlakar Kasar",
+    _upsert(db, ImportantDataCategory.INSURANCE, "Vehicle Insurance - Car", {
+        "Insured": "John Doe",
         "Type": "Vehicle Insurance",
     })
 
-    _upsert(db, ImportantDataCategory.INSURANCE, "Vehicle Insurance - TVS Jupiter", {
-        "Insured": "Dhiraj Kamlakar Kasar",
+    _upsert(db, ImportantDataCategory.INSURANCE, "Vehicle Insurance - Two Wheeler 1", {
+        "Insured": "John Doe",
         "Type": "Vehicle Insurance",
     })
 
-    _upsert(db, ImportantDataCategory.INSURANCE, "Vehicle Insurance - Bajaj Pulsar", {
-        "Insured": "Dhiraj Kamlakar Kasar",
+    _upsert(db, ImportantDataCategory.INSURANCE, "Vehicle Insurance - Two Wheeler 2", {
+        "Insured": "John Doe",
         "Type": "Vehicle Insurance",
     })
 
     _upsert(db, ImportantDataCategory.INSURANCE, "Property Insurance", {
-        "Insured": "Dhiraj Kamlakar Kasar",
+        "Insured": "John Doe",
         "Type": "Property Insurance",
     })
 
     _upsert(db, ImportantDataCategory.INSURANCE, "Health Insurance (Self & Family)", {
-        "Insured": "Dhiraj Kamlakar Kasar / Manisha Kasar / Arush Kasar",
+        "Insured": "John Doe / Jane Doe / Child",
         "Type": "Health Insurance",
     })
 
     _upsert(db, ImportantDataCategory.INSURANCE, "Health Insurance (Parents)", {
-        "Insured": "Kamlakar Kasar / Surekha Kasar",
+        "Insured": "John Doe Sr. / Jane Doe Sr.",
         "Type": "Health Insurance",
     })
 

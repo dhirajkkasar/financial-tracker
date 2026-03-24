@@ -38,4 +38,5 @@ class AssetResponse(BaseModel):
     currency: str
     is_active: bool
     notes: Optional[str] = None
+    scheme_category: Optional[str] = None
     created_at: datetime

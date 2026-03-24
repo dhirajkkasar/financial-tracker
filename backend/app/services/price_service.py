@@ -61,6 +61,13 @@ class PriceService:
             asset.identifier = asset._resolved_nps_scheme_code
             self.db.commit()
 
+        # Persist scheme_category and reclassify asset_class for MF assets
+        if hasattr(asset, "_resolved_scheme_category") and asset._resolved_scheme_category:
+            from app.engine.mf_classifier import classify_mf
+            asset.scheme_category = asset._resolved_scheme_category
+            asset.asset_class = classify_mf(asset.scheme_category)
+            self.db.commit()
+
         price_paise = round(result.price_inr * 100)
         cache = self.cache_repo.upsert(
             asset_id=asset_id,
@@ -119,6 +126,10 @@ class PriceService:
                 asset.mfapi_scheme_code = asset._resolved_scheme_code
             if hasattr(asset, "_resolved_nps_scheme_code") and asset._resolved_nps_scheme_code:
                 asset.identifier = asset._resolved_nps_scheme_code
+            if hasattr(asset, "_resolved_scheme_category") and asset._resolved_scheme_category:
+                from app.engine.mf_classifier import classify_mf
+                asset.scheme_category = asset._resolved_scheme_category
+                asset.asset_class = classify_mf(asset.scheme_category)
 
             price_paise = round(result.price_inr * 100)
             self.cache_repo.upsert(

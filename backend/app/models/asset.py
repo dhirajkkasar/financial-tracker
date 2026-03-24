@@ -35,6 +35,7 @@ class Asset(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     identifier: Mapped[str | None] = mapped_column(String(100), nullable=True)
     mfapi_scheme_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    scheme_category: Mapped[str | None] = mapped_column(String(100), nullable=True)
     asset_type: Mapped[AssetType] = mapped_column(SAEnum(AssetType), nullable=False)
     asset_class: Mapped[AssetClass] = mapped_column(SAEnum(AssetClass), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), default="INR", nullable=False)

@@ -45,7 +45,7 @@ class MFAPIFetcher:
                 # Caller (PriceService) will persist scheme_code back to asset
                 asset._resolved_scheme_code = str(scheme_code)
 
-            resp = httpx.get(f"{self.BASE_URL}/{scheme_code}", timeout=10)
+            resp = httpx.get(f"{self.BASE_URL}/{scheme_code}", timeout=30)
             if resp.status_code != 200:
                 logger.warning("MFAPIFetcher: HTTP %s for scheme %s", resp.status_code, scheme_code)
                 return None
@@ -67,7 +67,7 @@ class MFAPIFetcher:
             resp = httpx.get(
                 f"{self.BASE_URL}/search",
                 params={"q": asset.name[:40]},
-                timeout=10,
+                timeout=30,
             )
             if resp.status_code != 200:
                 return None

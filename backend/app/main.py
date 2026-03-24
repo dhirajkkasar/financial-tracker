@@ -47,8 +47,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Interest rate seed failed: %s", e)
 
-    # Kick off price refresh in background — don't block startup
-    asyncio.create_task(_background_price_refresh())
+    # Price refresh is on-demand only (via CLI: python cli.py refresh-prices)
     yield
 
 

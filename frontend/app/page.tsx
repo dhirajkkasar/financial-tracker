@@ -10,7 +10,8 @@ import { StatCardSkeleton } from '@/components/ui/Skeleton'
 import { AllocationDonut } from '@/components/charts/AllocationDonut'
 import { AssetTypeDonut } from '@/components/charts/AssetTypeDonut'
 import { NetWorthChart } from '@/components/charts/NetWorthChart'
-import { formatINR, formatXIRR, formatPct } from '@/lib/formatters'
+import { formatXIRR, formatPct } from '@/lib/formatters'
+import { usePrivateMoney } from '@/hooks/usePrivateMoney'
 import { ASSET_TYPE_LABELS } from '@/constants'
 import Link from 'next/link'
 
@@ -19,6 +20,7 @@ const cardStyle = { boxShadow: 'var(--shadow-card)' }
 const thClass = 'pb-3 text-left text-[10px] font-semibold uppercase tracking-[0.1em] text-tertiary'
 
 export default function OverviewPage() {
+  const { formatINR } = usePrivateMoney()
   const { data: overview, loading: overviewLoading } = useOverview()
   const { breakdown, loading: breakdownLoading } = useBreakdown()
   const { data: allocation, loading: allocLoading } = useAllocation()

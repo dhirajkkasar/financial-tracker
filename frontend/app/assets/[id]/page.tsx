@@ -9,7 +9,8 @@ import { Pagination } from '@/components/ui/Pagination'
 import { TaxLotTable } from '@/components/domain/TaxLotTable'
 import { FDDetailCard } from '@/components/domain/FDDetailCard'
 import { useLots } from '@/hooks/useLots'
-import { formatINR, formatINR2, formatXIRR, formatDate, formatPct } from '@/lib/formatters'
+import { formatXIRR, formatDate, formatPct } from '@/lib/formatters'
+import { usePrivateMoney } from '@/hooks/usePrivateMoney'
 import { ASSET_TYPE_LABELS } from '@/constants'
 
 const card = 'rounded-xl border border-border bg-card p-5'
@@ -20,6 +21,7 @@ const LOT_BASED_TYPES = new Set(['STOCK_IN', 'STOCK_US', 'MF', 'GOLD', 'SGB', 'R
 const FD_TYPES = new Set(['FD', 'RD'])
 
 export default function AssetDetailPage() {
+  const { formatINR, formatINR2 } = usePrivateMoney()
   const { id } = useParams<{ id: string }>()
   const assetId = parseInt(id)
 

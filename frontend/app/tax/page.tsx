@@ -1,8 +1,8 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
 import { api } from '@/lib/api'
-import { formatINR } from '@/lib/formatters'
 import { ASSET_TYPE_LABELS } from '@/constants'
+import { usePrivateMoney } from '@/hooks/usePrivateMoney'
 import { TaxSummaryResponse, UnrealisedResponse, HarvestResponse, TaxSummaryEntry, UnrealisedLot, HarvestOpportunity, AssetType } from '@/types'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { Pagination } from '@/components/ui/Pagination'
@@ -77,14 +77,14 @@ const cardStyle = { boxShadow: 'var(--shadow-card)' }
 const th = 'pb-3 text-left text-[10px] font-semibold uppercase tracking-[0.1em] text-tertiary'
 const thr = `${th} text-right`
 
-function GainAmt({ value }: { value: number }) {
+function GainAmt({ value, fmt }: { value: number; fmt: (n: number) => string }) {
   if (value === 0) return <span className="text-tertiary">—</span>
-  return <span className={`font-mono ${value >= 0 ? 'text-gain' : 'text-loss'}`}>{formatINR(value)}</span>
+  return <span className={`font-mono ${value >= 0 ? 'text-gain' : 'text-loss'}`}>{fmt(value)}</span>
 }
 
-function TaxAmt({ value, hasSlab }: { value: number | null; hasSlab?: boolean }) {
+function TaxAmt({ value, hasSlab, fmt }: { value: number | null; hasSlab?: boolean; fmt: (n: number) => string }) {
   const parts = []
-  if (value !== null && value !== 0) parts.push(<span key="v" className="font-mono text-loss">{formatINR(value)}</span>)
+  if (value !== null && value !== 0) parts.push(<span key="v" className="font-mono text-loss">{fmt(value)}</span>)
   if (hasSlab) parts.push(<span key="s" className="ml-1 text-[10px] text-tertiary">+slab</span>)
   if (parts.length === 0) return <span className="text-tertiary">{hasSlab ? <span className="text-[10px] text-tertiary">slab</span> : '—'}</span>
   return <>{parts}</>
@@ -93,6 +93,7 @@ function TaxAmt({ value, hasSlab }: { value: number | null; hasSlab?: boolean })
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function TaxPage() {
+  const { formatINR } = usePrivateMoney()
   const [fy, setFy] = useState(CURRENT_FY)
   const [summary, setSummary] = useState<TaxSummaryResponse | null>(null)
   const [unrealised, setUnrealised] = useState<UnrealisedResponse | null>(null)
@@ -182,13 +183,13 @@ export default function TaxPage() {
               {realisedRows.map((row) => (
                 <tr key={row.cls} className="border-b border-border last:border-0 hover:bg-accent-subtle/30 transition-colors">
                   <td className="py-3 pr-4 font-medium text-primary">{row.cls}</td>
-                  <td className="py-3 pr-4 text-right"><GainAmt value={row.st_gain} /></td>
-                  <td className="py-3 pr-4 text-right"><GainAmt value={row.lt_gain} /></td>
+                  <td className="py-3 pr-4 text-right"><GainAmt value={row.st_gain} fmt={formatINR} /></td>
+                  <td className="py-3 pr-4 text-right"><GainAmt value={row.lt_gain} fmt={formatINR} /></td>
                   <td className="py-3 pr-4 text-right font-mono text-gain">
                     {row.ltcg_exempt > 0 ? formatINR(row.ltcg_exempt) : '—'}
                   </td>
-                  <td className="py-3 pr-4 text-right"><TaxAmt value={row.st_tax} hasSlab={row.has_slab} /></td>
-                  <td className="py-3 text-right"><TaxAmt value={row.lt_tax} hasSlab={row.has_slab} /></td>
+                  <td className="py-3 pr-4 text-right"><TaxAmt value={row.st_tax} hasSlab={row.has_slab} fmt={formatINR} /></td>
+                  <td className="py-3 text-right"><TaxAmt value={row.lt_tax} hasSlab={row.has_slab} fmt={formatINR} /></td>
                 </tr>
               ))}
             </tbody>
@@ -232,8 +233,8 @@ export default function TaxPage() {
               {unrealisedRows.map((row) => (
                 <tr key={row.cls} className="border-b border-border last:border-0 hover:bg-accent-subtle/30 transition-colors">
                   <td className="py-3 pr-4 font-medium text-primary">{row.cls}</td>
-                  <td className="py-3 pr-4 text-right"><GainAmt value={row.st} /></td>
-                  <td className="py-3 pr-4 text-right"><GainAmt value={row.lt} /></td>
+                  <td className="py-3 pr-4 text-right"><GainAmt value={row.st} fmt={formatINR} /></td>
+                  <td className="py-3 pr-4 text-right"><GainAmt value={row.lt} fmt={formatINR} /></td>
                   <td className={`py-3 text-right font-mono font-medium ${row.st + row.lt >= 0 ? 'text-gain' : 'text-loss'}`}>
                     {formatINR(row.st + row.lt)}
                   </td>

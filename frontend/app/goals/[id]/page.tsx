@@ -6,7 +6,8 @@ import { api } from '@/lib/api'
 import { Goal } from '@/types'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { Skeleton } from '@/components/ui/Skeleton'
-import { formatINR, formatDate } from '@/lib/formatters'
+import { formatDate } from '@/lib/formatters'
+import { usePrivateMoney } from '@/hooks/usePrivateMoney'
 import { ASSET_TYPE_LABELS } from '@/constants'
 
 const card = 'rounded-xl border border-border bg-card p-5'
@@ -14,6 +15,7 @@ const cardStyle = { boxShadow: 'var(--shadow-card)' }
 const thClass = 'pb-2.5 pr-3 text-left text-[10px] font-semibold uppercase tracking-[0.1em] text-tertiary'
 
 export default function GoalDetailPage() {
+  const { formatINR } = usePrivateMoney()
   const { id } = useParams<{ id: string }>()
   const goalId = parseInt(id)
   const [goal, setGoal] = useState<Goal | null>(null)

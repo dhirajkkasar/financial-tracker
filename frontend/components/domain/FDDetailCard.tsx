@@ -1,6 +1,7 @@
 'use client'
 import { FDDetail, ReturnResult } from '@/types'
-import { formatINR, formatXIRR, formatDate } from '@/lib/formatters'
+import { formatXIRR, formatDate } from '@/lib/formatters'
+import { usePrivateMoney } from '@/hooks/usePrivateMoney'
 
 const COMPOUNDING_LABEL: Record<string, string> = {
   MONTHLY: 'Monthly',
@@ -24,6 +25,7 @@ interface FDDetailCardProps {
 }
 
 export function FDDetailCard({ fd, returns }: FDDetailCardProps) {
+  const { formatINR } = usePrivateMoney()
   // Maturity progress
   const startMs = new Date(fd.start_date).getTime()
   const endMs = new Date(fd.maturity_date).getTime()

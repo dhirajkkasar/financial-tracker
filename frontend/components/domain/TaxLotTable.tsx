@@ -1,6 +1,7 @@
 'use client'
 import { LotEntry, MatchedSell, PaginatedItems } from '@/types'
-import { formatINR, formatDate } from '@/lib/formatters'
+import { formatDate } from '@/lib/formatters'
+import { usePrivateMoney } from '@/hooks/usePrivateMoney'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { Pagination } from '@/components/ui/Pagination'
 
@@ -19,12 +20,12 @@ function TermBadge({ isShortTerm }: { isShortTerm: boolean }) {
   )
 }
 
-function GainCell({ value }: { value: number | null }) {
+function GainCell({ value, fmt }: { value: number | null; fmt: (n: number) => string }) {
   if (value === null) return <span className="text-tertiary">—</span>
   const pos = value >= 0
   return (
     <span className={`font-mono ${pos ? 'text-gain' : 'text-loss'}`}>
-      {pos ? '+' : ''}{formatINR(value)}
+      {pos ? '+' : ''}{fmt(value)}
     </span>
   )
 }
@@ -48,6 +49,7 @@ export function TaxLotTable({
   onPageSizeChange,
   pageSize,
 }: TaxLotTableProps) {
+  const { formatINR } = usePrivateMoney()
   if (loading) {
     return (
       <div className="space-y-3">
@@ -97,7 +99,7 @@ export function TaxLotTable({
                         {lot.current_value != null ? formatINR(lot.current_value) : '—'}
                       </td>
                       <td className={`${tdClass} text-right`}>
-                        <GainCell value={lot.unrealised_gain} />
+                        <GainCell value={lot.unrealised_gain} fmt={formatINR} />
                       </td>
                       <td className={`${tdClass} text-right font-mono text-secondary`}>{lot.holding_days}d</td>
                       <td className={`${tdClass} text-center`}>
@@ -149,7 +151,7 @@ export function TaxLotTable({
                     <td className={`${tdClass} text-right font-mono text-secondary`}>{formatINR(sell.buy_price_per_unit)}</td>
                     <td className={`${tdClass} text-right font-mono text-secondary`}>{formatINR(sell.sell_price_per_unit)}</td>
                     <td className={`${tdClass} text-right`}>
-                      <GainCell value={sell.realised_gain_inr} />
+                      <GainCell value={sell.realised_gain_inr} fmt={formatINR} />
                     </td>
                   </tr>
                 ))}

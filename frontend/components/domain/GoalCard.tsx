@@ -1,9 +1,12 @@
+'use client'
 import { Goal } from '@/types'
-import { formatINR, formatDate } from '@/lib/formatters'
+import { formatDate } from '@/lib/formatters'
+import { usePrivateMoney } from '@/hooks/usePrivateMoney'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import Link from 'next/link'
 
 export function GoalCard({ goal }: { goal: Goal }) {
+  const { formatINR } = usePrivateMoney()
   const pct = goal.progress_pct
   return (
     <div className="rounded-xl border bg-white p-5 shadow-sm">

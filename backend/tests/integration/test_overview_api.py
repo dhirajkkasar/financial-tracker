@@ -99,6 +99,60 @@ def test_allocation_entry_has_required_fields(client, db):
         assert "pct_of_total" in entry
 
 
+def test_allocation_mixed_mf_counts_as_equity(client, db):
+    """Hybrid MF assets stored with MIXED class should appear as EQUITY in allocation."""
+    mf = client.post("/assets", json=make_asset(
+        asset_type="MF", asset_class="MIXED", name="HDFC Balanced Fund", identifier="INF179K"
+    )).json()
+    client.post(f"/assets/{mf['id']}/transactions", json=make_transaction(
+        type="SIP", date="2022-01-01", units=100, price_per_unit=50.0, amount_inr=-5000.0
+    ))
+    _seed_price(db, mf["id"], 60.0)
+
+    resp = client.get("/overview/allocation")
+    assert resp.status_code == 200
+    data = resp.json()
+    classes = [a["asset_class"] for a in data["allocations"]]
+    assert "EQUITY" in classes
+    assert "MIXED" not in classes
+
+
+def test_allocation_nps_counts_as_debt(client, db):
+    """NPS assets should appear as DEBT in allocation regardless of stored class."""
+    nps = client.post("/assets", json=make_asset(
+        asset_type="NPS", asset_class="MIXED", name="SBI NPS Tier I", identifier="SM007001"
+    )).json()
+    client.post(f"/assets/{nps['id']}/transactions", json=make_transaction(
+        type="CONTRIBUTION", date="2022-01-01", units=100, price_per_unit=30.0, amount_inr=-3000.0
+    ))
+    _seed_price(db, nps["id"], 35.0)
+
+    resp = client.get("/overview/allocation")
+    assert resp.status_code == 200
+    data = resp.json()
+    classes = [a["asset_class"] for a in data["allocations"]]
+    assert "DEBT" in classes
+    assert "MIXED" not in classes
+
+
+def test_allocation_debt_mf_stays_as_debt(client, db):
+    """MF assets classified as DEBT (liquid/debt funds) should remain in DEBT."""
+    mf = client.post("/assets", json=make_asset(
+        asset_type="MF", asset_class="DEBT", name="HDFC Liquid Fund", identifier="INF179L"
+    )).json()
+    client.post(f"/assets/{mf['id']}/transactions", json=make_transaction(
+        type="SIP", date="2022-01-01", units=50, price_per_unit=100.0, amount_inr=-5000.0
+    ))
+    _seed_price(db, mf["id"], 110.0)
+
+    resp = client.get("/overview/allocation")
+    assert resp.status_code == 200
+    data = resp.json()
+    classes = [a["asset_class"] for a in data["allocations"]]
+    assert "DEBT" in classes
+    assert "MIXED" not in classes
+
+
 # ---------------------------------------------------------------------------
 # GET /overview/gainers
 # ---------------------------------------------------------------------------

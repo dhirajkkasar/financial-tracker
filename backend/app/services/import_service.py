@@ -31,7 +31,7 @@ ASSET_CLASS_MAP: dict[str, AssetClass] = {
     "STOCK_US": AssetClass.EQUITY,
     "RSU": AssetClass.EQUITY,
     "MF": AssetClass.MIXED,
-    "NPS": AssetClass.MIXED,
+    "NPS": AssetClass.DEBT,
     "GOLD": AssetClass.GOLD,
     "SGB": AssetClass.GOLD,
     "REAL_ESTATE": AssetClass.REAL_ESTATE,

@@ -45,7 +45,7 @@ class MFAPIFetcher:
                 # Caller (PriceService) will persist scheme_code back to asset
                 asset._resolved_scheme_code = str(scheme_code)
 
-            resp = httpx.get(f"{self.BASE_URL}/{scheme_code}/latest", timeout=10)
+            resp = httpx.get(f"{self.BASE_URL}/{scheme_code}", timeout=10)
             if resp.status_code != 200:
                 logger.warning("MFAPIFetcher: HTTP %s for scheme %s", resp.status_code, scheme_code)
                 return None
@@ -53,6 +53,9 @@ class MFAPIFetcher:
             if data.get("status") != "SUCCESS" or not data.get("data"):
                 return None
             nav = float(data["data"][0]["nav"])
+            scheme_category = data.get("meta", {}).get("scheme_category")
+            if scheme_category:
+                asset._resolved_scheme_category = scheme_category
             return PriceResult(price_inr=nav, source="mfapi")
         except Exception as e:
             logger.warning("MFAPIFetcher: error fetching %s: %s", asset.name, e)

@@ -9,6 +9,7 @@ import {
   CartesianGrid,
 } from 'recharts'
 import { PortfolioSnapshot } from '@/types'
+import { usePrivateMode } from '@/context/PrivateModeContext'
 
 function formatINRCompact(n: number) {
   if (n >= 1_00_00_000) return `₹${(n / 1_00_00_000).toFixed(2)}Cr`
@@ -23,6 +24,7 @@ function formatDate(dateStr: string) {
 }
 
 function NetWorthTooltip({ active, payload, label }: { active?: boolean; payload?: { value: number }[]; label?: string }) {
+  const { isPrivate } = usePrivateMode()
   if (!active || !payload?.length) return null
   const value = payload[0].value
   return (
@@ -37,7 +39,7 @@ function NetWorthTooltip({ active, payload, label }: { active?: boolean; payload
         {label ? formatDate(label) : ''}
       </p>
       <p style={{ color: '#fff', fontSize: 13, fontFamily: 'var(--font-dm-mono, monospace)', fontWeight: 500 }}>
-        {formatINRCompact(value)}
+        {isPrivate ? '*****' : formatINRCompact(value)}
       </p>
     </div>
   )
@@ -49,6 +51,7 @@ interface NetWorthChartProps {
 }
 
 export function NetWorthChart({ data, loading }: NetWorthChartProps) {
+  const { isPrivate } = usePrivateMode()
   if (loading) {
     return <div className="h-48 animate-pulse rounded bg-border" />
   }
@@ -89,7 +92,7 @@ export function NetWorthChart({ data, loading }: NetWorthChartProps) {
           interval="preserveStartEnd"
         />
         <YAxis
-          tickFormatter={formatINRCompact}
+          tickFormatter={(v) => isPrivate ? '*****' : formatINRCompact(v)}
           tick={{ fill: '#6b6b67', fontSize: 10 }}
           tickLine={false}
           axisLine={false}

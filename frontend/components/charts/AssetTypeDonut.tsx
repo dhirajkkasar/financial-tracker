@@ -3,6 +3,7 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recha
 import { AssetTypeBreakdownEntry } from '@/types'
 import { ASSET_TYPE_COLORS, ASSET_TYPE_LABELS } from '@/constants'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { usePrivateMode } from '@/context/PrivateModeContext'
 
 interface AssetTypeDonutProps {
   data: AssetTypeBreakdownEntry[]
@@ -14,13 +15,14 @@ function formatINRCompact(n: number) {
 }
 
 function DonutTooltip({ active, payload, total }: { active?: boolean; payload?: { name: string; value: number }[]; total: number }) {
+  const { isPrivate } = usePrivateMode()
   if (!active || !payload?.length) return null
   const { name, value } = payload[0]
   const pct = total > 0 ? ((value / total) * 100).toFixed(2) : '0.00'
   return (
     <div style={{ background: '#1a1a18', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '8px 12px', boxShadow: '0 4px 16px rgba(0,0,0,0.25)' }}>
       <p style={{ color: '#a0a09c', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>{name}</p>
-      <p style={{ color: '#fff', fontSize: 13, fontFamily: 'var(--font-dm-mono, monospace)', fontWeight: 500 }}>{formatINRCompact(value)}</p>
+      <p style={{ color: '#fff', fontSize: 13, fontFamily: 'var(--font-dm-mono, monospace)', fontWeight: 500 }}>{isPrivate ? '*****' : formatINRCompact(value)}</p>
       <p style={{ color: '#6b6b67', fontSize: 11, fontFamily: 'var(--font-dm-mono, monospace)', marginTop: 2 }}>{pct}% of portfolio</p>
     </div>
   )

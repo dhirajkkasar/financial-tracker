@@ -2,7 +2,8 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { Asset } from '@/types'
-import { formatINR, formatINR2, formatPct } from '@/lib/formatters'
+import { formatPct } from '@/lib/formatters'
+import { usePrivateMoney } from '@/hooks/usePrivateMoney'
 import { Skeleton } from '@/components/ui/Skeleton'
 
 interface HoldingRow extends Asset {
@@ -45,7 +46,7 @@ interface HoldingsTableProps {
   showUnits?: boolean
 }
 
-function PnlCell({ amount, pct, dim }: { amount: number | null; pct?: number | null; dim?: boolean }) {
+function PnlCell({ amount, pct, dim, fmt }: { amount: number | null; pct?: number | null; dim?: boolean; fmt: (n: number) => string }) {
   if (amount == null) return <span className="text-tertiary">—</span>
   const pos = amount >= 0
   const colorClass = dim
@@ -53,7 +54,7 @@ function PnlCell({ amount, pct, dim }: { amount: number | null; pct?: number | n
     : (pos ? 'text-gain' : 'text-loss')
   return (
     <div className={`text-right font-mono ${colorClass}`}>
-      <div className="text-sm">{pos ? '+' : ''}{formatINR(amount)}</div>
+      <div className="text-sm">{pos ? '+' : ''}{fmt(amount)}</div>
       {pct != null && <div className="text-[11px] opacity-70">{formatPct(pct)}</div>}
     </div>
   )
@@ -139,6 +140,7 @@ function sortAssets(assets: HoldingRow[], key: SortKey, dir: SortDir): HoldingRo
 }
 
 export function HoldingsTable({ assets, loading, variant = 'default', showUnits = false }: HoldingsTableProps) {
+  const { formatINR, formatINR2 } = usePrivateMoney()
   const [sortKey, setSortKey] = useState<SortKey>('current_value')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
 
@@ -249,12 +251,12 @@ export function HoldingsTable({ assets, loading, variant = 'default', showUnits 
                   </td>
                 )}
                 <td className="py-3 pr-4">
-                  {isInactive ? <span className="text-slate-400">—</span> : <PnlCell amount={currentPnl} pct={currentPct} />}
+                  {isInactive ? <span className="text-slate-400">—</span> : <PnlCell amount={currentPnl} pct={currentPct} fmt={formatINR} />}
                 </td>
                 {variant !== 'fd-tax' && (
                   <>
                     <td className="py-3 pr-4">
-                      <PnlCell amount={allTimePnl} dim={isInactive} />
+                      <PnlCell amount={allTimePnl} dim={isInactive} fmt={formatINR} />
                     </td>
                     <td className="py-3 pr-4 text-right font-mono">
                       {a.xirr != null ? `${(a.xirr * 100).toFixed(2)}%` : '—'}

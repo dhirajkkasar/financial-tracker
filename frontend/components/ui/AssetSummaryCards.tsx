@@ -1,7 +1,9 @@
+'use client'
 import { OverviewReturns } from '@/types'
 import { StatCard } from './StatCard'
 import { StatCardSkeleton } from './Skeleton'
-import { formatINR, formatXIRR, formatPct } from '@/lib/formatters'
+import { usePrivateMoney } from '@/hooks/usePrivateMoney'
+import { formatXIRR, formatPct } from '@/lib/formatters'
 
 interface AssetSummaryCardsProps {
   data: OverviewReturns | null
@@ -9,6 +11,7 @@ interface AssetSummaryCardsProps {
 }
 
 export function AssetSummaryCards({ data, loading }: AssetSummaryCardsProps) {
+  const { formatINR } = usePrivateMoney()
   if (loading) {
     return (
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">

@@ -121,9 +121,9 @@ class TestGoldFetcher:
     def test_fetch_gold_converts_to_inr_per_gram(self):
         asset = make_mock_asset(asset_type=AssetType.GOLD, identifier="GC=F")
         mock_gold = MagicMock()
-        mock_gold.fast_info = {"last_price": 3100.0}  # USD/troy oz
+        mock_gold.fast_info.last_price = 3100.0  # USD/troy oz
         mock_forex = MagicMock()
-        mock_forex.fast_info = {"last_price": 83.5}   # USD/INR
+        mock_forex.fast_info.last_price = 83.5   # USD/INR
 
         def ticker_side_effect(symbol):
             if symbol == "USDINR=X":

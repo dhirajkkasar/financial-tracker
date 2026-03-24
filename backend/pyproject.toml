@@ -39,7 +39,10 @@ include = ["app*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=app --cov-report=term-missing"
+addopts = "--cov=app --cov-report=term-missing -m 'not smoke'"
+markers = [
+    "smoke: Real file / real network tests. Run with: pytest -m smoke",
+]
 
 [tool.coverage.run]
 omit = ["tests/*", "scripts/*", "alembic/*"]

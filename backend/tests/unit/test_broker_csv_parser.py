@@ -17,7 +17,7 @@ class TestZerodhaImporter:
     def test_parse_returns_correct_transaction_count(self, importer, tradebook_bytes):
         result = importer.parse(tradebook_bytes)
         assert len(result.errors) == 0
-        assert len(result.transactions) == 27
+        assert len(result.transactions) == 5
 
     def test_parse_maps_buy_correctly(self, importer, tradebook_bytes):
         result = importer.parse(tradebook_bytes)

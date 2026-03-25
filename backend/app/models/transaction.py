@@ -20,6 +20,7 @@ class TransactionType(str, enum.Enum):
     SPLIT = "SPLIT"
     VEST = "VEST"
     TRANSFER = "TRANSFER"
+    BILLING = "BILLING"
 
 
 class Transaction(Base):

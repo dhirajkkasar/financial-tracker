@@ -2,6 +2,7 @@ import csv
 import hashlib
 import io
 import logging
+import re
 from datetime import datetime
 from typing import Optional
 
@@ -118,13 +119,72 @@ class NPSImporter:
         except ValueError:
             return None
 
+    def _build_notes(
+        self,
+        tier: str,
+        txn_type: str,
+        desc: str,
+        txn_date,
+    ) -> str:
+        """Build the notes string according to the spec."""
+        tier_label = f"Tier {tier}"
+
+        if txn_type == "BILLING":
+            # Extract quarter info from "Billing for Q2 2023-2024"
+            match = re.search(r'(Q\d\s+\d{4}-\d{4})', desc, re.IGNORECASE)
+            if match:
+                return f"{tier_label} | {match.group(1)}"
+            return f"{tier_label} | Billing"
+
+        if txn_type in ("SWITCH_IN", "SWITCH_OUT"):
+            if "scheme preference change" in desc.lower():
+                return f"{tier_label} | Scheme Preference Change"
+            return f"{tier_label} | Rebalancing"
+
+        if txn_type == "WITHDRAWAL":
+            return f"{tier_label} | Withdrawal"
+
+        if txn_type == "CONTRIBUTION":
+            desc_lower = desc.lower()
+
+            # Check for voluntary contribution
+            if "voluntary" in desc_lower:
+                month_abbr = txn_date.strftime("%b")
+                year = txn_date.year
+                return f"{tier_label} | {month_abbr} {year} | Voluntary Contribution"
+
+            # Check for arrear contribution
+            if "arrear" in desc_lower:
+                month_abbr = txn_date.strftime("%b")
+                year = txn_date.year
+                return f"{tier_label} | {month_abbr} {year} | Arrear"
+
+            # Try to extract month/year from description: "By Contribution for March2025"
+            match = re.search(r'for ([A-Za-z]+)(\d{4})', desc, re.IGNORECASE)
+            if match:
+                month_str = match.group(1)
+                year_str = match.group(2)
+                try:
+                    month_abbr = datetime.strptime(month_str, "%B").strftime("%b")
+                    return f"{tier_label} | {month_abbr} {year_str}"
+                except ValueError:
+                    pass
+
+            # Fallback: use transaction date
+            month_abbr = txn_date.strftime("%b")
+            year = txn_date.year
+            return f"{tier_label} | {month_abbr} {year}"
+
+        return tier_label
+
     def _parse_transaction_row(
         self, row: dict, scheme_name: str, tier: str
     ) -> Optional[ParsedTransaction]:
         desc = row["description"]
+        desc_lower = desc.lower()
 
-        # Skip opening/closing balance
-        if "Opening balance" in desc or "Closing Balance" in desc:
+        # 1. Skip opening/closing balance
+        if "opening balance" in desc_lower or "closing balance" in desc_lower:
             return None
 
         # Parse date
@@ -140,18 +200,43 @@ class NPSImporter:
         if amount is None:
             return None
 
-        # Determine transaction type
-        if "Contribution" in desc:
+        # 2. BILLING: "billing" in desc
+        if "billing" in desc_lower:
+            txn_type = "BILLING"
+            # Billing is negative (charge) — keep sign from CSV (parentheses = negative)
+            # amount already parsed with correct sign
+
+        # 3. SWITCH_IN
+        elif "by switch in" in desc_lower or (
+            "scheme preference change" in desc_lower and desc.strip().lower().startswith("by")
+        ):
+            txn_type = "SWITCH_IN"
+            # Positive in CSV → stays positive
+
+        # 4. SWITCH_OUT
+        elif "to switch out" in desc_lower or (
+            "scheme preference change" in desc_lower and desc.strip().lower().startswith("to")
+        ):
+            txn_type = "SWITCH_OUT"
+            # Negative in CSV → stays negative
+
+        # 5. WITHDRAWAL
+        elif "withdrawal" in desc_lower:
+            txn_type = "WITHDRAWAL"
+            # Negative (parens) in CSV → flip to positive (inflow)
+            if amount < 0:
+                amount = -amount
+
+        # 6. CONTRIBUTION
+        elif "contribution" in desc_lower or "tier-2" in desc_lower:
             txn_type = "CONTRIBUTION"
-            # Contributions are outflows -- amount should be negative
+            # Positive in CSV → flip to negative (outflow)
             if amount > 0:
                 amount = -amount
-        elif "Billing" in desc:
-            # Billing charges: skip from transactions
-            # (not a contribution, not meaningful for portfolio tracking)
-            return None
+
+        # 7. Unknown: log warning and skip
         else:
-            # Unknown type -- skip
+            logger.warning("NPS: unrecognized transaction: %s", desc)
             return None
 
         # Generate stable txn_id via SHA-256
@@ -159,7 +244,7 @@ class NPSImporter:
         txn_hash = hashlib.sha256(hash_input.encode()).hexdigest()
         txn_id = f"nps_{txn_hash}"
 
-        notes = f"Tier {tier}"
+        notes = self._build_notes(tier, txn_type, desc, txn_date)
 
         return ParsedTransaction(
             source="nps",

@@ -22,7 +22,7 @@ class TestNPSImporter:
         result = importer.parse(tier1_bytes)
         assert len(result.errors) == 0
         contributions = [t for t in result.transactions if t.txn_type == "CONTRIBUTION"]
-        # Tier 1 has 2 months x 3 schemes = 6 contributions
+        # Tier 1 has 2 months x 3 schemes = 6 contributions (billing row is not CONTRIBUTION)
         assert len(contributions) == 6
 
     def test_parse_creates_asset_per_scheme(self, importer, tier1_bytes):
@@ -36,15 +36,19 @@ class TestNPSImporter:
         # All transactions should reference Tier I
         assert all("TIER I" in t.asset_name or "Tier I" in (t.notes or "") for t in result.transactions)
 
-    def test_parse_marks_billing_as_charges(self, importer, tier1_bytes):
+    def test_billing_transactions_are_included(self, importer, tier1_bytes):
         result = importer.parse(tier1_bytes)
-        # Billing entries exist -- they can be CHARGES or excluded
-        # At minimum they should NOT be CONTRIBUTION
-        billing = [t for t in result.transactions if "Billing" in (t.notes or "")]
-        # If billing is included, verify amount is negative
+        billing = [t for t in result.transactions if t.txn_type == "BILLING"]
+        # Billing row exists in the fixture
+        assert len(billing) >= 1
+        # Billing amounts are negative (charges)
         for b in billing:
-            if b.amount_inr != 0:
-                assert b.amount_inr < 0
+            assert b.amount_inr < 0
+
+    def test_billing_not_skipped(self, importer, tier1_bytes):
+        result = importer.parse(tier1_bytes)
+        billing = [t for t in result.transactions if t.txn_type == "BILLING"]
+        assert len(billing) >= 1, "Billing transactions should appear in result.transactions"
 
     def test_parse_skips_opening_closing_balance(self, importer, tier1_bytes):
         result = importer.parse(tier1_bytes)
@@ -82,3 +86,44 @@ class TestNPSImporter:
         result = importer.parse(tier1_bytes)
         ids = [t.txn_id for t in result.transactions]
         assert len(ids) == len(set(ids))
+
+    def test_notes_contain_tier_label(self, importer, tier1_bytes):
+        result = importer.parse(tier1_bytes)
+        for txn in result.transactions:
+            assert txn.notes is not None
+            assert txn.notes.startswith("Tier I") or txn.notes.startswith("Tier II")
+
+    def test_contribution_notes_contain_month_year(self, importer, tier1_bytes):
+        result = importer.parse(tier1_bytes)
+        contributions = [t for t in result.transactions if t.txn_type == "CONTRIBUTION"]
+        # e.g. "Tier I | Mar 2025"
+        for c in contributions:
+            assert "|" in c.notes, f"Notes should contain '|' separator, got: {c.notes}"
+            # Should contain a month abbreviation or year
+            assert any(
+                month in c.notes
+                for month in ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+            ), f"Notes should contain month abbreviation, got: {c.notes}"
+
+    def test_voluntary_contribution_notes(self, importer):
+        """Voluntary contributions should have 'Voluntary Contribution' in notes."""
+        csv_content = b"""NPS Transaction Statement for Tier I Account
+
+Subscriber Details
+
+PRAN,'330333338391
+
+Transaction Details
+
+
+SBI PENSION FUND SCHEME C - TIER I
+Date,Description,Amount (in Rs),NAV,Units
+01-Jan-2022,Opening balance,,,100.0000
+15-Jan-2022,By Voluntary Contributions,5000.00,40.0000,125.0000
+31-Dec-2022,Closing Balance,,,225.0000
+"""
+        result = importer.parse(csv_content)
+        voluntary = [t for t in result.transactions if t.txn_type == "CONTRIBUTION"]
+        assert len(voluntary) == 1
+        assert "Voluntary Contribution" in voluntary[0].notes

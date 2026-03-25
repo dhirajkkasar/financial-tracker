@@ -7,7 +7,7 @@ export type AssetClass = 'EQUITY' | 'DEBT' | 'GOLD' | 'REAL_ESTATE' | 'MIXED'
 export type TransactionType =
   | 'BUY' | 'SELL' | 'SIP' | 'REDEMPTION' | 'DIVIDEND' | 'INTEREST'
   | 'CONTRIBUTION' | 'WITHDRAWAL' | 'SWITCH_IN' | 'SWITCH_OUT'
-  | 'BONUS' | 'SPLIT' | 'VEST' | 'TRANSFER'
+  | 'BONUS' | 'SPLIT' | 'VEST' | 'TRANSFER' | 'BILLING'
 
 export interface Asset {
   id: number

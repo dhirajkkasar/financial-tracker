@@ -160,6 +160,54 @@ class PriceService:
         self.db.commit()
         return {"refreshed": refreshed, "skipped": skipped, "failed": failed}
 
+    def refresh_by_type(self, asset_type: AssetType) -> dict:
+        """Refresh prices for all active assets of a specific type."""
+        assets = [a for a in self.asset_repo.list(active=True) if a.asset_type == asset_type]
+
+        if not assets:
+            return {"refreshed": 0, "failed": 0}
+
+        fetcher = self.fetchers.get(asset_type)
+        if not fetcher:
+            logger.info("PriceService: no price feed for asset type %s", asset_type)
+            return {"refreshed": 0, "failed": 0}
+
+        # For NPS: bulk resolve schemes first
+        if isinstance(fetcher, NPSNavFetcher):
+            fetcher.bulk_resolve_schemes(assets)
+            for asset in assets:
+                code = getattr(asset, "_resolved_nps_scheme_code", None)
+                if code and code != asset.identifier:
+                    asset.identifier = code
+            if any(getattr(a, "_resolved_nps_scheme_code", None) for a in assets):
+                self.db.commit()
+
+        refreshed, failed = 0, 0
+        for asset in assets:
+            try:
+                result = fetcher.fetch(asset)
+                if result is None:
+                    failed += 1
+                    continue
+                if hasattr(asset, "_resolved_nps_scheme_code") and asset._resolved_nps_scheme_code:
+                    asset.identifier = asset._resolved_nps_scheme_code
+                price_paise = round(result.price_inr * 100)
+                self.cache_repo.upsert(
+                    asset_id=asset.id,
+                    price_inr=price_paise,
+                    source=result.source,
+                    fetched_at=result.fetched_at,
+                    is_stale=False,
+                )
+                logger.info("refresh_by_type: ₹%.2f for asset %s (%s)", result.price_inr, asset.id, asset.name)
+                refreshed += 1
+            except Exception as e:
+                logger.warning("refresh_by_type: error for asset %s: %s", asset.id, e)
+                failed += 1
+
+        self.db.commit()
+        return {"refreshed": refreshed, "failed": failed}
+
     def _is_stale(self, asset_type: AssetType, fetched_at: datetime) -> bool:
         threshold = STALE_MINUTES.get(asset_type)
         if threshold is None:

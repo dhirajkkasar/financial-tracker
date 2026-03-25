@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.middleware.error_handler import NotFoundError
 from app.services.price_service import PriceService
+from app.services.snapshot_service import SnapshotService
 
 router = APIRouter(tags=["prices"])
 
@@ -40,4 +41,6 @@ def refresh_price(asset_id: int, db: Session = Depends(get_db)):
 @router.post("/prices/refresh-all", status_code=status.HTTP_200_OK)
 def refresh_all(db: Session = Depends(get_db)):
     svc = PriceService(db)
-    return svc.refresh_all()
+    result = svc.refresh_all()
+    SnapshotService(db).take_snapshot()
+    return result

@@ -132,7 +132,9 @@ class TestNPSCSVPreview:
         preview_id = resp.json()["preview_id"]
         new_count = resp.json()["new_count"]
 
-        resp = client.post("/import/commit", json={"preview_id": preview_id})
+        with patch("app.api.imports.PriceService") as MockPS:
+            MockPS.return_value.refresh_by_type.return_value = {"refreshed": 0, "failed": 0}
+            resp = client.post("/import/commit", json={"preview_id": preview_id})
         assert resp.status_code == 200
         assert resp.json()["created_count"] == new_count
 
@@ -142,7 +144,9 @@ class TestNPSCSVPreview:
             "/import/nps-csv",
             files={"file": ("nps.csv", nps_csv_bytes, "text/csv")},
         )
-        client.post("/import/commit", json={"preview_id": resp.json()["preview_id"]})
+        with patch("app.api.imports.PriceService") as MockPS:
+            MockPS.return_value.refresh_by_type.return_value = {"refreshed": 0, "failed": 0}
+            client.post("/import/commit", json={"preview_id": resp.json()["preview_id"]})
 
         # Second import — all duplicates
         resp = client.post(

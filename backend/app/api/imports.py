@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, File, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -7,8 +9,12 @@ from app.importers.broker_csv_parser import ZerodhaImporter
 from app.importers.cas_parser import CASImporter
 from app.importers.nps_csv_parser import NPSImporter
 from app.middleware.error_handler import NotFoundError, ValidationError
+from app.models.asset import AssetType
 from app.services.import_service import ImportService
 from app.services.ppf_epf_import_service import PPFEPFImportService
+from app.services.price_service import PriceService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/import", tags=["import"])
 
@@ -63,11 +69,21 @@ async def import_cas_pdf(
 @router.post("/commit")
 def commit_import(
     body: CommitRequest,
+    db: Session = Depends(get_db),
     svc: ImportService = Depends(get_import_service),
 ):
     result = svc.commit(body.preview_id)
     if result is None:
         raise NotFoundError(f"Preview '{body.preview_id}' not found or expired")
+
+    # Trigger NPS price refresh after import
+    if "NPS" in result.get("asset_types", []):
+        try:
+            nps_refresh = PriceService(db).refresh_by_type(AssetType.NPS)
+            result["nps_refresh"] = nps_refresh
+        except Exception as e:
+            logger.warning("NPS price refresh failed after import: %s", e)
+
     return result
 
 

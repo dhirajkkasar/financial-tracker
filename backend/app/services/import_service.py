@@ -105,6 +105,7 @@ class ImportService:
 
         created = 0
         skipped = 0
+        committed_asset_types: set[str] = set()
         touched_stock_assets: dict[int, "Asset"] = {}
 
         for txn in parsed_txns:
@@ -133,6 +134,7 @@ class ImportService:
                 lot_id=lot_id,
                 notes=txn.notes,
             )
+            committed_asset_types.add(txn.asset_type)
             created += 1
             logger.info("Imported txn %s for asset %s (id=%s)", txn.txn_id, txn.asset_name, asset.id)
 
@@ -199,7 +201,12 @@ class ImportService:
 
         self.db.commit()
         del _PREVIEW_STORE[preview_id]
-        return {"created_count": created, "skipped_count": skipped, "snapshot_count": snapshot_count}
+        return {
+            "created_count": created,
+            "skipped_count": skipped,
+            "snapshot_count": snapshot_count,
+            "asset_types": list(committed_asset_types),
+        }
 
 
 

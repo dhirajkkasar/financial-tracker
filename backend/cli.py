@@ -20,6 +20,11 @@ Usage (server must be running):
   python cli.py add valuation --asset "Venezia Flat" --value 13000000 --date 2025-01-01
   python cli.py add txn  --asset "AMZN RSU" --type VEST --date 2024-09-01 --amount -90000 --units 5 --price 215 --forex 84
 
+  # EPF monthly contribution (use after initial PDF import)
+  python cli.py add epf-contribution --asset "My EPF" --month-year 03/2026 --employee-share 5000
+  python cli.py add epf-contribution --asset "My EPF" --month-year 03/2026 --employee-share 5000 --eps-share 1250 --employer-share 3750
+  python cli.py add epf-contribution --asset "My EPF" --month-year 03/2026 --employee-share 5000 --employee-interest 500 --employer-interest 400 --eps-interest 50
+
   python cli.py list assets
   python cli.py refresh-prices
   python cli.py snapshot
@@ -28,6 +33,8 @@ Set PORTFOLIO_API env var to override the default base URL (http://localhost:800
 """
 
 import argparse
+import calendar
+import hashlib
 import os
 import sys
 from difflib import get_close_matches
@@ -84,7 +91,7 @@ def _find_or_create_asset(name: str, asset_type: str, asset_class: str,
 def cmd_import_ppf(file_path: str) -> dict:
     _check_file(file_path)
     with open(file_path, "rb") as f:
-        result = _api("post", "/import/ppf-pdf", files={"file": f})
+        result = _api("post", "/import/ppf-csv", files={"file": f})
     _print_import_summary("PPF", inserted=result["inserted"], skipped=result["skipped"], errors=result.get("errors", []))
     if result.get("valuation_created"):
         print(f"  → Valuation created: ₹{result['valuation_value']:,.2f} on {result['valuation_date']}")
@@ -95,9 +102,9 @@ def cmd_import_epf(file_path: str) -> dict:
     _check_file(file_path)
     with open(file_path, "rb") as f:
         result = _api("post", "/import/epf-pdf", files={"file": f})
-    _print_import_summary("EPF", inserted=result["epf_inserted"], skipped=result["epf_skipped"], errors=result.get("errors", []))
-    print(f"  EPS: {result['eps_inserted']} inserted, {result['eps_skipped']} skipped"
-          + (" (asset created)" if result.get("eps_asset_created") else ""))
+    _print_import_summary("EPF", inserted=result["inserted"], skipped=result["skipped"], errors=result.get("errors", []))
+    print(f"  EPS: {result['inserted']} inserted, {result['skipped']} skipped"
+          + (" (asset created)" if result.get("asset_created") else ""))
     return result
 
 
@@ -243,6 +250,97 @@ def cmd_add_us_stock(name: str, date: str, units: float, price: float,
     })
     print(f"✓ US Stock BUY: {units} × ${price:.2f} @ ₹{forex} = ₹{abs(amount):,.2f} on {date}")
     return txn
+
+
+def _epf_txn_id(*parts) -> str:
+    """Generate a stable EPF txn_id matching the EPF PDF parser convention."""
+    raw = "|".join(str(p) for p in parts)
+    return "epf_" + hashlib.sha256(raw.encode()).hexdigest()
+
+
+def cmd_add_epf_contribution(
+    asset_name: str,
+    month_year: str,
+    employee_share: float,
+    eps_share: float = 1250.0,
+    employer_share: float | None = None,
+    employee_interest: float | None = None,
+    employer_interest: float | None = None,
+    eps_interest: float | None = None,
+) -> list:
+    """
+    Add a monthly EPF contribution (and optionally interest) for one month.
+
+    Creates up to 3 CONTRIBUTION transactions (employee, employer, EPS) and
+    up to 3 INTEREST transactions (if interest amounts are provided).
+    Transactions are deduplicated via stable txn_ids matching the EPF PDF parser.
+    """
+    from datetime import date as _date
+
+    # Parse MM/YYYY
+    try:
+        month_str, year_str = month_year.split("/")
+        month, year = int(month_str), int(year_str)
+        if not (1 <= month <= 12 and year >= 2000):
+            raise ValueError
+    except ValueError:
+        sys.exit("--month-year must be MM/YYYY (e.g. 03/2026)")
+
+    if employer_share is None:
+        employer_share = employee_share - eps_share
+
+    last_day = calendar.monthrange(year, month)[1]
+    txn_date = _date(year, month, last_day).isoformat()
+    mmyyyy = f"{month:02d}{year}"
+
+    asset = find_asset(asset_name)
+    asset_id = asset["id"]
+    member_id = asset.get("identifier") or ""
+
+    inserted = 0
+    skipped = 0
+
+    def _post_txn(txn_type: str, amount_inr: float, notes: str, txn_id: str):
+        nonlocal inserted, skipped
+        try:
+            _api("post", f"/assets/{asset_id}/transactions", json={
+                "type": txn_type,
+                "date": txn_date,
+                "amount_inr": amount_inr,
+                "charges_inr": 0.0,
+                "notes": notes,
+                "txn_id": txn_id,
+            })
+            print(f"  + {txn_type} ({notes}): ₹{abs(amount_inr):,.2f}")
+            inserted += 1
+        except SystemExit as exc:
+            msg = str(exc)
+            if "409" in msg or "already exists" in msg:
+                print(f"  ~ skipped (duplicate): {txn_type} ({notes})")
+                skipped += 1
+            else:
+                raise
+
+    # Contributions (outflows → negative)
+    _post_txn("CONTRIBUTION", -employee_share, "Employee Share",
+              _epf_txn_id(member_id, "CONTRIB_EMP", mmyyyy, round(employee_share * 100)))
+    _post_txn("CONTRIBUTION", -employer_share, "Employer Share",
+              _epf_txn_id(member_id, "CONTRIB_ER", mmyyyy, round(employer_share * 100)))
+    _post_txn("CONTRIBUTION", -eps_share, "Pension Contribution (EPS)",
+              _epf_txn_id(member_id, "CONTRIB_EPS", mmyyyy, round(eps_share * 100)))
+
+    # Interest (inflows → positive), only if provided
+    if employee_interest is not None:
+        _post_txn("INTEREST", employee_interest, "Employee Interest",
+                  _epf_txn_id(member_id, "INTEREST_EMP", txn_date, round(employee_interest * 100)))
+    if employer_interest is not None:
+        _post_txn("INTEREST", employer_interest, "Employer Interest",
+                  _epf_txn_id(member_id, "INTEREST_ER", txn_date, round(employer_interest * 100)))
+    if eps_interest is not None:
+        _post_txn("INTEREST", eps_interest, "EPS Interest",
+                  _epf_txn_id(member_id, "INTEREST_EPS", txn_date, round(eps_interest * 100)))
+
+    print(f"✓ EPF {month_year}: {inserted} inserted, {skipped} skipped")
 
 
 def cmd_add_valuation(asset_name: str, value: float, date: str) -> dict:
@@ -418,6 +516,24 @@ def build_parser() -> argparse.ArgumentParser:
     p_us.add_argument("--price", type=float, required=True, help="Price per share in USD")
     p_us.add_argument("--forex", type=float, required=True, help="USD/INR rate")
 
+    # add epf-contribution
+    p_epf = add_sub.add_parser("epf-contribution", help="Add a monthly EPF contribution (post initial PDF import)")
+    p_epf.add_argument("--asset", required=True, help="EPF asset name (fuzzy matched)")
+    p_epf.add_argument("--month-year", required=True, dest="month_year",
+                       metavar="MM/YYYY", help="Contribution month and year (e.g. 03/2026)")
+    p_epf.add_argument("--employee-share", type=float, required=True, dest="employee_share",
+                       help="Employee EPF contribution in INR")
+    p_epf.add_argument("--eps-share", type=float, default=1250.0, dest="eps_share",
+                       help="EPS (pension) contribution in INR (default: 1250)")
+    p_epf.add_argument("--employer-share", type=float, default=None, dest="employer_share",
+                       help="Employer EPF contribution in INR (default: employee-share minus eps-share)")
+    p_epf.add_argument("--employee-interest", type=float, default=None, dest="employee_interest",
+                       help="Employee interest in INR (optional)")
+    p_epf.add_argument("--employer-interest", type=float, default=None, dest="employer_interest",
+                       help="Employer interest in INR (optional)")
+    p_epf.add_argument("--eps-interest", type=float, default=None, dest="eps_interest",
+                       help="EPS interest in INR (optional)")
+
     # add valuation
     p_val = add_sub.add_parser("valuation", help="Add a manual valuation to an existing asset")
     p_val.add_argument("--asset", required=True, help="Asset name (fuzzy matched)")
@@ -500,6 +616,15 @@ def main():
         elif args.kind == "us-stock":
             cmd_add_us_stock(args.name, args.date, args.units, args.price, args.forex,
                              identifier=args.identifier)
+        elif args.kind == "epf-contribution":
+            cmd_add_epf_contribution(
+                args.asset, args.month_year, args.employee_share,
+                eps_share=args.eps_share,
+                employer_share=args.employer_share,
+                employee_interest=args.employee_interest,
+                employer_interest=args.employer_interest,
+                eps_interest=args.eps_interest,
+            )
         elif args.kind == "valuation":
             cmd_add_valuation(args.asset, args.value, args.date)
         elif args.kind == "txn":

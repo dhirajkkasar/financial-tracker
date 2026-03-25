@@ -1,21 +1,19 @@
 """
-Service for importing PPF and EPF PDF statements.
+Service for importing PPF and EPF statements.
 
 Handles:
   - Asset lookup by identifier (account number for PPF, member ID for EPF)
   - Transaction deduplication by txn_id
   - Valuation creation from closing balance (PPF) / net balance (EPF)
-  - EPS sub-asset auto-creation (EPF imports)
-  - EPF asset inactivation when net balance = 0
 """
 import logging
 import uuid
 
 from sqlalchemy.orm import Session
 
-from app.importers.ppf_pdf_parser import PPFPDFParser
+from app.importers.ppf_csv_parser import PPFCSVParser
 from app.importers.epf_pdf_parser import EPFPDFParser
-from app.models.asset import Asset, AssetType, AssetClass
+from app.models.asset import Asset
 from app.models.transaction import TransactionType
 from app.repositories.asset_repo import AssetRepository
 from app.repositories.transaction_repo import TransactionRepository
@@ -27,7 +25,7 @@ LOT_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST"}
 
 
 class PPFEPFImportService:
-    """Import service for PPF and EPF PDF statements."""
+    """Import service for PPF (CSV) and EPF (PDF) statements."""
 
     def __init__(self, db: Session):
         self.db = db
@@ -36,19 +34,23 @@ class PPFEPFImportService:
         self.val_repo = ValuationRepository(db)
 
     # ------------------------------------------------------------------
-    # PPF
+    # PPF CSV
     # ------------------------------------------------------------------
 
-    def import_ppf(self, file_bytes: bytes) -> dict:
+    def import_ppf_csv(self, file_bytes: bytes) -> dict:
         """
-        Parse a PPF PDF and import transactions into the DB.
+        Parse a PPF CSV account statement and import transactions into the DB.
 
-        The PPF asset must already exist with identifier = stripped account number.
+        The PPF asset must already exist with identifier = account number.
+        Credits whose details contain "INTEREST" become INTEREST transactions
+        (positive inflow); all other credits become CONTRIBUTION transactions
+        (negative outflow).
+
         Returns:
           {inserted, skipped, valuation_created, valuation_value, valuation_date,
            account_number, errors}
         """
-        parser = PPFPDFParser()
+        parser = PPFCSVParser()
         result = parser.parse(file_bytes)
 
         if result.errors:
@@ -62,7 +64,6 @@ class PPFEPFImportService:
                 "errors": result.errors,
             }
 
-        # Find asset by identifier (account number)
         asset = self._find_asset_by_identifier(result.account_number)
         if asset is None:
             from app.middleware.error_handler import NotFoundError
@@ -96,26 +97,28 @@ class PPFEPFImportService:
                 notes=txn.notes,
             )
             inserted += 1
-            logger.info("PPF: imported txn %s for asset %s", txn.txn_id, asset.id)
+            logger.info("PPF CSV: imported txn %s for asset %s", txn.txn_id, asset.id)
 
         # Create Valuation from closing balance
         valuation_created = False
-        if result.closing_balance_inr is not None and result.closing_balance_date:
+        if result.closing_balance_inr and result.closing_balance_date:
             value_paise = round(result.closing_balance_inr * 100)
             self.val_repo.create(
                 asset_id=asset.id,
                 date=result.closing_balance_date,
                 value_inr=value_paise,
-                source="ppf_pdf",
-                notes=f"Closing balance from PDF import (account {result.account_number})",
+                source="ppf_csv",
+                notes=f"Closing balance from CSV import (account {result.account_number})",
             )
             valuation_created = True
             logger.info(
-                "PPF: created valuation %.2f INR on %s for asset %s",
+                "PPF CSV: created valuation %.2f INR on %s for asset %s",
                 result.closing_balance_inr,
                 result.closing_balance_date,
                 asset.id,
             )
+
+        self.db.commit()
 
         return {
             "inserted": inserted,
@@ -136,26 +139,19 @@ class PPFEPFImportService:
         Parse an EPF PDF and import transactions.
 
         The EPF asset must already exist with identifier = member_id.
-        Auto-creates an EPS sub-asset (type=EPF, identifier=member_id_EPS).
-        Creates a Valuation for the EPF asset from the net balance.
-        Marks the EPF asset inactive if net balance = 0.
+        All transactions (employee share, employer share, pension/EPS, interest, transfer)
+        are imported under the EPF asset. No separate EPS sub-asset is created.
 
         Returns:
-          {epf_inserted, epf_skipped, eps_inserted, eps_skipped,
-           eps_asset_id, eps_asset_created, epf_valuation_created,
-           epf_valuation_value, errors}
+          {inserted, skipped, epf_valuation_created, epf_valuation_value, errors}
         """
         parser = EPFPDFParser()
         result = parser.parse(file_bytes)
 
         if result.errors:
             return {
-                "epf_inserted": 0,
-                "epf_skipped": 0,
-                "eps_inserted": 0,
-                "eps_skipped": 0,
-                "eps_asset_id": None,
-                "eps_asset_created": False,
+                "inserted": 0,
+                "skipped": 0,
                 "epf_valuation_created": False,
                 "epf_valuation_value": None,
                 "errors": result.errors,
@@ -170,46 +166,20 @@ class PPFEPFImportService:
                 "Create the asset first before importing."
             )
 
-        # Find or create EPS sub-asset
-        eps_identifier = f"{result.member_id}_EPS"
-        eps_asset = self._find_asset_by_identifier(eps_identifier)
-        eps_asset_created = False
-        if eps_asset is None:
-            eps_asset = self.asset_repo.create(
-                name=f"EPS — {result.establishment_name}",
-                identifier=eps_identifier,
-                asset_type=AssetType.EPF,
-                asset_class=AssetClass.DEBT,
-                currency="INR",
-            )
-            eps_asset_created = True
-            logger.info("EPF: auto-created EPS asset id=%s", eps_asset.id)
-
-        # Import transactions — route to EPF or EPS asset based on identifier
-        epf_inserted = 0
-        epf_skipped = 0
-        eps_inserted = 0
-        eps_skipped = 0
+        inserted = 0
+        skipped = 0
 
         for txn in result.transactions:
             if self.txn_repo.get_by_txn_id(txn.txn_id):
-                if txn.asset_identifier == eps_identifier:
-                    eps_skipped += 1
-                else:
-                    epf_skipped += 1
+                skipped += 1
                 continue
-
-            if txn.asset_identifier == eps_identifier:
-                target_asset = eps_asset
-            else:
-                target_asset = epf_asset
 
             amount_paise = round(txn.amount_inr * 100)
             lot_id = str(uuid.uuid4()) if txn.txn_type in LOT_TYPES else None
 
             self.txn_repo.create(
                 txn_id=txn.txn_id,
-                asset_id=target_asset.id,
+                asset_id=epf_asset.id,
                 type=TransactionType(txn.txn_type),
                 date=txn.date,
                 units=txn.units,
@@ -220,14 +190,10 @@ class PPFEPFImportService:
                 lot_id=lot_id,
                 notes=txn.notes,
             )
+            inserted += 1
+            logger.info("EPF: imported txn %s for asset %s", txn.txn_id, epf_asset.id)
 
-            if txn.asset_identifier == eps_identifier:
-                eps_inserted += 1
-            else:
-                epf_inserted += 1
-            logger.info("EPF: imported txn %s for asset %s", txn.txn_id, target_asset.id)
-
-        # Create EPF Valuation (net balance)
+        # Create EPF Valuation (net balance from passbook)
         epf_valuation_created = False
         net_balance = result.net_balance_inr
         use_date = result.print_date
@@ -245,19 +211,11 @@ class PPFEPFImportService:
         )
         epf_valuation_created = True
 
-        # Mark EPF asset inactive if balance = 0
-        if net_balance == 0:
-            epf_asset.is_active = False
-            self.db.commit()
-            logger.info("EPF: marked asset %s inactive (zero balance)", epf_asset.id)
+        self.db.commit()
 
         return {
-            "epf_inserted": epf_inserted,
-            "epf_skipped": epf_skipped,
-            "eps_inserted": eps_inserted,
-            "eps_skipped": eps_skipped,
-            "eps_asset_id": eps_asset.id,
-            "eps_asset_created": eps_asset_created,
+            "inserted": inserted,
+            "skipped": skipped,
             "epf_valuation_created": epf_valuation_created,
             "epf_valuation_value": net_balance,
             "errors": result.errors,

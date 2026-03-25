@@ -20,24 +20,24 @@ cd backend
 # Install dependencies (uses uv lockfile)
 pip install -e ".[dev]"
 
-# Run dev server (seeds interest rates + refreshes prices on startup)
+# Run dev server (seeds interest rates + auto-matures past-due FDs on startup)
 uvicorn app.main:app --reload
 
-# Run all tests
-pytest
+# Run all tests (use uv run — bare pytest/python/python3 are not on PATH)
+uv run pytest
 
 # Run a single test file
-pytest tests/unit/test_fd_engine.py
+uv run pytest tests/unit/test_fd_engine.py
 
 # Run a single test by name
-pytest tests/unit/test_fd_engine.py::test_function_name -v
+uv run pytest tests/unit/test_fd_engine.py::test_function_name -v
 
 # Run with coverage report
-pytest --cov=app --cov-report=term-missing
+uv run pytest --cov=app --cov-report=term-missing
 
 # Run only unit or integration tests
-pytest tests/unit/
-pytest tests/integration/
+uv run pytest tests/unit/
+uv run pytest tests/integration/
 
 # Create a new Alembic migration
 alembic revision --autogenerate -m "description"
@@ -124,7 +124,11 @@ MARKET_BASED  = STOCK_IN, STOCK_US, MF, RSU, GOLD, SGB, NPS
                 → current_value = total_units × price_cache NAV
 FD_BASED      = FD, RD
                 → current_value = formula (compound interest)
-VALUATION_BASED = PPF, EPF, REAL_ESTATE
+EPF_BASED     = EPF
+                → total_invested = sum of all CONTRIBUTION outflows (employee + employer + EPS + transfer-ins)
+                → current_value  = total_invested + sum of all INTEREST inflows (employee + employer + EPS − TDS)
+                → EPF asset is always is_active=True (never auto-set inactive)
+VALUATION_BASED = PPF, REAL_ESTATE
                 → current_value = latest Valuation entry (manual passbook)
 ```
 - NPS moved to MARKET_BASED (from VALUATION_BASED) — units tracked via CONTRIBUTION transactions, NAV auto-fetched
@@ -174,8 +178,12 @@ VALUATION_BASED = PPF, EPF, REAL_ESTATE
 ### Startup Behaviour
 - FastAPI lifespan event on startup:
   1. Seeds interest rates (idempotent)
-  2. Triggers `PriceService.refresh_all()` in background (non-blocking)
-- No manual price refresh needed after restart
+  2. Runs `DepositsService.mark_matured_fds()` — marks FDs/RDs past their maturity date as `is_matured=True` / `is_active=False`, and back-fills `maturity_amount` if missing
+- Price refresh is **on-demand only** via `python cli.py refresh-prices`; it is no longer triggered automatically on startup
+
+### DepositsService (`backend/app/services/deposits_service.py`)
+- `mark_matured_fds()` — queries active FD/RD assets whose `maturity_date < today` and `is_matured=False`; for each, computes `maturity_amount` from `fd_engine` formulas if not already stored, sets `is_matured=True`, sets `asset.is_active=False`, commits once at the end
+- Called automatically on startup; safe to call repeatedly (idempotent)
 
 ### FD vs RD in FDDetail
 - `fd_type = FD` → `principal_amount` = lump-sum deposit (paise)
@@ -278,49 +286,62 @@ constants/index.ts  → Asset type labels, colors, thresholds, NAV_TABS — no m
 
 ---
 
-## PPF / EPF PDF Import (Phase 2 extension)
+## PPF / EPF Import (Phase 2 extension)
 
-### PPF PDF Parser (`backend/app/importers/ppf_pdf_parser.py`)
-- Parses SBI PPF account statement PDFs using `pdfplumber` table extraction
-- Account number extracted from "Account Number :" line, stripped of leading zeros
-- `txn_id`: `ppf_{ref_no}` when ref exists, else `ppf_{SHA256(acct|CONTRIBUTION|date|paise)}`
-- Returns `PPFImportResult` with extra fields: `account_number`, `closing_balance_inr`, `closing_balance_date`
-- All credit rows → `CONTRIBUTION` type, negative amount (outflow convention)
+### PPF CSV Parser (`backend/app/importers/ppf_csv_parser.py`)
+- Parses SBI PPF account statement CSVs (bank-exported format)
+- Account number extracted from CSV header; bank name derived from IFSC code (first 4 chars)
+- Asset name format: `"PPF - {bank_name}"` (e.g. "PPF - SBI")
+- `txn_id`: `ppf_csv_` + SHA256(account_number|txn_type|date_iso|amount_paise)
+- Credit rows with "INTEREST" in details → `INTEREST` (positive inflow); other credits → `CONTRIBUTION` (negative outflow); debits → `WITHDRAWAL`
+- Returns `PPFCSVImportResult` with: `account_number`, `bank_name`, `asset_name`, `closing_balance_inr`, `closing_balance_date`
 - Service auto-creates one `Valuation` entry from the closing balance
 
 ### EPF PDF Parser (`backend/app/importers/epf_pdf_parser.py`)
-- Parses EPFO member passbook PDFs (text-based, bilingual Hindi/English)
-- Extracts member_id, establishment_name, print_date (from Hindi `eqfnzr DD-MM-YYYY` line)
-- "Cont. For MMYYYY" rows → 3 transactions each:
-  - CONTRIBUTION to EPF asset (employee share, notes="Employee Share")
-  - CONTRIBUTION to EPF asset (employer share, notes="Employer Share")
-  - CONTRIBUTION to EPS asset (pension, notes="Pension Contribution")
-- "Int. Updated upto DD/MM/YYYY" rows → 1 combined INTEREST transaction (employee_int + employer_int)
-- "Claim: Against PARA 57(1)" row → 1 TRANSFER transaction using print_date
-- Zero-amount rows are skipped
+- Parses **page 1 only** of EPFO member passbook PDFs — page 2 is "Taxable Data" with different interest splits that would create duplicates
+- Extracts member_id, establishment_name, print_date (from Hindi `eqfnzr/Printed On DD-MM-YYYY` line)
+- **"Cont. For MMYYYY" rows** → up to 3 CONTRIBUTION transactions (skip if amount=0):
+  - notes="Employee Share" (employee EPF)
+  - notes="Employer Share" (employer EPF)
+  - notes="Pension Contribution (EPS)" (pension/EPS)
+- **CR rows without "Cont. For"** (transfer-ins from old employer) → CONTRIBUTION transactions:
+  - notes="Transfer In - Employee Share" / "Transfer In - Employer Share" / "Transfer In - Pension (EPS)"
+- **"Int. Updated upto DD/MM/YYYY" rows** → 3 separate INTEREST transactions:
+  - notes="Employee Interest", notes="Employer Interest", notes="EPS Interest"
+  - EPS interest recorded even when 0 (for data completeness)
+  - If row absent (shows "Interest details N/A") → no interest txns created for that year
+- **"Deduction of TDS" row** → INTEREST transaction(s) with negative amount (notes="TDS Deduction")
+- **"Claim: Against PARA 57(1)" row** → 1 TRANSFER transaction using print_date
 - Returns `EPFImportResult` with: `member_id`, `establishment_name`, `print_date`, `net_balance_inr`, grand totals
+- **Invested value** = sum of all CONTRIBUTION outflows (employee + employer + EPS + transfer-ins)
+- **Current value** = invested + sum of all INTEREST inflows (employee + employer + EPS − TDS deductions)
 
 ### TRANSFER Transaction Type
 - Added `TRANSFER = "TRANSFER"` to `TransactionType` enum in `backend/app/models/transaction.py`
 - Alembic migration: `a1b2c3d4e5f6_add_transfer_transaction_type.py` (no-op for SQLite, ALTER TYPE for PostgreSQL)
 - Frontend `TransactionType` union in `frontend/types/index.ts` updated to include `'TRANSFER'`
 
-### EPS Asset Convention
-- Type: `EPF`
-- Name: `EPS — {establishment_name}` (e.g. "EPS — IBM INDIA PVT LTD")
-- Identifier: `{member_id}_EPS` (e.g. "PYKRP00192140000152747_EPS")
-- Auto-created by `PPFEPFImportService` during EPF import if not already present
+### EPS Convention (no separate asset)
+- Pension/EPS contributions are imported as CONTRIBUTION transactions on the EPF asset with `notes="Pension Contribution (EPS)"`
+- No separate EPS asset is created; employee + employer + EPS all roll up into the single EPF asset
 
 ### PPFEPFImportService (`backend/app/services/ppf_epf_import_service.py`)
 - Direct import pattern (no preview/commit step)
-- `import_ppf(file_bytes)`: matches asset by identifier, deduplicates by txn_id, creates Valuation
-- `import_epf(file_bytes)`: matches EPF asset, finds-or-creates EPS asset, imports all transactions, creates EPF Valuation, marks EPF asset inactive when net_balance = 0
+- `import_ppf_csv(file_bytes)`: matches PPF asset by identifier (account number), deduplicates by txn_id, creates Valuation
+- `import_epf(file_bytes)`: matches EPF asset by member_id, imports all transactions under it, creates EPF Valuation; EPF asset is never set inactive
 - Both methods raise `NotFoundError` (→ HTTP 404) if the asset does not exist
 
 ### API Endpoints
-- `POST /import/ppf-pdf` — returns `{inserted, skipped, valuation_created, valuation_value, valuation_date, account_number, errors}`
-- `POST /import/epf-pdf` — returns `{epf_inserted, epf_skipped, eps_inserted, eps_skipped, eps_asset_id, eps_asset_created, epf_valuation_created, epf_valuation_value, errors}`
+- `POST /import/ppf-csv` — returns `{inserted, skipped, valuation_created, valuation_value, valuation_date, account_number, errors}`
+- `POST /import/epf-pdf` — returns `{inserted, skipped, epf_valuation_created, epf_valuation_value, errors}`
+
+### EPF Manual Contribution CLI (`add epf-contribution`)
+- Use after initial PDF import for ongoing monthly contributions
+- `--employee-share` is the only required arg; `--eps-share` defaults to 1250; `--employer-share` defaults to `employee-share − eps-share`
+- Generates stable txn_ids via `_epf_txn_id(*parts)` = `"epf_" + sha256("|".join(parts))` — must match the PDF parser's scheme exactly to prevent cross-source duplicates
+- Interest args (`--employee-interest`, `--employer-interest`, `--eps-interest`) are optional; each creates a separate INTEREST transaction (positive inflow)
+- CLI `_api()` calls `sys.exit` on any non-2xx; catch `SystemExit` and check `"409" in str(exc)` to treat duplicates as skipped (see `cmd_add_epf_contribution`)
 
 ### EPF Page (frontend)
-- `frontend/app/epf/page.tsx` updated to split EPF assets from EPS assets (name starts with "EPS")
-- EPS sub-section shown below the main EPF holdings table with a description note
+- `frontend/app/epf/page.tsx` shows all EPF assets in a single HoldingsTable with `showNotes` enabled
+- Notes column shows the asset's notes field (no separate EPS sub-section)

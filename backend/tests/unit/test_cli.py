@@ -52,33 +52,33 @@ class TestFindAsset:
 
 class TestImportPPF:
     def test_calls_correct_endpoint(self, requests_mock, tmp_path):
-        pdf = tmp_path / "ppf.pdf"
-        pdf.write_bytes(b"%PDF-1.4 fake")
-        requests_mock.post(f"{BASE}/import/ppf-pdf", json={
+        csv = tmp_path / "ppf.csv"
+        csv.write_bytes(b"fake,csv,data")
+        requests_mock.post(f"{BASE}/import/ppf-csv", json={
             "inserted": 5, "skipped": 1, "valuation_created": True,
-            "valuation_value": 150000.0, "valuation_date": "2024-03-31",
+            "valuation_value": 150000.0, "valuation_date": "2026-03-25",
             "account_number": "32256576916", "errors": []
         })
-        result = cli.cmd_import_ppf(str(pdf))
-        assert requests_mock.last_request.path == "/import/ppf-pdf"
+        result = cli.cmd_import_ppf(str(csv))
+        assert requests_mock.last_request.path == "/import/ppf-csv"
         assert result["inserted"] == 5
 
     def test_prints_summary(self, requests_mock, tmp_path, capsys):
-        pdf = tmp_path / "ppf.pdf"
-        pdf.write_bytes(b"%PDF fake")
-        requests_mock.post(f"{BASE}/import/ppf-pdf", json={
+        csv = tmp_path / "ppf.csv"
+        csv.write_bytes(b"fake,csv,data")
+        requests_mock.post(f"{BASE}/import/ppf-csv", json={
             "inserted": 3, "skipped": 0, "valuation_created": True,
-            "valuation_value": 200000.0, "valuation_date": "2024-03-31",
+            "valuation_value": 200000.0, "valuation_date": "2026-03-25",
             "account_number": "32256576916", "errors": []
         })
-        cli.cmd_import_ppf(str(pdf))
+        cli.cmd_import_ppf(str(csv))
         out = capsys.readouterr().out
         assert "3 inserted" in out
         assert "0 skipped" in out
 
     def test_file_not_found_exits(self):
         with pytest.raises(SystemExit):
-            cli.cmd_import_ppf("/nonexistent/path/ppf.pdf")
+            cli.cmd_import_ppf("/nonexistent/path/ppf.csv")
 
 
 # ── import epf ────────────────────────────────────────────────────────────────
@@ -88,23 +88,23 @@ class TestImportEPF:
         pdf = tmp_path / "epf.pdf"
         pdf.write_bytes(b"%PDF-1.4 fake")
         requests_mock.post(f"{BASE}/import/epf-pdf", json={
-            "epf_inserted": 10, "epf_skipped": 2,
+            "inserted": 10, "skipped": 2,
             "eps_inserted": 5,  "eps_skipped": 1,
-            "eps_asset_id": 7,  "eps_asset_created": False,
+            "eps_asset_id": 7,  "asset_created": False,
             "epf_valuation_created": True, "epf_valuation_value": 500000.0,
             "errors": []
         })
         result = cli.cmd_import_epf(str(pdf))
         assert requests_mock.last_request.path == "/import/epf-pdf"
-        assert result["epf_inserted"] == 10
+        assert result["inserted"] == 10
 
     def test_prints_summary(self, requests_mock, tmp_path, capsys):
         pdf = tmp_path / "epf.pdf"
         pdf.write_bytes(b"%PDF fake")
         requests_mock.post(f"{BASE}/import/epf-pdf", json={
-            "epf_inserted": 8, "epf_skipped": 0,
+            "inserted": 8, "skipped": 0,
             "eps_inserted": 4, "eps_skipped": 0,
-            "eps_asset_id": 7, "eps_asset_created": True,
+            "eps_asset_id": 7, "asset_created": True,
             "epf_valuation_created": True, "epf_valuation_value": 300000.0,
             "errors": []
         })
@@ -421,6 +421,202 @@ class TestAddTxn:
         assert body["type"] == "VEST"
         assert body["amount_inr"] == -90425.0
         assert body["notes"] == "Q4"
+
+
+# ── add epf-contribution ──────────────────────────────────────────────────────
+
+EPF_ASSET = {"id": 5, "name": "My EPF", "asset_type": "EPF", "asset_class": "DEBT",
+             "is_active": True, "identifier": "MHBAN00123456789"}
+
+TXN_RESP = {"id": 99, "asset_id": 5, "type": "CONTRIBUTION"}
+
+
+class TestAddEPFContribution:
+    def test_creates_three_contribution_txns(self, requests_mock):
+        requests_mock.get(f"{BASE}/assets", json=[EPF_ASSET])
+        requests_mock.post(f"{BASE}/assets/5/transactions", json=TXN_RESP)
+
+        cli.cmd_add_epf_contribution(
+            asset_name="My EPF",
+            month_year="03/2026",
+            employee_share=5000.0,
+        )
+
+        post_calls = [r for r in requests_mock.request_history if r.method == "POST"]
+        assert len(post_calls) == 3
+
+    def test_contribution_notes_are_correct(self, requests_mock):
+        requests_mock.get(f"{BASE}/assets", json=[EPF_ASSET])
+        requests_mock.post(f"{BASE}/assets/5/transactions", json=TXN_RESP)
+
+        cli.cmd_add_epf_contribution("My EPF", "03/2026", employee_share=5000.0)
+
+        post_calls = [r for r in requests_mock.request_history if r.method == "POST"]
+        notes = [c.json()["notes"] for c in post_calls]
+        assert "Employee Share" in notes
+        assert "Employer Share" in notes
+        assert "Pension Contribution (EPS)" in notes
+
+    def test_contribution_amounts_are_negative(self, requests_mock):
+        requests_mock.get(f"{BASE}/assets", json=[EPF_ASSET])
+        requests_mock.post(f"{BASE}/assets/5/transactions", json=TXN_RESP)
+
+        cli.cmd_add_epf_contribution("My EPF", "03/2026", employee_share=5000.0, eps_share=1250.0)
+
+        post_calls = [r for r in requests_mock.request_history if r.method == "POST"]
+        amounts = [c.json()["amount_inr"] for c in post_calls]
+        assert all(a < 0 for a in amounts)
+
+    def test_employer_share_defaults_to_employee_minus_eps(self, requests_mock):
+        requests_mock.get(f"{BASE}/assets", json=[EPF_ASSET])
+        requests_mock.post(f"{BASE}/assets/5/transactions", json=TXN_RESP)
+
+        cli.cmd_add_epf_contribution("My EPF", "03/2026", employee_share=6000.0, eps_share=1250.0)
+
+        post_calls = [r for r in requests_mock.request_history if r.method == "POST"]
+        bodies = {c.json()["notes"]: c.json()["amount_inr"] for c in post_calls}
+        assert bodies["Employer Share"] == -4750.0  # 6000 - 1250
+
+    def test_employer_share_explicit(self, requests_mock):
+        requests_mock.get(f"{BASE}/assets", json=[EPF_ASSET])
+        requests_mock.post(f"{BASE}/assets/5/transactions", json=TXN_RESP)
+
+        cli.cmd_add_epf_contribution("My EPF", "03/2026", employee_share=5000.0,
+                                     eps_share=1250.0, employer_share=2000.0)
+
+        post_calls = [r for r in requests_mock.request_history if r.method == "POST"]
+        bodies = {c.json()["notes"]: c.json()["amount_inr"] for c in post_calls}
+        assert bodies["Employer Share"] == -2000.0
+
+    def test_eps_share_defaults_to_1250(self, requests_mock):
+        requests_mock.get(f"{BASE}/assets", json=[EPF_ASSET])
+        requests_mock.post(f"{BASE}/assets/5/transactions", json=TXN_RESP)
+
+        cli.cmd_add_epf_contribution("My EPF", "03/2026", employee_share=5000.0)
+
+        post_calls = [r for r in requests_mock.request_history if r.method == "POST"]
+        bodies = {c.json()["notes"]: c.json()["amount_inr"] for c in post_calls}
+        assert bodies["Pension Contribution (EPS)"] == -1250.0
+
+    def test_transaction_date_is_last_day_of_month(self, requests_mock):
+        requests_mock.get(f"{BASE}/assets", json=[EPF_ASSET])
+        requests_mock.post(f"{BASE}/assets/5/transactions", json=TXN_RESP)
+
+        cli.cmd_add_epf_contribution("My EPF", "02/2024", employee_share=5000.0)  # Feb 2024 (leap year)
+
+        post_calls = [r for r in requests_mock.request_history if r.method == "POST"]
+        assert post_calls[0].json()["date"] == "2024-02-29"
+
+    def test_interest_txns_created_when_provided(self, requests_mock):
+        requests_mock.get(f"{BASE}/assets", json=[EPF_ASSET])
+        requests_mock.post(f"{BASE}/assets/5/transactions", json=TXN_RESP)
+
+        cli.cmd_add_epf_contribution(
+            "My EPF", "03/2026", employee_share=5000.0,
+            employee_interest=300.0, employer_interest=200.0, eps_interest=50.0,
+        )
+
+        post_calls = [r for r in requests_mock.request_history if r.method == "POST"]
+        assert len(post_calls) == 6  # 3 contribution + 3 interest
+
+    def test_interest_notes_are_correct(self, requests_mock):
+        requests_mock.get(f"{BASE}/assets", json=[EPF_ASSET])
+        requests_mock.post(f"{BASE}/assets/5/transactions", json=TXN_RESP)
+
+        cli.cmd_add_epf_contribution(
+            "My EPF", "03/2026", employee_share=5000.0,
+            employee_interest=300.0, employer_interest=200.0, eps_interest=50.0,
+        )
+
+        post_calls = [r for r in requests_mock.request_history if r.method == "POST"]
+        notes = [c.json()["notes"] for c in post_calls]
+        assert "Employee Interest" in notes
+        assert "Employer Interest" in notes
+        assert "EPS Interest" in notes
+
+    def test_interest_amounts_are_positive(self, requests_mock):
+        requests_mock.get(f"{BASE}/assets", json=[EPF_ASSET])
+        requests_mock.post(f"{BASE}/assets/5/transactions", json=TXN_RESP)
+
+        cli.cmd_add_epf_contribution(
+            "My EPF", "03/2026", employee_share=5000.0,
+            employee_interest=300.0, employer_interest=200.0, eps_interest=50.0,
+        )
+
+        post_calls = [r for r in requests_mock.request_history if r.method == "POST"]
+        interest_calls = [c for c in post_calls if c.json()["notes"].endswith("Interest")]
+        assert all(c.json()["amount_inr"] > 0 for c in interest_calls)
+
+    def test_no_interest_txns_when_not_provided(self, requests_mock):
+        requests_mock.get(f"{BASE}/assets", json=[EPF_ASSET])
+        requests_mock.post(f"{BASE}/assets/5/transactions", json=TXN_RESP)
+
+        cli.cmd_add_epf_contribution("My EPF", "03/2026", employee_share=5000.0)
+
+        post_calls = [r for r in requests_mock.request_history if r.method == "POST"]
+        assert len(post_calls) == 3  # only contributions
+
+    def test_txn_id_is_stable_and_present(self, requests_mock):
+        requests_mock.get(f"{BASE}/assets", json=[EPF_ASSET])
+        requests_mock.post(f"{BASE}/assets/5/transactions", json=TXN_RESP)
+
+        cli.cmd_add_epf_contribution("My EPF", "03/2026", employee_share=5000.0)
+
+        post_calls = [r for r in requests_mock.request_history if r.method == "POST"]
+        for call in post_calls:
+            assert call.json().get("txn_id") is not None
+            assert call.json()["txn_id"].startswith("epf_")
+
+    def test_duplicate_txn_is_skipped(self, requests_mock, capsys):
+        requests_mock.get(f"{BASE}/assets", json=[EPF_ASSET])
+        # First contribution succeeds, second returns 409, third succeeds
+        responses = [
+            {"json": TXN_RESP, "status_code": 201},
+            {"json": {"detail": "Transaction with txn_id already exists"}, "status_code": 409},
+            {"json": TXN_RESP, "status_code": 201},
+        ]
+        requests_mock.post(f"{BASE}/assets/5/transactions", responses)
+
+        cli.cmd_add_epf_contribution("My EPF", "03/2026", employee_share=5000.0)
+
+        out = capsys.readouterr().out
+        assert "skipped" in out
+
+    def test_invalid_month_year_format_exits(self, requests_mock):
+        requests_mock.get(f"{BASE}/assets", json=[EPF_ASSET])
+        with pytest.raises(SystemExit):
+            cli.cmd_add_epf_contribution("My EPF", "2026-03", employee_share=5000.0)
+
+    def test_parser_epf_contribution_defaults(self):
+        args = cli.build_parser().parse_args([
+            "add", "epf-contribution",
+            "--asset", "My EPF",
+            "--month-year", "03/2026",
+            "--employee-share", "5000",
+        ])
+        assert args.kind == "epf-contribution"
+        assert args.employee_share == 5000.0
+        assert args.eps_share == 1250.0
+        assert args.employer_share is None
+        assert args.employee_interest is None
+
+    def test_parser_epf_contribution_all_args(self):
+        args = cli.build_parser().parse_args([
+            "add", "epf-contribution",
+            "--asset", "My EPF",
+            "--month-year", "03/2026",
+            "--employee-share", "5000",
+            "--eps-share", "1500",
+            "--employer-share", "3500",
+            "--employee-interest", "300",
+            "--employer-interest", "200",
+            "--eps-interest", "50",
+        ])
+        assert args.eps_share == 1500.0
+        assert args.employer_share == 3500.0
+        assert args.employee_interest == 300.0
+        assert args.employer_interest == 200.0
+        assert args.eps_interest == 50.0
 
 
 # ── list assets ───────────────────────────────────────────────────────────────

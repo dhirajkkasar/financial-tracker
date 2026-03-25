@@ -45,6 +45,7 @@ interface HoldingsTableProps {
   variant?: HoldingsVariant
   showUnits?: boolean
   showCategory?: boolean
+  showNotes?: boolean
 }
 
 function PnlCell({ amount, pct, dim, fmt }: { amount: number | null; pct?: number | null; dim?: boolean; fmt: (n: number) => string }) {
@@ -140,7 +141,7 @@ function sortAssets(assets: HoldingRow[], key: SortKey, dir: SortDir): HoldingRo
   })
 }
 
-export function HoldingsTable({ assets, loading, variant = 'default', showUnits = false, showCategory = false }: HoldingsTableProps) {
+export function HoldingsTable({ assets, loading, variant = 'default', showUnits = false, showCategory = false, showNotes = false }: HoldingsTableProps) {
   const { formatINR, formatINR2 } = usePrivateMoney()
   const [sortKey, setSortKey] = useState<SortKey>('current_value')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
@@ -194,6 +195,11 @@ export function HoldingsTable({ assets, loading, variant = 'default', showUnits 
             {th('current_value', 'Current Value', 'text-right')}
             {showUnits && th('total_units', 'Units', 'text-right')}
             {showUnits && th('avg_price', 'Avg Cost', 'text-right')}
+            {showNotes && (
+              <th className="pb-2.5 pr-4 text-[10px] font-semibold uppercase tracking-[0.1em] text-tertiary">
+                Notes
+              </th>
+            )}
             {th('current_pnl', 'Current P&L', 'text-right')}
             {variant !== 'fd-tax' && (
               <>
@@ -259,6 +265,11 @@ export function HoldingsTable({ assets, loading, variant = 'default', showUnits 
                 {showUnits && (
                   <td className="py-3 pr-4 text-right font-mono text-sm">
                     {!isInactive && a.avg_price != null ? formatINR2(a.avg_price) : '—'}
+                  </td>
+                )}
+                {showNotes && (
+                  <td className="py-3 pr-4 text-sm text-secondary max-w-[20ch] truncate">
+                    {a.notes ?? '—'}
                   </td>
                 )}
                 <td className="py-3 pr-4">

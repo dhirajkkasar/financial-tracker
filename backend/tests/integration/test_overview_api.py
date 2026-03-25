@@ -1,7 +1,8 @@
 """Integration tests for GET /overview/allocation and GET /overview/gainers (Phase 3.2)."""
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from tests.factories import make_asset, make_transaction
 from app.models.price_cache import PriceCache
+from app.models.cas_snapshot import CasSnapshot
 
 
 def _seed_price(db, asset_id: int, price_inr: float):
@@ -14,6 +15,20 @@ def _seed_price(db, asset_id: int, price_inr: float):
         is_stale=False,
     )
     db.add(pc)
+    db.commit()
+
+
+def _seed_snapshot(db, asset_id: int, closing_units: float, market_value_inr: float, nav_inr: float, days_old: int = 0):
+    """Directly insert a CasSnapshot row. market_value_inr and nav_inr are in rupees."""
+    snap = CasSnapshot(
+        asset_id=asset_id,
+        date=date.today() - timedelta(days=days_old),
+        closing_units=closing_units,
+        nav_price_inr=int(nav_inr * 100),
+        market_value_inr=int(market_value_inr * 100),
+        total_cost_inr=int(market_value_inr * 80),
+    )
+    db.add(snap)
     db.commit()
 
 
@@ -135,6 +150,30 @@ def test_allocation_nps_counts_as_debt(client, db):
     assert "MIXED" not in classes
 
 
+def test_allocation_epf_uses_transaction_based_value(client, db):
+    """EPF current value in allocation must use contributions+interest from transactions, not Valuation entries."""
+    epf = client.post("/assets", json=make_asset(
+        asset_type="EPF", asset_class="DEBT", name="My EPF", identifier="TN/12345"
+    )).json()
+    # Employee contribution: 5000 INR outflow
+    client.post(f"/assets/{epf['id']}/transactions", json=make_transaction(
+        type="CONTRIBUTION", date="2024-01-01", amount_inr=-5000.0
+    ))
+    # Interest: 350 INR inflow
+    client.post(f"/assets/{epf['id']}/transactions", json=make_transaction(
+        type="INTEREST", date="2024-03-31", amount_inr=350.0
+    ))
+    # No Valuation entry — EPF allocation must still show up
+    resp = client.get("/overview/allocation")
+    assert resp.status_code == 200
+    data = resp.json()
+    classes = [a["asset_class"] for a in data["allocations"]]
+    assert "DEBT" in classes
+    debt = next(a for a in data["allocations"] if a["asset_class"] == "DEBT")
+    # current_value = 5000 + 350 = 5350
+    assert abs(debt["value_inr"] - 5350.0) < 1.0
+
+
 def test_allocation_debt_mf_stays_as_debt(client, db):
     """MF assets classified as DEBT (liquid/debt funds) should remain in DEBT."""
     mf = client.post("/assets", json=make_asset(
@@ -151,6 +190,48 @@ def test_allocation_debt_mf_stays_as_debt(client, db):
     classes = [a["asset_class"] for a in data["allocations"]]
     assert "DEBT" in classes
     assert "MIXED" not in classes
+
+
+def test_allocation_mf_fresh_snapshot_uses_market_value_not_price_cache(client, db):
+    """Fresh CAS snapshot (< 30 days) → allocation value comes from snapshot.market_value_inr, not price_cache × units."""
+    mf = client.post("/assets", json=make_asset(
+        asset_type="MF", asset_class="EQUITY", name="ICICI Bluechip Fund", identifier="INF109K01VQ5"
+    )).json()
+    client.post(f"/assets/{mf['id']}/transactions", json=make_transaction(
+        type="SIP", date="2022-01-01", units=100, price_per_unit=50.0, amount_inr=-5000.0
+    ))
+    # Fresh snapshot: 100 units at NAV 80, market value = 8000 INR
+    _seed_snapshot(db, mf["id"], closing_units=100, market_value_inr=8000.0, nav_inr=80.0, days_old=0)
+    # Price cache: 100 INR/unit → 100 × 100 = 10000 INR if used (intentionally different)
+    _seed_price(db, mf["id"], 100.0)
+
+    resp = client.get("/overview/allocation")
+    assert resp.status_code == 200
+    data = resp.json()
+    equity = next(a for a in data["allocations"] if a["asset_class"] == "EQUITY")
+    # Snapshot is fresh: must use market_value_inr = 8000, not price_cache × units = 10000
+    assert abs(equity["value_inr"] - 8000.0) < 1.0
+
+
+def test_allocation_mf_stale_snapshot_uses_closing_units_times_price_cache(client, db):
+    """Stale CAS snapshot (>= 30 days) → allocation value comes from snapshot.closing_units × price_cache NAV."""
+    mf = client.post("/assets", json=make_asset(
+        asset_type="MF", asset_class="EQUITY", name="Axis Bluechip Fund", identifier="INF846K01DP8"
+    )).json()
+    client.post(f"/assets/{mf['id']}/transactions", json=make_transaction(
+        type="SIP", date="2022-01-01", units=100, price_per_unit=50.0, amount_inr=-5000.0
+    ))
+    # Stale snapshot (31 days old): 100 units, market value = 5000 INR (outdated)
+    _seed_snapshot(db, mf["id"], closing_units=100, market_value_inr=5000.0, nav_inr=50.0, days_old=31)
+    # Price cache: 80 INR/unit → 100 × 80 = 8000 INR (the fresh value)
+    _seed_price(db, mf["id"], 80.0)
+
+    resp = client.get("/overview/allocation")
+    assert resp.status_code == 200
+    data = resp.json()
+    equity = next(a for a in data["allocations"] if a["asset_class"] == "EQUITY")
+    # Snapshot is stale: must use closing_units × price_cache = 100 × 80 = 8000, not stale market_value = 5000
+    assert abs(equity["value_inr"] - 8000.0) < 1.0
 
 
 # ---------------------------------------------------------------------------

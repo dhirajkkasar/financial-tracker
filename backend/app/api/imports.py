@@ -71,24 +71,25 @@ def commit_import(
     return result
 
 
-@router.post("/ppf-pdf")
-async def import_ppf_pdf(
+@router.post("/ppf-csv")
+async def import_ppf_csv(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
     """
-    Import a PPF account statement PDF (SBI format).
+    Import a PPF account statement CSV (SBI format).
 
-    The PPF asset must already exist in the DB with identifier = stripped account number
-    (leading zeros removed). Transactions are deduplicated by txn_id. A Valuation entry
-    is created from the closing balance on the statement date.
+    The PPF asset must already exist with identifier = account number.
+    Credits with "INTEREST" in details → INTEREST transactions (positive inflow).
+    Other credits → CONTRIBUTION transactions (negative outflow).
+    A Valuation entry is created from the closing balance.
 
     Returns {inserted, skipped, valuation_created, valuation_value, valuation_date,
              account_number, errors}
     """
     file_bytes = await file.read()
     svc = PPFEPFImportService(db)
-    return svc.import_ppf(file_bytes)
+    return svc.import_ppf_csv(file_bytes)
 
 
 @router.post("/epf-pdf")
@@ -100,13 +101,10 @@ async def import_epf_pdf(
     Import an EPFO Member Passbook PDF.
 
     The EPF asset must already exist in the DB with identifier = member_id.
-    Auto-creates an EPS sub-asset (type=EPF, identifier=member_id_EPS) if not present.
-    Creates a Valuation for the EPF asset from the net balance.
-    Marks the EPF asset inactive when net balance = 0.
+    All transactions (employee share, employer share, pension/EPS, interest, transfer)
+    are imported under the single EPF asset.
 
-    Returns {epf_inserted, epf_skipped, eps_inserted, eps_skipped,
-             eps_asset_id, eps_asset_created, epf_valuation_created,
-             epf_valuation_value, errors}
+    Returns {inserted, skipped, epf_valuation_created, epf_valuation_value, errors}
     """
     file_bytes = await file.read()
     svc = PPFEPFImportService(db)

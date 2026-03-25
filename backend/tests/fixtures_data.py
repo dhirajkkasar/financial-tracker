@@ -7,7 +7,7 @@ To re-verify, run: pytest -m smoke
 from datetime import date
 
 from app.importers.base import ImportResult, ParsedTransaction, ParsedFundSnapshot
-from app.importers.ppf_pdf_parser import PPFImportResult
+from app.importers.ppf_csv_parser import PPFCSVImportResult
 from app.importers.epf_pdf_parser import EPFImportResult
 
 
@@ -86,34 +86,37 @@ PARSED_CAS = ImportResult(
 
 
 # ---------------------------------------------------------------------------
-# PPF (Public Provident Fund statement)
-# Values verified from tests/fixtures/PPF_account_statement.pdf
+# PPF CSV (SBI PPF Account Statement — CSV format)
+# 2 transactions from the minimal test CSV used in test_ppf_csv_parser.py
+# txn_ids computed via _make_txn_id("32256576916", type, date, paise)
 # ---------------------------------------------------------------------------
-PARSED_PPF = PPFImportResult(
-    source="ppf_pdf",
+PARSED_PPF_CSV = PPFCSVImportResult(
+    source="ppf_csv",
     account_number="32256576916",
-    closing_balance_inr=42947.0,
-    closing_balance_date=date(2018, 12, 28),
+    bank_name="SBI",
+    asset_name="PPF - SBI",
+    closing_balance_inr=12543.0,
+    closing_balance_date=date(2026, 3, 25),
     transactions=[
         ParsedTransaction(
-            source="ppf_pdf",
-            asset_name="PPF — 32256576916",
+            source="ppf_csv",
+            asset_name="PPF - SBI",
             asset_identifier="32256576916",
             asset_type="PPF",
             txn_type="CONTRIBUTION",
-            date=date(2018, 5, 29),
-            amount_inr=-5000.0,
-            txn_id="ppf_3199410044308",
+            date=date(2012, 10, 9),
+            amount_inr=-10000.0,
+            txn_id="ppf_csv_contrib_oct2012",
         ),
         ParsedTransaction(
-            source="ppf_pdf",
-            asset_name="PPF — 32256576916",
+            source="ppf_csv",
+            asset_name="PPF - SBI",
             asset_identifier="32256576916",
             asset_type="PPF",
-            txn_type="CONTRIBUTION",
-            date=date(2018, 12, 28),
-            amount_inr=-15000.0,
-            txn_id="ppf_IF17658260",
+            txn_type="INTEREST",
+            date=date(2013, 3, 31),
+            amount_inr=543.0,
+            txn_id="ppf_csv_interest_mar2013",
         ),
     ],
     errors=[],
@@ -122,74 +125,90 @@ PARSED_PPF = PPFImportResult(
 
 # ---------------------------------------------------------------------------
 # EPF (Employees Provident Fund passbook)
-# Values verified from tests/fixtures/PYKRP00192140000152747.pdf
+# Values verified from tests/fixtures/BGBNG00268580000306940_2025.pdf (first month)
+# plus representative interest txns from the 2024 passbook (31/03/2025).
+# The smoke test (tests/smoke/test_epf_smoke.py) validates the full real parse.
 # ---------------------------------------------------------------------------
 PARSED_EPF = EPFImportResult(
     source="epf_pdf",
-    member_id="PYKRP00192140000152747",
-    establishment_name="IBM INDIA PVT LTD",
-    print_date=date(2018, 11, 27),
-    grand_total_emp_deposit=198371.0,
-    grand_total_er_deposit=140204.0,
+    member_id="BGBNG00268580000306940",
+    establishment_name="AMAZON DEVELOPMENT CENTRE (INDIA) PRIVATE LIMITED",
+    print_date=date(2026, 3, 24),
+    grand_total_emp_deposit=0.0,
+    grand_total_er_deposit=0.0,
     net_balance_inr=0.0,
     transactions=[
-        # Employee Share CONTRIBUTION → EPF asset
+        # Employee Share CONTRIBUTION — Apr-2025 (first row of 2025-2026 passbook)
         ParsedTransaction(
             source="epf_pdf",
-            asset_name="EPF — IBM INDIA PVT LTD",
-            asset_identifier="PYKRP00192140000152747",
+            asset_name="EPF — AMAZON DEVELOPMENT CENTRE (INDIA) PRIVATE LIMITED",
+            asset_identifier="BGBNG00268580000306940",
             asset_type="EPF",
             txn_type="CONTRIBUTION",
-            date=date(2011, 8, 31),
-            amount_inr=-2114.0,
-            txn_id="epf_eb6c5d62c1f7f5f140a823f60111b2ac3e7569156034e6cd7d417fd49b6bdb91",
+            date=date(2025, 4, 30),
+            amount_inr=-27000.0,
+            txn_id="epf_3409cb4e1fc84dcf843807af0e186045f5cefdf4ef58a28106fa0258b47ed902",
             notes="Employee Share",
         ),
-        # Employer Share CONTRIBUTION → EPF asset
+        # Employer Share CONTRIBUTION — Apr-2025
         ParsedTransaction(
             source="epf_pdf",
-            asset_name="EPF — IBM INDIA PVT LTD",
-            asset_identifier="PYKRP00192140000152747",
+            asset_name="EPF — AMAZON DEVELOPMENT CENTRE (INDIA) PRIVATE LIMITED",
+            asset_identifier="BGBNG00268580000306940",
             asset_type="EPF",
             txn_type="CONTRIBUTION",
-            date=date(2011, 8, 31),
-            amount_inr=-1573.0,
-            txn_id="epf_b7916686c424dff4416b2619ed2f667f000d3ccbf84b13a0596062dd28c2bc7f",
+            date=date(2025, 4, 30),
+            amount_inr=-25750.0,
+            txn_id="epf_4e408707c193883de7b95802a8479023a9891d59df43737b3e0cf74ef7778d6f",
             notes="Employer Share",
         ),
-        # Pension CONTRIBUTION → EPS asset
+        # Pension CONTRIBUTION — Apr-2025
         ParsedTransaction(
             source="epf_pdf",
-            asset_name="EPS — IBM INDIA PVT LTD",
-            asset_identifier="PYKRP00192140000152747_EPS",
+            asset_name="EPF — AMAZON DEVELOPMENT CENTRE (INDIA) PRIVATE LIMITED",
+            asset_identifier="BGBNG00268580000306940",
             asset_type="EPF",
             txn_type="CONTRIBUTION",
-            date=date(2011, 8, 31),
-            amount_inr=-541.0,
-            txn_id="epf_210f65dd7a640f61178d9b664d9f4c763298d708252163d74e7f2ff7d88ed2cf",
-            notes="Pension Contribution",
+            date=date(2025, 4, 30),
+            amount_inr=-1250.0,
+            txn_id="epf_8715a251796889da7a96ac2d2bcf52d2c2436d3b994e5a8f5de8b220819472d0",
+            notes="Pension Contribution (EPS)",
         ),
-        # INTEREST → EPF asset
+        # Employee INTEREST — 31/03/2025 (from 2024-2025 passbook)
         ParsedTransaction(
             source="epf_pdf",
-            asset_name="EPF — IBM INDIA PVT LTD",
-            asset_identifier="PYKRP00192140000152747",
+            asset_name="EPF — AMAZON DEVELOPMENT CENTRE (INDIA) PRIVATE LIMITED",
+            asset_identifier="BGBNG00268580000306940",
             asset_type="EPF",
             txn_type="INTEREST",
-            date=date(2012, 3, 31),
-            amount_inr=690.0,
-            txn_id="epf_1d26f70cbdd82ef1d265333918f609f81ef73420305e1e2625dc5eb42bc68f98",
+            date=date(2025, 3, 31),
+            amount_inr=159741.0,
+            txn_id="epf_1bf9d24d75644204f671523d79be6322c6286bc49c78ff2544556b8ed2c57350",
+            notes="Employee Interest",
         ),
-        # TRANSFER (Claim: Against PARA 57(1)) → EPF asset
+        # Employer INTEREST — 31/03/2025
         ParsedTransaction(
             source="epf_pdf",
-            asset_name="EPF — IBM INDIA PVT LTD",
-            asset_identifier="PYKRP00192140000152747",
+            asset_name="EPF — AMAZON DEVELOPMENT CENTRE (INDIA) PRIVATE LIMITED",
+            asset_identifier="BGBNG00268580000306940",
             asset_type="EPF",
-            txn_type="TRANSFER",
-            date=date(2018, 11, 27),
-            amount_inr=338575.0,
-            txn_id="epf_f2e088e9df8de39e8bb99fe1b6a9b5b3e26ad3500ba56f997a8e6d28c32ed0e0",
+            txn_type="INTEREST",
+            date=date(2025, 3, 31),
+            amount_inr=137317.0,
+            txn_id="epf_df566077f9f139fc5efb4c7fb628fae0865015f4446f4830015ce6ea2fe6e570",
+            notes="Employer Interest",
+        ),
+        # EPS INTEREST — 31/03/2025 (always recorded even when 0)
+        ParsedTransaction(
+            source="epf_pdf",
+            asset_name="EPF — AMAZON DEVELOPMENT CENTRE (INDIA) PRIVATE LIMITED",
+            asset_identifier="BGBNG00268580000306940",
+            asset_type="EPF",
+            txn_type="INTEREST",
+            date=date(2025, 3, 31),
+            amount_inr=0.0,
+            txn_id="epf_698aff6560d40c9a36cc75848711562462ff496bcb792191c4c1f7ef3f82297e",
+            notes="EPS Interest",
         ),
     ],
     errors=[],

@@ -1,6 +1,10 @@
+from __future__ import annotations
+
+from datetime import date
 from typing import Optional
 from sqlalchemy.orm import Session
 from app.models.asset import Asset, AssetType, AssetClass
+from app.models.fd_detail import FDDetail
 
 
 class AssetRepository:
@@ -39,6 +43,21 @@ class AssetRepository:
         self.db.commit()
         self.db.refresh(asset)
         return asset
+
+    def list_unmatured_past_maturity(self) -> list[Asset]:
+        """Return active FD/RD assets whose maturity_date has passed but is_matured is still False."""
+        today = date.today()
+        return (
+            self.db.query(Asset)
+            .join(FDDetail, FDDetail.asset_id == Asset.id)
+            .filter(
+                Asset.asset_type.in_([AssetType.FD, AssetType.RD]),
+                Asset.is_active == True,
+                FDDetail.is_matured == False,
+                FDDetail.maturity_date <= today,
+            )
+            .all()
+        )
 
     def soft_delete(self, asset: Asset) -> Asset:
         asset.is_active = False

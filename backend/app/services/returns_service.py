@@ -25,7 +25,7 @@ MARKET_BASED_TYPES = {"STOCK_IN", "STOCK_US", "MF", "RSU", "GOLD", "SGB", "NPS"}
 # Asset types that use FD/RD formula
 FD_BASED_TYPES = {"FD", "RD"}
 # Asset types that use valuation entries (manual passbook / property estimate)
-VALUATION_BASED_TYPES = {"PPF", "EPF", "REAL_ESTATE"}
+VALUATION_BASED_TYPES = {"PPF", "REAL_ESTATE"}
 
 
 class ReturnsService:
@@ -52,6 +52,8 @@ class ReturnsService:
             return self._compute_market_based_returns(asset)
         elif asset_type in FD_BASED_TYPES:
             return self._compute_fd_returns(asset)
+        elif asset_type == "EPF":
+            return self._compute_epf_returns(asset)
         elif asset_type in VALUATION_BASED_TYPES:
             return self._compute_valuation_based_returns(asset)
         else:
@@ -506,6 +508,49 @@ class ReturnsService:
             "potential_tax_30pct": potential_tax_30pct,
         }
 
+    def _compute_epf_returns(self, asset) -> dict:
+        """
+        Compute returns for EPF assets from transactions only.
+
+        total_invested = sum of all CONTRIBUTION outflows (employee + employer + pension/EPS)
+        current_value  = total_invested + sum of all INTEREST inflows
+        XIRR           = cashflows from contributions + (today, current_value)
+        """
+        asset_id = asset.id
+        transactions = self.txn_repo.list_by_asset(asset_id)
+
+        total_invested = 0.0
+        total_interest = 0.0
+        cashflows = []
+
+        for txn in transactions:
+            amount_inr = txn.amount_inr / 100.0
+            txn_type = txn.type.value
+            if txn_type in OUTFLOW_TYPES:
+                cashflows.append((txn.date, amount_inr))  # negative
+                total_invested += abs(amount_inr)
+            elif txn_type == "INTEREST":
+                total_interest += amount_inr
+
+        current_value = total_invested + total_interest
+
+        if current_value > 0:
+            cashflows.append((date.today(), current_value))
+
+        xirr = compute_xirr(cashflows) if len(cashflows) >= 2 else None
+        abs_return = compute_absolute_return(total_invested, current_value) if total_invested > 0 else None
+
+        return {
+            "asset_id": asset_id,
+            "asset_type": "EPF",
+            "xirr": xirr,
+            "cagr": None,
+            "absolute_return": abs_return,
+            "total_invested": total_invested,
+            "current_value": current_value if total_invested > 0 else None,
+            "message": None,
+        }
+
     def _compute_valuation_based_returns(self, asset) -> dict:
         asset_id = asset.id
         asset_type = asset.asset_type.value
@@ -740,17 +785,17 @@ class ReturnsService:
 
         if asset_type == "MF":
             snapshot = self.cas_snap_repo.get_latest_by_asset_id(asset.id)
-            if snapshot is None:
-                return None
-            if snapshot.closing_units == 0:
-                return 0.0
-            snapshot_age_days = (date.today() - snapshot.date).days
-            if snapshot_age_days < 30:
+            if snapshot is not None:
+                if snapshot.closing_units == 0:
+                    return 0.0
+                snapshot_age_days = (date.today() - snapshot.date).days
+                if snapshot_age_days < 30:
+                    return snapshot.market_value_inr / 100.0
+                price_cache = self.price_repo.get_by_asset_id(asset.id)
+                if price_cache:
+                    return snapshot.closing_units * (price_cache.price_inr / 100.0)
                 return snapshot.market_value_inr / 100.0
-            price_cache = self.price_repo.get_by_asset_id(asset.id)
-            if price_cache:
-                return snapshot.closing_units * (price_cache.price_inr / 100.0)
-            return snapshot.market_value_inr / 100.0
+            # No CAS snapshot: fall through to MARKET_BASED_TYPES logic (price_cache × units)
 
         transactions = self.txn_repo.list_by_asset(asset.id)
         filtered_txns = [t for t in transactions if t.type.value not in EXCLUDED_TYPES]
@@ -772,6 +817,17 @@ class ReturnsService:
                     principal_inr, fd.interest_rate_pct, fd.compounding.value,
                     fd.start_date, fd.maturity_date
                 )
+        elif asset_type == "EPF":
+            total_invested = 0.0
+            total_interest = 0.0
+            for txn in transactions:
+                txn_type = txn.type.value
+                if txn_type in OUTFLOW_TYPES:
+                    total_invested += abs(txn.amount_inr / 100.0)
+                elif txn_type == "INTEREST":
+                    total_interest += txn.amount_inr / 100.0
+            current = total_invested + total_interest
+            return current if total_invested > 0 else None
         elif asset_type in VALUATION_BASED_TYPES:
             valuations = self.val_repo.list_by_asset(asset.id)
             latest = get_latest_valuation(valuations)

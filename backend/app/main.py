@@ -47,6 +47,38 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Interest rate seed failed: %s", e)
 
+    # Auto-mature FDs/RDs whose maturity date has passed
+    try:
+        from app.database import SessionLocal
+        from app.services.deposits_service import DepositsService
+        db = SessionLocal()
+        try:
+            matured = DepositsService(db).mark_matured_fds()
+            if matured:
+                logger.info("Startup: marked %d FD(s)/RD(s) as matured", matured)
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning("Startup FD maturity check failed: %s", e)
+
+    # Auto-fill missing EPF monthly contributions using the last known amounts
+    try:
+        from app.database import SessionLocal
+        from app.services.epf_auto_contrib_service import EPFAutoContribService
+        db = SessionLocal()
+        try:
+            result = EPFAutoContribService(db).backfill_missing_contributions()
+            if result["months_inserted"]:
+                logger.info(
+                    "Startup: EPF auto-contrib filled %d month(s) across %d asset(s)",
+                    result["months_inserted"],
+                    result["assets_updated"],
+                )
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning("Startup EPF auto-contrib failed: %s", e)
+
     # Price refresh is on-demand only (via CLI: python cli.py refresh-prices)
     yield
 

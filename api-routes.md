@@ -311,12 +311,12 @@ Notes:
 **POST `/import/epf-pdf` response:**
 ```json
 {
-  "epf_inserted": 45,
-  "epf_skipped": 0,
+  "inserted": 45,
+  "skipped": 0,
   "eps_inserted": 30,
   "eps_skipped": 0,
   "eps_asset_id": 12,
-  "eps_asset_created": true,
+  "asset_created": true,
   "epf_valuation_created": true,
   "epf_valuation_value": 0.0,
   "errors": []

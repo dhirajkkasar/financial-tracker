@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from tests.fixtures_data import PARSED_CAS, PARSED_PPF, PARSED_EPF
+from tests.fixtures_data import PARSED_CAS, PARSED_PPF_CSV, PARSED_EPF
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 
@@ -199,16 +199,16 @@ class TestCASPDFPreview:
 
 class TestPPFImport:
     def _post_ppf(self, client):
-        with patch("app.services.ppf_epf_import_service.PPFPDFParser") as MockPPF:
-            MockPPF.return_value.parse.return_value = PARSED_PPF
+        with patch("app.services.ppf_epf_import_service.PPFCSVParser") as MockPPF:
+            MockPPF.return_value.parse.return_value = PARSED_PPF_CSV
             return client.post(
-                "/import/ppf-pdf",
-                files={"file": ("ppf.pdf", b"fake", "application/pdf")},
+                "/import/ppf-csv",
+                files={"file": ("ppf.csv", b"fake", "text/csv")},
             )
 
     def test_ppf_import_returns_200(self, client, db):
         from app.models.asset import Asset, AssetType, AssetClass
-        asset = Asset(name="PPF — SBI", identifier="32256576916",
+        asset = Asset(name="PPF - SBI", identifier="32256576916",
                       asset_type=AssetType.PPF, asset_class=AssetClass.DEBT, currency="INR")
         db.add(asset); db.commit()
         resp = self._post_ppf(client)
@@ -216,7 +216,7 @@ class TestPPFImport:
 
     def test_ppf_import_writes_two_transactions(self, client, db):
         from app.models.asset import Asset, AssetType, AssetClass
-        asset = Asset(name="PPF — SBI", identifier="32256576916",
+        asset = Asset(name="PPF - SBI", identifier="32256576916",
                       asset_type=AssetType.PPF, asset_class=AssetClass.DEBT, currency="INR")
         db.add(asset); db.commit()
         data = self._post_ppf(client).json()
@@ -225,16 +225,16 @@ class TestPPFImport:
 
     def test_ppf_import_creates_valuation(self, client, db):
         from app.models.asset import Asset, AssetType, AssetClass
-        asset = Asset(name="PPF — SBI", identifier="32256576916",
+        asset = Asset(name="PPF - SBI", identifier="32256576916",
                       asset_type=AssetType.PPF, asset_class=AssetClass.DEBT, currency="INR")
         db.add(asset); db.commit()
         data = self._post_ppf(client).json()
         assert data["valuation_created"] is True
-        assert data["valuation_value"] == 42947.0
+        assert data["valuation_value"] == 12543.0
 
     def test_ppf_reimport_is_idempotent(self, client, db):
         from app.models.asset import Asset, AssetType, AssetClass
-        asset = Asset(name="PPF — SBI", identifier="32256576916",
+        asset = Asset(name="PPF - SBI", identifier="32256576916",
                       asset_type=AssetType.PPF, asset_class=AssetClass.DEBT, currency="INR")
         db.add(asset); db.commit()
         self._post_ppf(client)
@@ -247,7 +247,23 @@ class TestPPFImport:
         assert resp.status_code == 404
 
 
+EPF_MEMBER_ID = "BGBNG00268580000306940"
+
+
 class TestEPFImport:
+    def _make_epf_asset(self, db):
+        from app.models.asset import Asset, AssetType, AssetClass
+        asset = Asset(
+            name="EPF — AMAZON DEVELOPMENT CENTRE (INDIA) PRIVATE LIMITED",
+            identifier=EPF_MEMBER_ID,
+            asset_type=AssetType.EPF,
+            asset_class=AssetClass.DEBT,
+            currency="INR",
+        )
+        db.add(asset)
+        db.commit()
+        return asset
+
     def _post_epf(self, client):
         with patch("app.services.ppf_epf_import_service.EPFPDFParser") as MockEPF:
             MockEPF.return_value.parse.return_value = PARSED_EPF
@@ -257,60 +273,48 @@ class TestEPFImport:
             )
 
     def test_epf_import_returns_200(self, client, db):
-        from app.models.asset import Asset, AssetType, AssetClass
-        asset = Asset(name="EPF — IBM INDIA PVT LTD", identifier="PYKRP00192140000152747",
-                      asset_type=AssetType.EPF, asset_class=AssetClass.DEBT, currency="INR")
-        db.add(asset); db.commit()
+        self._make_epf_asset(db)
         resp = self._post_epf(client)
         assert resp.status_code == 200
 
     def test_epf_import_writes_transactions(self, client, db):
-        from app.models.asset import Asset, AssetType, AssetClass
-        asset = Asset(name="EPF — IBM INDIA PVT LTD", identifier="PYKRP00192140000152747",
-                      asset_type=AssetType.EPF, asset_class=AssetClass.DEBT, currency="INR")
-        db.add(asset); db.commit()
+        self._make_epf_asset(db)
         data = self._post_epf(client).json()
-        assert data["epf_inserted"] > 0
-        assert data["epf_skipped"] == 0
+        assert data["inserted"] > 0
+        assert data["skipped"] == 0
 
-    def test_epf_import_creates_eps_asset(self, client, db):
-        from app.models.asset import Asset, AssetType, AssetClass
-        asset = Asset(name="EPF — IBM INDIA PVT LTD", identifier="PYKRP00192140000152747",
-                      asset_type=AssetType.EPF, asset_class=AssetClass.DEBT, currency="INR")
-        db.add(asset); db.commit()
-        data = self._post_epf(client).json()
-        assert data["eps_asset_created"] is True
-        assert data["eps_asset_id"] is not None
+    def test_epf_import_no_asset_created(self, client, db):
+        """All transactions (including pension/EPS) go to the EPF asset — no separate EPS asset."""
+        from app.models.asset import Asset, AssetType
+        self._make_epf_asset(db)
+        self._post_epf(client)
+        eps_asset = db.query(Asset).filter(
+            Asset.identifier == f"{EPF_MEMBER_ID}_EPS"
+        ).first()
+        assert eps_asset is None
 
     def test_epf_import_creates_epf_valuation(self, client, db):
-        from app.models.asset import Asset, AssetType, AssetClass
-        asset = Asset(name="EPF — IBM INDIA PVT LTD", identifier="PYKRP00192140000152747",
-                      asset_type=AssetType.EPF, asset_class=AssetClass.DEBT, currency="INR")
-        db.add(asset); db.commit()
+        self._make_epf_asset(db)
         data = self._post_epf(client).json()
         assert data["epf_valuation_created"] is True
         assert data["epf_valuation_value"] == 0.0
 
-    def test_epf_import_marks_asset_inactive_when_zero_balance(self, client, db):
-        from app.models.asset import Asset, AssetType, AssetClass
-        asset = Asset(name="EPF — IBM INDIA PVT LTD", identifier="PYKRP00192140000152747",
-                      asset_type=AssetType.EPF, asset_class=AssetClass.DEBT, currency="INR")
-        db.add(asset); db.commit()
+    def test_epf_import_asset_stays_active(self, client, db):
+        """EPF asset should remain active even when net balance is 0."""
+        from app.models.asset import Asset
+        asset = self._make_epf_asset(db)
         asset_id = asset.id
         self._post_epf(client)
         db.expire_all()
         updated_asset = db.query(Asset).filter(Asset.id == asset_id).first()
-        assert updated_asset.is_active is False
+        assert updated_asset.is_active is True
 
     def test_epf_reimport_is_idempotent(self, client, db):
-        from app.models.asset import Asset, AssetType, AssetClass
-        asset = Asset(name="EPF — IBM INDIA PVT LTD", identifier="PYKRP00192140000152747",
-                      asset_type=AssetType.EPF, asset_class=AssetClass.DEBT, currency="INR")
-        db.add(asset); db.commit()
+        self._make_epf_asset(db)
         self._post_epf(client)
         data = self._post_epf(client).json()
-        assert data["epf_inserted"] == 0
-        assert data["epf_skipped"] > 0
+        assert data["inserted"] == 0
+        assert data["skipped"] > 0
 
     def test_epf_import_no_asset_returns_404(self, client):
         resp = self._post_epf(client)

@@ -99,6 +99,7 @@ export default function AssetDetailPage() {
 
   const showLots = LOT_BASED_TYPES.has(asset.asset_type)
   const showFD = FD_TYPES.has(asset.asset_type) && fdDetail != null && returns != null
+  const showTxnNotes = asset.asset_type === 'EPF'
 
   const transactions = txnData?.items ?? []
   const txnTotal = txnData?.total ?? 0
@@ -221,7 +222,9 @@ export default function AssetDetailPage() {
                   <tr className="border-b border-border">
                     <th className={thClass}>Date</th>
                     <th className={thClass}>Type</th>
-                    <th className={`${thClass} text-right`}>Units</th>
+                    {showTxnNotes
+                      ? <th className={thClass}>Notes</th>
+                      : <th className={`${thClass} text-right`}>Units</th>}
                     <th className={`${thClass} text-right pr-0`}>Amount</th>
                   </tr>
                 </thead>
@@ -238,9 +241,10 @@ export default function AssetDetailPage() {
                             {t.type}
                           </span>
                         </td>
-                        <td className="py-2.5 pr-3 text-right font-mono text-sm text-secondary">
-                          {t.units != null ? t.units.toFixed(4) : '—'}
-                        </td>
+                        {showTxnNotes
+                          ? <td className="py-2.5 pr-3 text-sm text-secondary">{t.notes ?? '—'}</td>
+                          : <td className="py-2.5 pr-3 text-right font-mono text-sm text-secondary">{t.units != null ? t.units.toFixed(4) : '—'}</td>}
+
                         <td className="py-2.5 text-right font-mono text-sm text-primary">
                           {formatINR(Math.abs(t.amount_inr))}
                         </td>

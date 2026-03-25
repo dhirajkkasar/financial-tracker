@@ -3,6 +3,7 @@ import { DM_Sans, DM_Serif_Display, DM_Mono } from 'next/font/google'
 import './globals.css'
 import { TabNav } from './TabNav'
 import { PrivateModeProvider } from '@/context/PrivateModeContext'
+import { DarkModeProvider } from '@/context/DarkModeContext'
 
 const dmSans = DM_Sans({
   subsets: ['latin'],
@@ -33,10 +34,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${dmSans.variable} ${dmSerifDisplay.variable} ${dmMono.variable}`}>
       <body className="font-sans bg-page text-primary min-h-screen">
-        <PrivateModeProvider>
-          <TabNav />
-          <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
-        </PrivateModeProvider>
+        <DarkModeProvider>
+          <PrivateModeProvider>
+            <TabNav />
+            <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+          </PrivateModeProvider>
+        </DarkModeProvider>
       </body>
     </html>
   )

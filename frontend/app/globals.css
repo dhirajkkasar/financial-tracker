@@ -40,6 +40,34 @@
   --border: #e5e5e0;
 }
 
+/* Dark mode — applied via html.dark class */
+.dark {
+  --color-page: #0f0f0e !important;
+  --color-card: #1a1a18 !important;
+  --color-border: #2a2a28 !important;
+
+  --color-primary: #f0f0ed !important;
+  --color-secondary: #9a9a96 !important;
+  --color-tertiary: #6a6a66 !important;
+
+  --color-accent: #818cf8 !important;
+  --color-accent-subtle: #1e1b4b !important;
+
+  --color-gain: #10b981 !important;
+  --color-gain-subtle: #052e16 !important;
+  --color-loss: #ef4444 !important;
+  --color-loss-subtle: #450a0a !important;
+
+  --color-gold: #f59e0b !important;
+  --color-gold-subtle: #451a03 !important;
+
+  --gain: #10b981 !important;
+  --loss: #ef4444 !important;
+  --accent: #818cf8 !important;
+  --bg-card: #1a1a18 !important;
+  --border: #2a2a28 !important;
+}
+
 /* Tabular numbers globally — financial data aligns perfectly */
 * {
   font-variant-numeric: tabular-nums;

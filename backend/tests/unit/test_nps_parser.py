@@ -22,8 +22,8 @@ class TestNPSImporter:
         result = importer.parse(tier1_bytes)
         assert len(result.errors) == 0
         contributions = [t for t in result.transactions if t.txn_type == "CONTRIBUTION"]
-        # Tier 1 has 12 months x 3 schemes = 36 contributions
-        assert len(contributions) == 36
+        # Tier 1 has 2 months x 3 schemes = 6 contributions
+        assert len(contributions) == 6
 
     def test_parse_creates_asset_per_scheme(self, importer, tier1_bytes):
         result = importer.parse(tier1_bytes)

@@ -871,11 +871,19 @@ class ReturnsService:
                 # Reconstruct cashflows for portfolio XIRR
                 # Must include both outflows (negative) AND inflows (redemptions, dividends)
                 # so that partial redemptions are accounted for before adding terminal value.
+                #
+                # EPF and VALUATION_BASED (PPF, REAL_ESTATE) use a terminal current_value that
+                # already embeds all accumulated interest/passbook balance.  Adding intermediate
+                # INTEREST inflows here would double-count those returns, producing a portfolio
+                # XIRR inconsistent with per-asset XIRR.  Use only outflows for these types.
+                asset_type_val = asset.asset_type.value
+                _outflow_only = asset_type_val == "EPF" or asset_type_val in VALUATION_BASED_TYPES
                 transactions = self.txn_repo.list_by_asset(asset.id)
                 filtered_txns = [t for t in transactions if t.type.value not in EXCLUDED_TYPES]
                 for txn in filtered_txns:
                     amount_inr = txn.amount_inr / 100.0
-                    if txn.type.value in OUTFLOW_TYPES or txn.type.value in INFLOW_TYPES:
+                    txn_type = txn.type.value
+                    if txn_type in OUTFLOW_TYPES or (not _outflow_only and txn_type in INFLOW_TYPES):
                         all_cashflows.append((txn.date, amount_inr))
 
                 # Accumulate unrealised and realised separately so a 0-unrealised asset

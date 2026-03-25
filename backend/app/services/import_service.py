@@ -239,6 +239,15 @@ class ImportService:
             ).first()
             if existing:
                 return existing
+            # Identifier lookup failed — price refresh may have overwritten the stored
+            # identifier (e.g. NPS SM codes replace the original scheme-name identifier).
+            # Fall back to name+type match so we don't create a duplicate asset.
+            existing = self.db.query(Asset).filter(
+                Asset.name == txn.asset_name,
+                Asset.asset_type == asset_type,
+            ).first()
+            if existing:
+                return existing
         else:
             # No ISIN — fall back to exact ticker/name match within the same asset type.
             # Prevents duplicate assets when the same stock appears across multiple CSV rows

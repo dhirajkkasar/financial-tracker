@@ -199,13 +199,26 @@ class NPSNavFetcher:
     def bulk_resolve_schemes(self, assets: list) -> None:
         """Fetch /api/schemes once and resolve scheme codes for all NPS assets.
 
-        Always uses the freshly fetched scheme list (ignores stored identifier)
-        and sets asset._resolved_nps_scheme_code on every matched asset.
+        If asset.identifier already starts with 'SM', it is used directly without
+        fuzzy matching. Otherwise, resolves via name fuzzy-match against /api/schemes.
+        Sets asset._resolved_nps_scheme_code on every matched asset.
         """
+        # Assets that already have a stored SM code skip scheme lookup entirely
+        needs_lookup = []
+        for asset in assets:
+            if asset.identifier and asset.identifier.startswith("SM"):
+                asset._resolved_nps_scheme_code = asset.identifier
+                logger.info("NPSNavFetcher: %s → using stored code %s", asset.name, asset.identifier)
+            else:
+                needs_lookup.append(asset)
+
+        if not needs_lookup:
+            return
+
         schemes = self._fetch_schemes()
         if not schemes:
             return
-        for asset in assets:
+        for asset in needs_lookup:
             code = self._best_match(asset.name, schemes)
             if code:
                 if code != asset.identifier:
@@ -222,12 +235,17 @@ class NPSNavFetcher:
         try:
             scheme_code = getattr(asset, "_resolved_nps_scheme_code", None)
             if not scheme_code:
-                # Standalone call (refresh_asset) — do a one-off resolution
-                schemes = self._fetch_schemes()
-                if schemes:
-                    scheme_code = self._best_match(asset.name, schemes)
-                    if scheme_code:
-                        asset._resolved_nps_scheme_code = scheme_code
+                # Use stored SM code directly if available
+                if asset.identifier and asset.identifier.startswith("SM"):
+                    scheme_code = asset.identifier
+                    asset._resolved_nps_scheme_code = scheme_code
+                else:
+                    # Standalone call (refresh_asset) — do a one-off resolution
+                    schemes = self._fetch_schemes()
+                    if schemes:
+                        scheme_code = self._best_match(asset.name, schemes)
+                        if scheme_code:
+                            asset._resolved_nps_scheme_code = scheme_code
             if not scheme_code:
                 logger.warning("NPSNavFetcher: could not resolve scheme code for '%s'", asset.name)
                 return None

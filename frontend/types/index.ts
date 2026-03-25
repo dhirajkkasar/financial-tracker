@@ -109,6 +109,7 @@ export interface ReturnResult {
   // Currently held units and average cost (market-based assets only)
   total_units?: number | null
   avg_price?: number | null
+  current_price?: number | null
   // Lot-based gain breakdown (null for non-lot assets or SGB)
   st_unrealised_gain?: number | null
   lt_unrealised_gain?: number | null

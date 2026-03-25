@@ -97,7 +97,8 @@ class NPSImporter:
     def _is_scheme_name(self, line: str) -> bool:
         upper = line.upper()
         return (
-            ("SCHEME" in upper or "FUND" in upper)
+            "," not in line
+            and ("SCHEME" in upper or "FUND" in upper)
             and "TIER" in upper
             and not line.startswith("Date")
         )

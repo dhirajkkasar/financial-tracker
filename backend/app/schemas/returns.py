@@ -31,6 +31,7 @@ class ReturnResponse(BaseModel):
     # Currently held units and average cost (market-based assets only)
     total_units: Optional[float] = None
     avg_price: Optional[float] = None
+    current_price: Optional[float] = None
     # Lot-based gain breakdown (None for non-lot assets)
     st_unrealised_gain: Optional[float] = None
     lt_unrealised_gain: Optional[float] = None

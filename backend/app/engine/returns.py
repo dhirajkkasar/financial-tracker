@@ -3,17 +3,20 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-OUTFLOW_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST"}
+OUTFLOW_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST", "BILLING"}
 INFLOW_TYPES = {"SELL", "REDEMPTION", "DIVIDEND", "INTEREST", "WITHDRAWAL", "BONUS"}
 EXCLUDED_TYPES = {"SWITCH_IN", "SWITCH_OUT", "SPLIT"}
 
 # Types that ADD units to a holding. BONUS is in INFLOW_TYPES for cashflow purposes
 # (amount_inr=0 so numerically neutral for XIRR), but must also ADD to unit count.
-UNIT_ADD_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST", "BONUS"}
+# SWITCH_IN transfers units from another scheme (e.g. NPS rebalancing/scheme preference change)
+# — excluded from XIRR cashflows but must increase unit count.
+UNIT_ADD_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST", "BONUS", "SWITCH_IN"}
 
-# Types that REMOVE units from a holding (narrow: only actual unit sales).
-# Intentionally excludes DIVIDEND, INTEREST, WITHDRAWAL — those are cash inflows with no unit change.
-UNIT_SUB_TYPES = {"SELL", "REDEMPTION"}
+# Types that REMOVE units from a holding.
+# SWITCH_OUT transfers units to another scheme — excluded from XIRR but must decrease unit count.
+# BILLING deducts units from NPS account as intermediary fee payment.
+UNIT_SUB_TYPES = {"SELL", "REDEMPTION", "SWITCH_OUT", "BILLING"}
 
 
 def compute_xirr(cashflows: list[tuple[date, float]]) -> float | None:

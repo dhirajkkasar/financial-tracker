@@ -94,6 +94,7 @@ export default function AssetDetailPage() {
       : null
   const totalUnits = returns?.total_units ?? null
   const avgPrice = returns?.avg_price ?? null
+  const currentPrice = returns?.current_price ?? null
   const currentPnlHighlight = currentPnl === null ? 'neutral' : currentPnl >= 0 ? 'positive' : 'negative'
   const allTimePnlHighlight = allTimePnl === null ? 'neutral' : allTimePnl >= 0 ? 'positive' : 'negative'
 
@@ -165,6 +166,13 @@ export default function AssetDetailPage() {
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
           <StatCard label="Units Held" value={totalUnits.toLocaleString('en-IN', { maximumFractionDigits: 4 })} />
           <StatCard label="Avg Cost / Unit" value={avgPrice != null ? formatINR2(avgPrice) : '—'} />
+          <StatCard
+            label="Current Price / Unit"
+            value={currentPrice != null ? formatINR2(currentPrice) : '—'}
+            highlight={currentPrice != null && avgPrice != null
+              ? currentPrice >= avgPrice ? 'positive' : 'negative'
+              : 'neutral'}
+          />
         </div>
       )}
 

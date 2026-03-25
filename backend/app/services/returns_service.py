@@ -123,6 +123,7 @@ class ReturnsService:
 
         # --- Active fund: determine current value ---
         snapshot_age_days = (date.today() - snapshot.date).days
+        price_cache = None
 
         if snapshot_age_days < 30:
             current_value = snapshot.market_value_inr / 100.0
@@ -173,6 +174,11 @@ class ReturnsService:
 
         abs_return = compute_absolute_return(total_invested_txn, current_value) if total_invested_txn > 0 else None
 
+        closing_units = snapshot.closing_units
+        mf_avg_price = (total_cost / closing_units) if closing_units > 0 else None
+        # Current price: price_cache NAV if available, else fall back to snapshot NAV
+        mf_current_price = (price_cache.price_inr / 100.0) if price_cache else (snapshot.nav_price_inr / 100.0)
+
         return {
             "asset_id": asset_id,
             "asset_type": asset_type,
@@ -184,6 +190,9 @@ class ReturnsService:
             "cagr": cagr,
             "absolute_return": abs_return,
             "message": None,
+            "total_units": closing_units if closing_units > 0 else None,
+            "avg_price": mf_avg_price,
+            "current_price": mf_current_price,
             "price_is_stale": price_is_stale,
             "price_fetched_at": price_fetched_at,
             # Unrealised gains intentionally null — CAS cost basis used for current P&L
@@ -374,10 +383,12 @@ class ReturnsService:
         price_cache = self.price_repo.get_by_asset_id(asset_id)
         current_value = None
 
+        # Use all transactions (not filtered_txns) so SWITCH_IN/SWITCH_OUT are included —
+        # they are excluded from XIRR cashflows but must affect unit count.
         total_units = sum(
-            t.units or 0 for t in filtered_txns if t.type.value in UNIT_ADD_TYPES
+            t.units or 0 for t in transactions if t.type.value in UNIT_ADD_TYPES
         ) - sum(
-            t.units or 0 for t in filtered_txns if t.type.value in UNIT_SUB_TYPES
+            t.units or 0 for t in transactions if t.type.value in UNIT_SUB_TYPES
         )
         avg_price = total_invested / total_units if total_units > 0 else None
 
@@ -431,6 +442,7 @@ class ReturnsService:
             "current_value": effective_current,
             "total_units": total_units if total_units > 0 else None,
             "avg_price": avg_price,
+            "current_price": price_cache.price_inr / 100.0 if price_cache else None,
             "message": None,
             "price_is_stale": price_is_stale,
             "price_fetched_at": price_fetched_at,
@@ -804,9 +816,9 @@ class ReturnsService:
             price_cache = self.price_repo.get_by_asset_id(asset.id)
             if price_cache:
                 total_units = sum(
-                    t.units or 0 for t in filtered_txns if t.type.value in UNIT_ADD_TYPES
+                    t.units or 0 for t in transactions if t.type.value in UNIT_ADD_TYPES
                 ) - sum(
-                    t.units or 0 for t in filtered_txns if t.type.value in UNIT_SUB_TYPES
+                    t.units or 0 for t in transactions if t.type.value in UNIT_SUB_TYPES
                 )
                 return total_units * (price_cache.price_inr / 100.0)
         elif asset_type in FD_BASED_TYPES:

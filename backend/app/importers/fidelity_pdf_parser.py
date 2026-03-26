@@ -1,4 +1,5 @@
 import hashlib
+import io
 import logging
 import re
 from datetime import datetime
@@ -42,9 +43,8 @@ class FidelityPDFParser:
     @staticmethod
     def extract_required_month_years(file_bytes: bytes) -> list[str]:
         """Return sorted unique YYYY-MM strings from 'Date sold' column in Stock sales section."""
-        import io as _io
         months: set[str] = set()
-        with pdfplumber.open(_io.BytesIO(file_bytes)) as pdf:
+        with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
             in_sales = False
             for page in pdf.pages:
                 text = page.extract_text() or ""
@@ -62,12 +62,11 @@ class FidelityPDFParser:
         return sorted(months)
 
     def parse(self, file_bytes: bytes, filename: str = "") -> ImportResult:
-        import io as _io
         result = ImportResult(source="fidelity_sale")
         ticker: str | None = None
         in_sales = False
 
-        with pdfplumber.open(_io.BytesIO(file_bytes)) as pdf:
+        with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
             for page in pdf.pages:
                 text = page.extract_text() or ""
                 for line in text.splitlines():

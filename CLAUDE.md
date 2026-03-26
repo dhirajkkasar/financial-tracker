@@ -55,6 +55,8 @@ python cli.py import fidelity-sale <file>  # Fidelity tax-cover sale PDF (NetBen
 python cli.py list assets
 python cli.py refresh-prices
 python cli.py snapshot
+python cli.py backup                     # Backup SQLite DB to Google Drive (gzip-compressed)
+python cli.py backup --folder my-folder  # Override Drive folder name
 python cli.py add goal --name "Retirement" --target 10000000 --date 2040-01-01 --asset "HDFC MF:50" --asset "PPF SBI:50" --assumed-return 12.0
 python cli.py update goal-allocation --goal "Retirement" --asset "HDFC MF" --pct 30
 python cli.py remove goal-allocation --goal "Retirement" --asset "HDFC MF"

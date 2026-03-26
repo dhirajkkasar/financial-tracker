@@ -41,6 +41,8 @@ def _resolve_db_path() -> Path:
 
 def _get_credentials() -> Credentials:
     """Load or obtain OAuth2 credentials, refreshing or re-authorizing as needed."""
+    from google.auth.exceptions import RefreshError
+
     client_id = os.getenv("GOOGLE_CLIENT_ID")
     client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
     if not client_id or not client_secret:
@@ -59,8 +61,13 @@ def _get_credentials() -> Credentials:
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
+            try:
+                creds.refresh(Request())
+            except RefreshError:
+                print("  → Stored token is invalid or revoked. Re-authorizing...")
+                TOKEN_PATH.unlink(missing_ok=True)
+                creds = None
+        if not creds or not creds.valid:
             print("  → First run: opening browser for Google authorization...")
             flow = InstalledAppFlow.from_client_config(
                 {

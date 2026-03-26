@@ -39,3 +39,4 @@ frontend/out/
 strava-interval-tracking/
 
 backend/fixtures/.worktrees/
+.worktrees/

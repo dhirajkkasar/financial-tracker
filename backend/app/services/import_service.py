@@ -282,6 +282,7 @@ class ImportService:
             "charges_inr": txn.charges_inr,
             "txn_id": txn.txn_id,
             "notes": txn.notes,
+            "forex_rate": txn.forex_rate,
         }
 
 

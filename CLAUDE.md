@@ -50,6 +50,8 @@ python cli.py import epf <file>
 python cli.py import cas <file>
 python cli.py import nps <file>
 python cli.py import zerodha <file>
+python cli.py import fidelity-rsu <file>   # Fidelity RSU holding CSV (MARKET_TICKER.csv)
+python cli.py import fidelity-sale <file>  # Fidelity tax-cover sale PDF (NetBenefits)
 python cli.py list assets
 python cli.py refresh-prices
 python cli.py snapshot
@@ -296,6 +298,7 @@ constants/index.ts  → Asset type labels, colors, thresholds, NAV_TABS — no m
 2. Frontend directory is `frontend/app/` (no `/src/` prefix — App Router directly in `frontend/`)
 3. NPS returns: moved from VALUATION_BASED to MARKET_BASED; NAV auto-fetched from npsnav.in
 4. `requirements.md` mentions React+Vite — project uses Next.js (ignore)
+5. Test conftest fixture is `db` (not `test_db`) — `db` is the in-memory SQLite session used in integration tests
 
 ---
 
@@ -358,3 +361,36 @@ constants/index.ts  → Asset type labels, colors, thresholds, NAV_TABS — no m
 ### EPF Page (frontend)
 - `frontend/app/epf/page.tsx` shows all EPF assets in a single HoldingsTable with `showNotes` enabled
 - Notes column shows the asset's notes field (no separate EPS sub-section)
+
+---
+
+## Fidelity RSU Import
+
+### Fidelity RSU CSV Parser (`backend/app/importers/fidelity_rsu_csv_parser.py`)
+- Parses Fidelity RSU holding CSVs; filename must be `{MARKET}_{TICKER}.csv` (e.g. `NASDAQ_AMZN.csv`)
+- Creates `VEST` transactions with `asset_type="STOCK_US"`, negative `amount_inr` (cost_basis × forex_rate)
+- `txn_id`: `fidelity_rsu_` + SHA-256[:16] of `ticker|date|quantity_int|cost_per_share_int`
+- `exchange_rates` dict maps `"YYYY-MM"` → USD/INR float; missing month → error per row (parse continues)
+- Footer detection uses month-abbreviation allowlist — `isalpha()` is insufficient ("The values are displayed in USD" also starts with alpha)
+- `extract_required_month_years(file_bytes)` static method returns sorted YYYY-MM list; call before `parse()`
+
+### Fidelity Sale PDF Parser (`backend/app/importers/fidelity_pdf_parser.py`)
+- Parses Fidelity NetBenefits transaction summary PDFs; uses `pdfplumber` (already installed)
+- Extracts ticker from `"TICK: Company Name"` line in the "Stock sales" section
+- Creates `SELL` transactions tagged `"Tax cover sale (acquired YYYY-MM-DD)"` in notes
+- `txn_id`: `fidelity_sale_` + SHA-256[:16] of `ticker|date_sold|date_acquired|quantity_int`
+- PDF gain/loss column can be `+ $0.00` (space between sign and `$`) — regex uses `[+\-]?\s*\$`
+- `extract_required_month_years(file_bytes)` static method; call before `parse()`
+
+### forex_rate field
+- `ParsedTransaction.forex_rate: Optional[float]` — USD/INR rate at time of import; persisted to `Transaction.forex_rate`
+- `forex_rate` column already in initial schema — **no migration needed**
+- `currency="USD"` set automatically on `STOCK_US` assets created via Fidelity import
+
+### API Endpoints
+- `POST /import/fidelity-rsu-csv` — file + `exchange_rates` JSON form field → preview; 422 if any month missing
+- `POST /import/fidelity-sale-pdf` — same pattern; both use shared `_fidelity_preview()` helper in `api/imports.py`
+
+### CLI Pattern for New Importers
+- All CLI import commands must call `_check_file(file_path)` as first line (user-friendly error on bad path)
+- CLI calls parser's `extract_required_month_years()` directly — never duplicate the regex inline

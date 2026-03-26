@@ -296,12 +296,16 @@ class ReturnsService:
             units_remaining = lot.units - sold_units.get(lot.lot_id, 0.0)
             if units_remaining <= 0:
                 continue
+            # Scale INR cost basis proportionally to remaining units.
+            # Do NOT use buy_price_per_unit * units_remaining — for US stocks
+            # price_per_unit is stored in USD and would produce wrong INR totals.
+            scale = units_remaining / lot.units if lot.units else 0.0
             entry = {
                 "lot_id": lot.lot_id,
                 "buy_date": lot.buy_date,
                 "units_remaining": units_remaining,
                 "buy_price_per_unit": lot.buy_price_per_unit,
-                "buy_amount_inr": lot.buy_price_per_unit * units_remaining,
+                "buy_amount_inr": lot.buy_amount_inr * scale,
             }
             if current_price is not None:
                 unrealised = compute_lot_unrealised(lot, current_price, asset_type)

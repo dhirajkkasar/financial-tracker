@@ -1,3 +1,4 @@
+import pytest
 from tests.factories import make_asset, make_transaction
 
 
@@ -65,6 +66,27 @@ def test_get_returns_fd_includes_maturity_fields(client):
     data = resp.json()
     assert "maturity_amount" in data
     assert data["maturity_amount"] > 100000.0
+
+
+def test_stock_us_total_invested_uses_inr_not_usd(client):
+    """Regression: price_per_unit for US stocks is stored in USD.
+    total_invested must use amount_inr (INR), not buy_price_per_unit * units (USD)."""
+    # 10 units vested at $200/share; forex=84 → cost basis = $2000 = ₹168000
+    asset_resp = client.post("/assets", json=make_asset(
+        asset_type="STOCK_US", asset_class="EQUITY", name="AMZN", identifier="AMZN"
+    ))
+    asset_id = asset_resp.json()["id"]
+    client.post(f"/assets/{asset_id}/transactions", json=make_transaction(
+        type="VEST", date="2023-06-01",
+        units=10.0,
+        price_per_unit=200.0,       # USD per share — stored as-is
+        amount_inr=-168000.0,       # INR: 10 * 200 * 84
+    ))
+    resp = client.get(f"/assets/{asset_id}/returns")
+    assert resp.status_code == 200
+    data = resp.json()
+    # Must be ₹168000, NOT $2000 (= 200 * 10)
+    assert data["total_invested"] == pytest.approx(168000.0, rel=1e-3)
 
 
 def test_get_returns_overview_empty_db_returns_zeros(client):

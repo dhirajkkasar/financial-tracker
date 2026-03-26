@@ -632,6 +632,11 @@ def cmd_snapshot() -> dict:
     return result
 
 
+def cmd_backup(folder: str | None = None):
+    import backup as _backup
+    _backup.backup_to_drive(folder_name=folder)
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _check_file(path: str):
@@ -823,6 +828,12 @@ def build_parser() -> argparse.ArgumentParser:
     # ── utilities ─────────────────────────────────────────────────────────────
     sub.add_parser("refresh-prices", help="Trigger price refresh for all assets")
     sub.add_parser("snapshot", help="Take a portfolio snapshot now")
+    p_backup = sub.add_parser("backup", help="Backup DB to Google Drive")
+    p_backup.add_argument(
+        "--folder",
+        default=None,
+        help="Drive folder name (overrides GOOGLE_DRIVE_BACKUP_FOLDER env var)",
+    )
 
     # ── fetch-corp-actions ────────────────────────────────────────────────────
     p_corp = sub.add_parser("fetch-corp-actions",
@@ -931,6 +942,9 @@ def main():
 
     elif args.command == "snapshot":
         cmd_snapshot()
+
+    elif args.command == "backup":
+        cmd_backup(folder=getattr(args, "folder", None))
 
     else:
         parser.print_help()

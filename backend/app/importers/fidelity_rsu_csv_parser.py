@@ -8,6 +8,12 @@ from app.importers.base import ParsedTransaction, ImportResult
 
 logger = logging.getLogger(__name__)
 
+# Valid 3-letter month abbreviations as the start of a date string
+_MONTH_ABBREVS = frozenset({
+    "jan", "feb", "mar", "apr", "may", "jun",
+    "jul", "aug", "sep", "oct", "nov", "dec",
+})
+
 
 class FidelityRSUImporter:
     """Parses Fidelity RSU holding CSV exports (current holdings format).
@@ -21,20 +27,15 @@ class FidelityRSUImporter:
     def __init__(self, exchange_rates: dict[str, float] | None = None):
         self.exchange_rates = exchange_rates or {}
 
-    _MONTH_ABBREVS_STATIC = {
-        "jan", "feb", "mar", "apr", "may", "jun",
-        "jul", "aug", "sep", "oct", "nov", "dec",
-    }
-
-    @classmethod
-    def extract_required_month_years(cls, file_bytes: bytes) -> list[str]:
+    @staticmethod
+    def extract_required_month_years(file_bytes: bytes) -> list[str]:
         """Return sorted unique YYYY-MM strings from 'Date acquired' column."""
         months: set[str] = set()
         text = file_bytes.decode("utf-8-sig")
         reader = csv.DictReader(io.StringIO(text))
         for row in reader:
             date_str = (row.get("Date acquired") or "").strip()
-            if not date_str or date_str[:3].lower() not in cls._MONTH_ABBREVS_STATIC:
+            if not date_str or date_str[:3].lower() not in _MONTH_ABBREVS:
                 continue
             try:
                 d = datetime.strptime(date_str, "%b-%d-%Y")
@@ -52,16 +53,10 @@ class FidelityRSUImporter:
             return parts[0].upper(), parts[1].upper()
         return "", stem.upper()
 
-    # Valid 3-letter month abbreviations as the start of a date string
-    _MONTH_ABBREVS = {
-        "jan", "feb", "mar", "apr", "may", "jun",
-        "jul", "aug", "sep", "oct", "nov", "dec",
-    }
-
     def parse(self, file_bytes: bytes, filename: str = "") -> ImportResult:
         result = ImportResult(source="fidelity_rsu")
         market, ticker = self._parse_ticker_from_filename(filename)
-        if not ticker:
+        if not market or not ticker:
             result.errors.append(
                 "Cannot determine ticker from filename. Expected: MARKET_TICKER.csv"
             )
@@ -72,7 +67,7 @@ class FidelityRSUImporter:
         for i, row in enumerate(reader):
             date_str = (row.get("Date acquired") or "").strip()
             # Skip blank rows and footer rows — only process rows that start with a 3-letter month abbreviation
-            if not date_str or date_str[:3].lower() not in self._MONTH_ABBREVS:
+            if not date_str or date_str[:3].lower() not in _MONTH_ABBREVS:
                 continue
             try:
                 txn = self._parse_row(row, ticker, market)
@@ -85,8 +80,8 @@ class FidelityRSUImporter:
         date_str = row["Date acquired"].strip()
         vest_date = datetime.strptime(date_str, "%b-%d-%Y").date()
         quantity = float(row["Quantity"].replace(",", ""))
-        cost_basis_total = float(row["Cost basis"].replace(",", "").lstrip("$"))
-        cost_basis_per_share = float(row["Cost basis/share"].replace(",", "").lstrip("$"))
+        cost_basis_total = float(row["Cost basis"].replace(",", "").removeprefix("$"))
+        cost_basis_per_share = float(row["Cost basis/share"].replace(",", "").removeprefix("$"))
 
         month_year = vest_date.strftime("%Y-%m")
         forex_rate = self.exchange_rates.get(month_year)

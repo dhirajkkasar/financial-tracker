@@ -7,7 +7,10 @@ FIXTURES = Path(__file__).parent.parent / "fixtures"
 
 
 def test_epf_parser_real_pdf():
-    result = EPFPDFParser().parse((FIXTURES / "BGBNG00268580000306940_2025.pdf").read_bytes())
+    path = FIXTURES / "epf1.pdf"
+    if not path.exists():
+        pytest.skip("EPF passbook PDF fixture not available — place your real EPF PDF here to run this smoke test")
+    result = EPFPDFParser().parse(path.read_bytes())
     assert result.member_id == "BGBNG00268580000306940"
     assert result.establishment_name == "AMAZON DEVELOPMENT CENTRE (INDIA) PRIVATE LIMITED"
     assert result.print_date is not None

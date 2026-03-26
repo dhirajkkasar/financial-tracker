@@ -2,30 +2,30 @@ NPS Transaction Statement for Tier I Account
 
 Subscriber Details
 
-PRAN,'330333338391
-Subscriber Name,MR ABCD DEFF FGHI
+PRAN,'999999999999
+Subscriber Name,MR TEST USER NAME
 Statement Generation Date :March 19  2026 06:44 PM
 Scheme Choice - ACTIVE CHOICE
 
 Investment Summary
 
-Value of your Holdings(Investments)as on March 19 2026 (in Rs),No of Contributions,Total Contribution in your account as onMarch 19 2026 (in Rs),Total Withdrawal as onMarch 19 2026 (in Rs),Total Notional Gain/Loss as onMarch 19 2026 (in Rs),Withdrawal/ deduction in units towards intermediary charges (in Rs),Return on Investment(XIRR), 9.31% ,
+Value of your Holdings(Investments)as on March 19 2026 (in Rs),No of Contributions,Total Contribution in your account as onMarch 19 2026 (in Rs),Total Withdrawal as onMarch 19 2026 (in Rs),Total Notional Gain/Loss as onMarch 19 2026 (in Rs),Withdrawal/ deduction in units towards intermediary charges (in Rs),Return on Investment(XIRR), 9.00% ,
 (A),,(B),(C),D=(A-B)+C,E,,,
-Rs 1120372.35,65,Rs 891816.26,Rs 0.00,Rs 228556.09,Rs 189.39, , ,
+Rs 1000000.00,65,Rs 800000.00,Rs 0.00,Rs 200000.00,Rs 100.00, , ,
 
 
 Investment Details - Scheme Wise Summary
 Particulars,Scheme wise Value of your Holdings(Investments) (in Rs) (E = U * N),Total Units ( U ),NAV as on 18-Mar-2026 ( N ),
-SBI PENSION FUND SCHEME C - TIER I,164031.71,3607.5664,45.4688,
-NPS TRUST- A/C HDFC PENSION FUND MANAGEMENT LIMITED SCHEME E - TIER I,850753.22,16138.3947,52.7161,
-NPS TRUST- A/C HDFC PENSION FUND MANAGEMENT LIMITED SCHEME G - TIER I,105587.42,3753.0985,28.1334,
+SBI PENSION FUND SCHEME C - TIER I,150000.00,3300.0000,45.0000,
+NPS TRUST- A/C HDFC PENSION FUND MANAGEMENT LIMITED SCHEME E - TIER I,750000.00,15000.0000,50.0000,
+NPS TRUST- A/C HDFC PENSION FUND MANAGEMENT LIMITED SCHEME G - TIER I,100000.00,3500.0000,28.0000,
 
  Contribution/Redemption Details during the selected period
 
 Date,Particulars,Uploaded By,Employee Contribution(Rs),Employer's Contribution(Rs),Total(Rs),
 
-11-Apr-2025,For March 2025,HDFC Securities Limited (5000542),0.00,17947.05,17947.05,
-07-May-2025,For April 2025,HDFC Securities Limited (5000542),0.00,25836.78,25836.78,
+11-Apr-2025,For March 2025,HDFC Securities Limited (5000542),0.00,18000.00,18000.00,
+07-May-2025,For April 2025,HDFC Securities Limited (5000542),0.00,25000.00,25000.00,
 
 
 
@@ -35,24 +35,24 @@ Transaction Details
 
 SBI PENSION FUND SCHEME C - TIER I
 Date,Description,Amount (in Rs),NAV,Units
-01-Apr-2025,Opening balance,,,3131.5757
-05-Apr-2025,Billing for Q4 2024-2025,(4.93),42.9944,(0.1146)
-11-Apr-2025,By Contribution for March2025,2692.05,43.1031,62.4560
-07-May-2025,By Contribution for April2025,3875.51,43.4467,89.2014
-19-Mar-2026,Closing Balance,,,3607.5664
+01-Apr-2025,Opening balance,,,3100.0000
+05-Apr-2025,Billing for Q4 2024-2025,(5.00),43.0000,(0.1162)
+11-Apr-2025,By Contribution for March2025,2700.00,43.0000,62.7907
+07-May-2025,By Contribution for April2025,3750.00,43.0000,87.2093
+19-Mar-2026,Closing Balance,,,3300.0000
 
 
 NPS TRUST- A/C HDFC PENSION FUND MANAGEMENT LIMITED SCHEME E - TIER I
 Date,Description,Amount (in Rs),NAV,Units
-01-Apr-2025,Opening balance,,,14162.6903
-11-Apr-2025,By Contribution for March2025,13460.28,48.7652,276.0222
-07-May-2025,By Contribution for April2025,19377.58,51.9045,373.3314
-19-Mar-2026,Closing Balance,,,16138.3947
+01-Apr-2025,Opening balance,,,13500.0000
+11-Apr-2025,By Contribution for March2025,13500.00,49.0000,275.5102
+07-May-2025,By Contribution for April2025,18750.00,50.0000,375.0000
+19-Mar-2026,Closing Balance,,,15000.0000
 
 
 NPS TRUST- A/C HDFC PENSION FUND MANAGEMENT LIMITED SCHEME G - TIER I
 Date,Description,Amount (in Rs),NAV,Units
-01-Apr-2025,Opening balance,,,3254.0843
-11-Apr-2025,By Contribution for March2025,1794.72,28.1548,63.7447
-07-May-2025,By Contribution for April2025,2583.69,28.5304,90.5591
-19-Mar-2026,Closing Balance,,,3753.0985
+01-Apr-2025,Opening balance,,,3200.0000
+11-Apr-2025,By Contribution for March2025,1800.00,28.0000,64.2857
+07-May-2025,By Contribution for April2025,2500.00,28.0000,89.2857
+19-Mar-2026,Closing Balance,,,3500.0000

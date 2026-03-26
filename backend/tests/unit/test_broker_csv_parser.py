@@ -44,7 +44,7 @@ class TestZerodhaImporter:
     def test_uses_native_trade_id_as_txn_id(self, importer, tradebook_bytes):
         result = importer.parse(tradebook_bytes)
         tcs = result.transactions[0]
-        assert tcs.txn_id == "zerodha_76061635"  # prefixed with source
+        assert tcs.txn_id == "zerodha_10000001"  # prefixed with source
 
     def test_txn_id_stable_across_reparses(self, importer, tradebook_bytes):
         result1 = importer.parse(tradebook_bytes)

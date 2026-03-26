@@ -29,16 +29,16 @@ class TestFidelityRSUImporter:
         assert txn.asset_type == "STOCK_US"
         assert txn.txn_type == "VEST"
         assert txn.date == date(2025, 3, 17)
-        assert txn.units == pytest.approx(68.0)
-        assert txn.price_per_unit == pytest.approx(196.40)
+        assert txn.units == pytest.approx(50.0)
+        assert txn.price_per_unit == pytest.approx(200.00)
         assert txn.forex_rate == pytest.approx(86.5)
 
     def test_parse_amount_inr_is_negative_outflow(self):
         from app.importers.fidelity_rsu_csv_parser import FidelityRSUImporter
         data = _load_fixture("fidelity_rsu_sample.csv")
         txn = FidelityRSUImporter(exchange_rates=self.RATES).parse(data, "NASDAQ_AMZN.csv").transactions[0]
-        # cost_basis=13355.28, rate=86.5 → -1_155_231.72
-        assert txn.amount_inr == pytest.approx(-(13355.28 * 86.5), rel=1e-4)
+        # cost_basis=10000.00, rate=86.5 → -865_000.00
+        assert txn.amount_inr == pytest.approx(-(10000.00 * 86.5), rel=1e-4)
 
     def test_parse_txn_id_is_stable(self):
         """Same row imported twice produces the same txn_id."""

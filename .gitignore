@@ -35,8 +35,8 @@ frontend/out/
 .idea/
 *.swp
 
-# Strava side project (separate repo, not part of this project)
-strava-interval-tracking/
-
 backend/fixtures/.worktrees/
 .worktrees/
+
+# Remove pdf fixtures from git tracking, as they are large and can be regenerated from the original source files if needed.
+backend/tests/fixtures/*.pdf

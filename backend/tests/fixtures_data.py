@@ -125,7 +125,7 @@ PARSED_PPF_CSV = PPFCSVImportResult(
 
 # ---------------------------------------------------------------------------
 # EPF (Employees Provident Fund passbook)
-# Values verified from tests/fixtures/BGBNG00268580000306940_2025.pdf (first month)
+# Values verified from tests/fixtures/epf1.pdf (first month)
 # plus representative interest txns from the 2024 passbook (31/03/2025).
 # The smoke test (tests/smoke/test_epf_smoke.py) validates the full real parse.
 # ---------------------------------------------------------------------------

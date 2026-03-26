@@ -2,23 +2,23 @@ NPS Transaction Statement for Tier II Account
 
 Subscriber Details
 
-PRAN,'330333338391
-Subscriber Name,MR ABCD DEFF FGHI
+PRAN,'999999999999
+Subscriber Name,MR TEST USER NAME
 Statement Generation Date :March 19  2026 06:44 PM
 Scheme Choice - ACTIVE CHOICE
 
 Investment Summary
 
-Value of your Holdings(Investments)as on March 19 2026 (in Rs),No of Contributions,Total Contribution in your account as onMarch 19 2026 (in Rs),Total Withdrawal as onMarch 19 2026 (in Rs),Total Notional Gain/Loss as onMarch 19 2026 (in Rs),Return on Investment(XIRR), 10.05% ,
+Value of your Holdings(Investments)as on March 19 2026 (in Rs),No of Contributions,Total Contribution in your account as onMarch 19 2026 (in Rs),Total Withdrawal as onMarch 19 2026 (in Rs),Total Notional Gain/Loss as onMarch 19 2026 (in Rs),Return on Investment(XIRR), 10.00% ,
 (A),,(B),(C),D=(A-B)+C,,,
-Rs 626588.73,3,Rs 434000.00,Rs 15363.65,Rs 207952.38,, ,
+Rs 500000.00,3,Rs 400000.00,Rs 0.00,Rs 100000.00,, ,
 
 
 Investment Details - Scheme Wise Summary
 Particulars,Scheme wise Value of your Holdings(Investments) (in Rs) (E = U * N),Total Units ( U ),NAV as on 18-Mar-2026 ( N ),
-SBI PENSION FUND SCHEME C - TIER II,116705.22,2875.5257,40.5857,
-LIC PENSION FUND SCHEME G - TIER II,28788.35,916.1059,31.4247,
-NPS TRUST- A/C HDFC PENSION FUND MANAGEMENT LIMITED SCHEME E - TIER II,481095.16,10575.7282,45.4905,
+SBI PENSION FUND SCHEME C - TIER II,100000.00,2500.0000,40.0000,
+LIC PENSION FUND SCHEME G - TIER II,25000.00,800.0000,31.0000,
+NPS TRUST- A/C HDFC PENSION FUND MANAGEMENT LIMITED SCHEME E - TIER II,375000.00,8333.0000,45.0000,
 
  Contribution/Redemption Details during the selected period
 
@@ -33,17 +33,17 @@ Transaction Details
 
 SBI PENSION FUND SCHEME C - TIER II
 Date,Description,Amount (in Rs),NAV,Units
-01-Apr-2025,Opening balance,,,2875.5257
-19-Mar-2026,Closing Balance,,,2875.5257
+01-Apr-2025,Opening balance,,,2500.0000
+19-Mar-2026,Closing Balance,,,2500.0000
 
 
 LIC PENSION FUND SCHEME G - TIER II
 Date,Description,Amount (in Rs),NAV,Units
-01-Apr-2025,Opening balance,,,916.1059
-19-Mar-2026,Closing Balance,,,916.1059
+01-Apr-2025,Opening balance,,,800.0000
+19-Mar-2026,Closing Balance,,,800.0000
 
 
 NPS TRUST- A/C HDFC PENSION FUND MANAGEMENT LIMITED SCHEME E - TIER II
 Date,Description,Amount (in Rs),NAV,Units
-01-Apr-2025,Opening balance,,,10575.7282
-19-Mar-2026,Closing Balance,,,10575.7282
+01-Apr-2025,Opening balance,,,8333.0000
+19-Mar-2026,Closing Balance,,,8333.0000

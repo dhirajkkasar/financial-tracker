@@ -113,7 +113,10 @@ def test_fidelity_rsu_csv_endpoint_idempotent(client):
 
 def test_fidelity_sale_pdf_endpoint_preview(client):
     """POST /import/fidelity-sale-pdf returns preview with 2 SELL transactions."""
-    pdf_bytes = (FIXTURES / "fidelity_sale_sample.pdf").read_bytes()
+    path = FIXTURES / "fidelity_sale_sample.pdf"
+    if not path.exists():
+        pytest.skip("fidelity_sale_sample.pdf fixture not available")
+    pdf_bytes = path.read_bytes()
     rates = {"2025-03": 86.0, "2025-09": 84.5}
     resp = client.post(
         "/import/fidelity-sale-pdf",
@@ -131,7 +134,10 @@ def test_fidelity_sale_pdf_endpoint_preview(client):
 
 def test_fidelity_sale_pdf_endpoint_missing_rate_returns_422(client):
     """POST /import/fidelity-sale-pdf with incomplete rates returns 422."""
-    pdf_bytes = (FIXTURES / "fidelity_sale_sample.pdf").read_bytes()
+    path = FIXTURES / "fidelity_sale_sample.pdf"
+    if not path.exists():
+        pytest.skip("fidelity_sale_sample.pdf fixture not available")
+    pdf_bytes = path.read_bytes()
     resp = client.post(
         "/import/fidelity-sale-pdf",
         data={"exchange_rates": json.dumps({"2025-03": 86.0})},  # missing 2025-09
@@ -143,7 +149,10 @@ def test_fidelity_sale_pdf_endpoint_missing_rate_returns_422(client):
 
 def test_fidelity_sale_pdf_endpoint_idempotent(client):
     """Importing the same PDF twice skips duplicates."""
-    pdf_bytes = (FIXTURES / "fidelity_sale_sample.pdf").read_bytes()
+    path = FIXTURES / "fidelity_sale_sample.pdf"
+    if not path.exists():
+        pytest.skip("fidelity_sale_sample.pdf fixture not available")
+    pdf_bytes = path.read_bytes()
     rates = {"2025-03": 86.0, "2025-09": 84.5}
 
     def do_import():

@@ -133,9 +133,12 @@ async def import_epf_pdf(
 def _parse_exchange_rates(exchange_rates: str) -> dict[str, float]:
     """Parse and validate the exchange_rates JSON form field."""
     try:
-        return _json.loads(exchange_rates)
+        parsed = _json.loads(exchange_rates)
     except Exception:
         raise ValidationError('exchange_rates must be valid JSON, e.g. {"2025-03": 86.5}')
+    if not all(isinstance(v, (int, float)) for v in parsed.values()):
+        raise ValidationError('exchange_rates values must be numbers, e.g. {"2025-03": 86.5}')
+    return parsed
 
 
 def _fidelity_preview(

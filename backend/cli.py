@@ -8,6 +8,8 @@ Usage (server must be running):
   python cli.py import nps <file>
   python cli.py import zerodha <file>
   python cli.py import groww <file>
+  python cli.py import fidelity-rsu <file>    # Fidelity RSU holding CSV
+  python cli.py import fidelity-sale <file>   # Fidelity tax-cover sale PDF
 
   python cli.py add fd   --name "HDFC FD" --bank HDFC --principal 500000 --rate 7.1 --start 2024-01-15 --maturity 2025-01-15 --compounding QUARTERLY
   python cli.py add rd   --name "SBI RD"  --bank SBI  --installment 10000 --rate 6.5 --start 2024-01-01 --maturity 2026-01-01 --compounding QUARTERLY
@@ -154,6 +156,170 @@ def cmd_import_broker_csv(file_path: str, broker: str) -> dict:
     result = _api("post", "/import/commit", json={"preview_id": preview["preview_id"]})
     _print_import_summary(broker.title(), inserted=result["created_count"], skipped=result["skipped_count"])
     return result
+
+
+def cmd_import_fidelity_rsu(file_path: str) -> None:
+    """Import Fidelity RSU holding CSV (MARKET_TICKER.csv format).
+    Prompts for USD/INR exchange rate per vest month.
+    """
+    import csv as _csv
+    from datetime import datetime
+
+    # Step 1: Parse CSV locally to find required month-years
+    with open(file_path, "r", encoding="utf-8-sig") as f:
+        reader = _csv.DictReader(f)
+        months: set[str] = set()
+        for row in reader:
+            date_str = (row.get("Date acquired") or "").strip()
+            if not date_str or not date_str[0].isalpha():
+                continue
+            try:
+                d = datetime.strptime(date_str, "%b-%d-%Y")
+                months.add(d.strftime("%Y-%m"))
+            except ValueError:
+                pass
+
+    if not months:
+        print("No vest rows found in file.")
+        return
+
+    # Step 2: Prompt user for exchange rate per month-year
+    print("\nEnter USD/INR exchange rate for each vest month (use RBI monthly average):")
+    exchange_rates: dict[str, float] = {}
+    for month in sorted(months):
+        while True:
+            raw = input(f"  USD/INR rate for {month}: ").strip()
+            try:
+                rate = float(raw)
+                if rate <= 0:
+                    raise ValueError
+                exchange_rates[month] = rate
+                break
+            except ValueError:
+                print("  Invalid rate. Enter a positive number (e.g. 86.5)")
+
+    # Step 3: Call API with file + rates
+    import json
+    with open(file_path, "rb") as f:
+        preview = _api(
+            "post",
+            "/import/fidelity-rsu-csv",
+            files={"file": (os.path.basename(file_path), f, "text/csv")},
+            data={"exchange_rates": json.dumps(exchange_rates)},
+        )
+
+    print(f"\nPreview: {preview['new_count']} new, {preview['duplicate_count']} duplicate")
+    if preview["new_count"] == 0:
+        print("Nothing to import.")
+        return
+
+    confirm = input("Commit? [y/N] ").strip().lower()
+    if confirm != "y":
+        print("Aborted.")
+        return
+
+    result = _api("post", "/import/commit", json={"preview_id": preview["preview_id"]})
+    _print_import_summary(
+        "Fidelity RSU",
+        inserted=result["created_count"],
+        skipped=result["skipped_count"],
+        errors=[],
+    )
+
+
+def cmd_import_fidelity_sale(file_path: str) -> None:
+    """Import Fidelity tax-cover SELL transactions from a transaction summary PDF.
+    Parses the PDF locally (pdfplumber) to find required month-years, prompts for rates,
+    then calls one API endpoint with file + rates.
+    """
+    import json
+    import io
+    import re
+
+    # Regex mirrors fidelity_pdf_parser._SALE_ROW_RE — keep in sync if parser changes
+    _SALE_ROW_RE = re.compile(
+        r"(\w{3}-\d{2}-\d{4})\s+"   # date sold
+        r"(\w{3}-\d{2}-\d{4})\s+"   # date acquired
+        r"([\d,]+\.?\d*)\s+"         # quantity
+        r"\$([\d,]+\.?\d*)\s+"       # cost basis
+        r"\$([\d,]+\.?\d*)\s+"       # proceeds
+        r"[+\-]?\s*\$[\d,]+\.?\d*\s+"  # gain/loss (note: may have space between sign and $)
+        r"USD\s+(\w+)"               # stock source
+    )
+
+    # Step 1: Parse PDF locally to find required month-years
+    try:
+        import pdfplumber
+    except ImportError:
+        print("Error: pdfplumber not installed. Run: pip install pdfplumber")
+        sys.exit(1)
+
+    months: set[str] = set()
+    with open(file_path, "rb") as f:
+        pdf_bytes = f.read()
+
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        in_sales = False
+        for page in pdf.pages:
+            text = page.extract_text() or ""
+            for line in text.splitlines():
+                if "Stock sales" in line:
+                    in_sales = True
+                if in_sales:
+                    m = _SALE_ROW_RE.search(line)
+                    if m:
+                        from datetime import datetime as _dt
+                        try:
+                            d = _dt.strptime(m.group(1), "%b-%d-%Y")
+                            months.add(d.strftime("%Y-%m"))
+                        except ValueError:
+                            pass
+
+    if not months:
+        print("No sale transactions found in PDF.")
+        return
+
+    # Step 2: Prompt for exchange rate per month-year
+    print("\nEnter USD/INR exchange rate for each sale month (use RBI monthly average):")
+    exchange_rates: dict[str, float] = {}
+    for month in sorted(months):
+        while True:
+            raw = input(f"  USD/INR rate for {month}: ").strip()
+            try:
+                rate = float(raw)
+                if rate <= 0:
+                    raise ValueError
+                exchange_rates[month] = rate
+                break
+            except ValueError:
+                print("  Invalid rate. Enter a positive number (e.g. 86.0)")
+
+    # Step 3: Call single API endpoint with file + rates
+    with open(file_path, "rb") as f:
+        preview = _api(
+            "post",
+            "/import/fidelity-sale-pdf",
+            files={"file": (os.path.basename(file_path), f, "application/pdf")},
+            data={"exchange_rates": json.dumps(exchange_rates)},
+        )
+
+    print(f"\nPreview: {preview['new_count']} new, {preview['duplicate_count']} duplicate")
+    if preview["new_count"] == 0:
+        print("Nothing to import.")
+        return
+
+    confirm = input("Commit? [y/N] ").strip().lower()
+    if confirm != "y":
+        print("Aborted.")
+        return
+
+    result = _api("post", "/import/commit", json={"preview_id": preview["preview_id"]})
+    _print_import_summary(
+        "Fidelity Sale PDF",
+        inserted=result["created_count"],
+        skipped=result["skipped_count"],
+        errors=[],
+    )
 
 
 # ── Add commands ──────────────────────────────────────────────────────────────
@@ -542,6 +708,12 @@ def build_parser() -> argparse.ArgumentParser:
     s = import_sub.add_parser("groww", help="Import Groww CSV")
     s.add_argument("file", help="Path to CSV")
 
+    s = import_sub.add_parser("fidelity-rsu", help="Import Fidelity RSU holding CSV (MARKET_TICKER.csv)")
+    s.add_argument("file", help="Path to CSV file")
+
+    s = import_sub.add_parser("fidelity-sale", help="Import Fidelity tax-cover sale PDF")
+    s.add_argument("file", help="Path to PDF file")
+
     # ── add ───────────────────────────────────────────────────────────────────
     p_add = sub.add_parser("add", help="Add an asset or transaction manually")
     add_sub = p_add.add_subparsers(dest="kind", metavar="KIND")
@@ -722,6 +894,10 @@ def main():
             cmd_import_broker_csv(args.file, broker="zerodha")
         elif args.source == "groww":
             cmd_import_broker_csv(args.file, broker="groww")
+        elif args.source == "fidelity-rsu":
+            cmd_import_fidelity_rsu(args.file)
+        elif args.source == "fidelity-sale":
+            cmd_import_fidelity_sale(args.file)
 
     elif args.command == "add":
         if not args.kind:

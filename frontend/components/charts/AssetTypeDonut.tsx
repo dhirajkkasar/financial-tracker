@@ -4,6 +4,7 @@ import { AssetTypeBreakdownEntry } from '@/types'
 import { ASSET_TYPE_COLORS, ASSET_TYPE_LABELS } from '@/constants'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { usePrivateMode } from '@/context/PrivateModeContext'
+import { useDarkMode } from '@/context/DarkModeContext'
 
 interface AssetTypeDonutProps {
   data: AssetTypeBreakdownEntry[]
@@ -29,6 +30,9 @@ function DonutTooltip({ active, payload, total }: { active?: boolean; payload?: 
 }
 
 export function AssetTypeDonut({ data, loading }: AssetTypeDonutProps) {
+  const { isDark } = useDarkMode()
+  const legendColor = isDark ? '#9a9a96' : '#6b6b67'
+
   if (loading) {
     return <Skeleton className="mx-auto h-48 w-48 rounded-full" />
   }
@@ -48,7 +52,7 @@ export function AssetTypeDonut({ data, loading }: AssetTypeDonutProps) {
   return (
     <ResponsiveContainer width="100%" height={240}>
       <PieChart>
-        <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={88} strokeWidth={2} stroke="#fff">
+        <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={88} strokeWidth={2} stroke="var(--color-card)">
           {chartData.map((entry, i) => (
             <Cell key={i} fill={ASSET_TYPE_COLORS[entry.asset_type] ?? '#94a3b8'} />
           ))}
@@ -57,7 +61,7 @@ export function AssetTypeDonut({ data, loading }: AssetTypeDonutProps) {
         <Legend
           iconType="circle"
           iconSize={7}
-          formatter={(value) => <span style={{ fontSize: 11, color: '#6b6b67', fontFamily: 'var(--font-dm-sans)' }}>{value}</span>}
+          formatter={(value) => <span style={{ fontSize: 11, color: legendColor, fontFamily: 'var(--font-dm-sans)' }}>{value}</span>}
         />
       </PieChart>
     </ResponsiveContainer>

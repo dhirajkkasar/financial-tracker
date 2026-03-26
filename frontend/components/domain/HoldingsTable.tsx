@@ -228,7 +228,7 @@ export function HoldingsTable({ assets, loading, variant = 'default', showUnits 
             const isInactive = !a.is_active
 
             return (
-              <tr key={a.id} className={`border-b border-border last:border-0 transition-colors ${isInactive ? 'bg-slate-50 text-slate-400 hover:bg-slate-100' : 'hover:bg-accent-subtle/40'}`}>
+              <tr key={a.id} className={`border-b border-border last:border-0 transition-colors ${isInactive ? 'bg-border/30 text-tertiary hover:bg-border/50' : 'hover:bg-accent-subtle/40'}`}>
                 <td className="py-3 pr-4 w-[16ch]">
                   <div className="flex items-start gap-2">
                     <Link href={`/assets/${a.id}`} className="font-medium text-accent hover:underline break-words">
@@ -273,7 +273,7 @@ export function HoldingsTable({ assets, loading, variant = 'default', showUnits 
                   </td>
                 )}
                 <td className="py-3 pr-4">
-                  {isInactive ? <span className="text-slate-400">—</span> : <PnlCell amount={currentPnl} pct={currentPct} fmt={formatINR} />}
+                  {isInactive ? <span className="text-tertiary">—</span> : <PnlCell amount={currentPnl} pct={currentPct} fmt={formatINR} />}
                 </td>
                 {variant !== 'fd-tax' && (
                   <>

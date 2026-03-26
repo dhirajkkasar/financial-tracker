@@ -4,6 +4,11 @@ from pydantic import BaseModel, ConfigDict
 from app.models.asset import AssetType, AssetClass
 
 
+class GoalRef(BaseModel):
+    id: int
+    name: str
+
+
 class AssetCreate(BaseModel):
     name: str
     identifier: Optional[str] = None
@@ -40,3 +45,5 @@ class AssetResponse(BaseModel):
     notes: Optional[str] = None
     scheme_category: Optional[str] = None
     created_at: datetime
+    # Goal tracking (populated only by GET /assets/{id})
+    goals: list[GoalRef] = []

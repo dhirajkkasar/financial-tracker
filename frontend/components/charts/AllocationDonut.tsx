@@ -3,6 +3,7 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recha
 import { ASSET_CLASS_COLORS } from '@/constants'
 import { AssetClass } from '@/types'
 import { usePrivateMode } from '@/context/PrivateModeContext'
+import { useDarkMode } from '@/context/DarkModeContext'
 
 interface AllocationEntry {
   name: string
@@ -29,6 +30,9 @@ function DonutTooltip({ active, payload, total }: { active?: boolean; payload?: 
 }
 
 export function AllocationDonut({ data }: { data: AllocationEntry[] }) {
+  const { isDark } = useDarkMode()
+  const legendColor = isDark ? '#9a9a96' : '#6b6b67'
+
   if (!data || data.length === 0) {
     return <div className="flex h-48 items-center justify-center text-sm text-tertiary">No allocation data</div>
   }
@@ -38,7 +42,7 @@ export function AllocationDonut({ data }: { data: AllocationEntry[] }) {
   return (
     <ResponsiveContainer width="100%" height={240}>
       <PieChart>
-        <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={88} strokeWidth={2} stroke="#fff">
+        <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={88} strokeWidth={2} stroke="var(--color-card)">
           {data.map((entry, i) => (
             <Cell key={i} fill={ASSET_CLASS_COLORS[entry.asset_class] || '#94a3b8'} />
           ))}
@@ -47,7 +51,7 @@ export function AllocationDonut({ data }: { data: AllocationEntry[] }) {
         <Legend
           iconType="circle"
           iconSize={7}
-          formatter={(value) => <span style={{ fontSize: 11, color: '#6b6b67', fontFamily: 'var(--font-dm-sans)' }}>{value}</span>}
+          formatter={(value) => <span style={{ fontSize: 11, color: legendColor, fontFamily: 'var(--font-dm-sans)' }}>{value}</span>}
         />
       </PieChart>
     </ResponsiveContainer>

@@ -6,6 +6,7 @@ from app.database import get_db
 from app.middleware.error_handler import NotFoundError
 from app.models.asset import Asset, AssetType, AssetClass
 from app.repositories.asset_repo import AssetRepository
+from app.repositories.goal_repo import GoalRepository
 from app.schemas.asset import AssetCreate, AssetUpdate, AssetResponse
 
 router = APIRouter(prefix="/assets", tags=["assets"])
@@ -35,6 +36,8 @@ def get_asset(asset_id: int, db: Session = Depends(get_db)):
     asset = repo.get_by_id(asset_id)
     if not asset:
         raise NotFoundError(f"Asset {asset_id} not found")
+    allocations = GoalRepository(db).list_allocations_for_asset(asset_id)
+    asset.goals = [{"id": a.goal.id, "name": a.goal.name} for a in allocations]
     return asset
 
 

@@ -1,4 +1,5 @@
 'use client'
+import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
@@ -126,6 +127,22 @@ export default function AssetDetailPage() {
             <span className="ml-2 rounded-full bg-border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-tertiary">
               Inactive
             </span>
+          )}
+        </p>
+        <p className="mt-1 text-sm text-tertiary">
+          {asset.goals.length > 0 ? (
+            <>Tracking Goal{' '}
+              {asset.goals.map((g, i) => (
+                <span key={g.id}>
+                  {i > 0 && ', '}
+                  <Link href={`/goals/${g.id}`} className="text-accent hover:underline">
+                    {g.name}
+                  </Link>
+                </span>
+              ))}
+            </>
+          ) : (
+            'No goal assigned'
           )}
         </p>
       </div>

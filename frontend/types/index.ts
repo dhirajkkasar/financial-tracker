@@ -9,6 +9,11 @@ export type TransactionType =
   | 'CONTRIBUTION' | 'WITHDRAWAL' | 'SWITCH_IN' | 'SWITCH_OUT'
   | 'BONUS' | 'SPLIT' | 'VEST' | 'TRANSFER' | 'BILLING'
 
+export interface GoalRef {
+  id: number
+  name: string
+}
+
 export interface Asset {
   id: number
   name: string
@@ -20,6 +25,7 @@ export interface Asset {
   scheme_category: string | null
   notes: string | null
   created_at: string
+  goals: GoalRef[]
 }
 
 export interface Transaction {

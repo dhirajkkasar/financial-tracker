@@ -22,7 +22,7 @@ export function TabNavClient({ tabs }: { tabs: readonly Tab[] }) {
             href={tab.href}
             className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] transition-colors ${
               active
-                ? 'bg-accent-subtle text-accent'
+                ? 'bg-accent/15 text-accent ring-1 ring-accent/30'
                 : 'text-secondary hover:bg-border hover:text-primary'
             }`}
           >

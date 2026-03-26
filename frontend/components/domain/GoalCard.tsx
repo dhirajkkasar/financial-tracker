@@ -9,26 +9,26 @@ export function GoalCard({ goal }: { goal: Goal }) {
   const { formatINR } = usePrivateMoney()
   const pct = goal.progress_pct
   return (
-    <div className="rounded-xl border bg-white p-5 shadow-sm">
+    <div className="rounded-xl border border-border bg-card p-5 shadow-card">
       <div className="flex items-start justify-between">
-        <Link href={`/goals/${goal.id}`} className="font-medium text-indigo-600 hover:underline">
+        <Link href={`/goals/${goal.id}`} className="font-medium text-accent hover:underline">
           {goal.name}
         </Link>
-        <span className="text-xs text-gray-400">By {formatDate(goal.target_date)}</span>
+        <span className="text-xs text-tertiary">By {formatDate(goal.target_date)}</span>
       </div>
 
       <div className="mt-3 space-y-1 text-sm">
         <div className="flex justify-between">
-          <span className="text-gray-500">Target</span>
-          <span className="font-semibold">{formatINR(goal.target_amount_inr)}</span>
+          <span className="text-secondary">Target</span>
+          <span className="font-semibold text-primary">{formatINR(goal.target_amount_inr)}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-500">Current</span>
-          <span>{formatINR(goal.current_value_inr)}</span>
+          <span className="text-secondary">Current</span>
+          <span className="text-primary">{formatINR(goal.current_value_inr)}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-500">Remaining</span>
-          <span className={goal.remaining_inr > 0 ? 'text-red-500' : 'text-green-600'}>
+          <span className="text-secondary">Remaining</span>
+          <span className={goal.remaining_inr > 0 ? 'text-loss' : 'text-gain'}>
             {goal.remaining_inr > 0 ? formatINR(goal.remaining_inr) : 'Goal met!'}
           </span>
         </div>
@@ -36,7 +36,7 @@ export function GoalCard({ goal }: { goal: Goal }) {
 
       <div className="mt-4">
         <ProgressBar value={pct} />
-        <p className="mt-1 text-xs text-gray-400">{pct.toFixed(1)}% of target · {goal.allocations.length} investment{goal.allocations.length !== 1 ? 's' : ''}</p>
+        <p className="mt-1 text-xs text-tertiary">{pct.toFixed(1)}% of target · {goal.allocations.length} investment{goal.allocations.length !== 1 ? 's' : ''}</p>
       </div>
     </div>
   )

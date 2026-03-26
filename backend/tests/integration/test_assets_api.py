@@ -65,4 +65,46 @@ def test_delete_asset_soft_deletes(client, seeded_asset):
     assert get_resp.status_code == 200
     assert get_resp.json()["is_active"] is False
 
+def make_goal(**overrides):
+    return {
+        "name": "Retirement",
+        "target_amount_inr": 5000000.0,
+        "target_date": "2040-01-01",
+        "assumed_return_pct": 12.0,
+        **overrides,
+    }
+
+
+def test_get_asset_returns_empty_goals_when_unallocated(client, seeded_asset):
+    asset_id = seeded_asset["id"]
+    resp = client.get(f"/assets/{asset_id}")
+    assert resp.status_code == 200
+    assert resp.json()["goals"] == []
+
+
+def test_get_asset_returns_single_goal_when_allocated(client, seeded_asset):
+    asset_id = seeded_asset["id"]
+    goal_resp = client.post("/goals", json=make_goal())
+    goal = goal_resp.json()
+    client.post(f"/goals/{goal['id']}/allocations", json={"asset_id": asset_id, "allocation_pct": 100})
+
+    data = client.get(f"/assets/{asset_id}").json()
+    assert len(data["goals"]) == 1
+    assert data["goals"][0] == {"id": goal["id"], "name": "Retirement"}
+
+
+def test_get_asset_returns_multiple_goals_when_allocated_to_many(client, seeded_asset):
+    asset_id = seeded_asset["id"]
+    g1 = client.post("/goals", json=make_goal(name="Retirement")).json()
+    g2 = client.post("/goals", json=make_goal(name="House")).json()
+    client.post(f"/goals/{g1['id']}/allocations", json={"asset_id": asset_id, "allocation_pct": 60})
+    client.post(f"/goals/{g2['id']}/allocations", json={"asset_id": asset_id, "allocation_pct": 40})
+
+    data = client.get(f"/assets/{asset_id}").json()
+    goal_ids = {g["id"] for g in data["goals"]}
+    goal_names = {g["name"] for g in data["goals"]}
+    assert goal_ids == {g1["id"], g2["id"]}
+    assert goal_names == {"Retirement", "House"}
+
+
 # TestFixInactiveStocks removed — retroactive fix done by cleaning DB and reimporting

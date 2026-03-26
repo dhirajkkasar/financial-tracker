@@ -10,6 +10,7 @@ import {
 } from 'recharts'
 import { PortfolioSnapshot } from '@/types'
 import { usePrivateMode } from '@/context/PrivateModeContext'
+import { useDarkMode } from '@/context/DarkModeContext'
 
 function formatINRCompact(n: number) {
   if (n >= 1_00_00_000) return `₹${(n / 1_00_00_000).toFixed(2)}Cr`
@@ -52,6 +53,8 @@ interface NetWorthChartProps {
 
 export function NetWorthChart({ data, loading }: NetWorthChartProps) {
   const { isPrivate } = usePrivateMode()
+  const { isDark } = useDarkMode()
+  const tickColor = isDark ? '#9a9a96' : '#6b6b67'
   if (loading) {
     return <div className="h-48 animate-pulse rounded bg-border" />
   }
@@ -82,18 +85,18 @@ export function NetWorthChart({ data, loading }: NetWorthChartProps) {
             <stop offset="95%" stopColor="#c9a96e" stopOpacity={0} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+        <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} vertical={false} />
         <XAxis
           dataKey="date"
           tickFormatter={formatDate}
-          tick={{ fill: '#6b6b67', fontSize: 10 }}
+          tick={{ fill: tickColor, fontSize: 10 }}
           tickLine={false}
           axisLine={false}
           interval="preserveStartEnd"
         />
         <YAxis
           tickFormatter={(v) => isPrivate ? '*****' : formatINRCompact(v)}
-          tick={{ fill: '#6b6b67', fontSize: 10 }}
+          tick={{ fill: tickColor, fontSize: 10 }}
           tickLine={false}
           axisLine={false}
           domain={[Math.max(0, minVal - padding), maxVal + padding]}

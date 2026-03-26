@@ -162,22 +162,14 @@ def cmd_import_fidelity_rsu(file_path: str) -> None:
     """Import Fidelity RSU holding CSV (MARKET_TICKER.csv format).
     Prompts for USD/INR exchange rate per vest month.
     """
-    import csv as _csv
-    from datetime import datetime
+    _check_file(file_path)
+    from app.importers.fidelity_rsu_csv_parser import FidelityRSUImporter
 
     # Step 1: Parse CSV locally to find required month-years
-    with open(file_path, "r", encoding="utf-8-sig") as f:
-        reader = _csv.DictReader(f)
-        months: set[str] = set()
-        for row in reader:
-            date_str = (row.get("Date acquired") or "").strip()
-            if not date_str or not date_str[0].isalpha():
-                continue
-            try:
-                d = datetime.strptime(date_str, "%b-%d-%Y")
-                months.add(d.strftime("%Y-%m"))
-            except ValueError:
-                pass
+    with open(file_path, "rb") as f:
+        csv_bytes = f.read()
+    months_list = FidelityRSUImporter.extract_required_month_years(csv_bytes)
+    months = set(months_list)
 
     if not months:
         print("No vest rows found in file.")
@@ -232,48 +224,15 @@ def cmd_import_fidelity_sale(file_path: str) -> None:
     Parses the PDF locally (pdfplumber) to find required month-years, prompts for rates,
     then calls one API endpoint with file + rates.
     """
+    _check_file(file_path)
     import json
-    import io
-    import re
-
-    # Regex mirrors fidelity_pdf_parser._SALE_ROW_RE — keep in sync if parser changes
-    _SALE_ROW_RE = re.compile(
-        r"(\w{3}-\d{2}-\d{4})\s+"   # date sold
-        r"(\w{3}-\d{2}-\d{4})\s+"   # date acquired
-        r"([\d,]+\.?\d*)\s+"         # quantity
-        r"\$([\d,]+\.?\d*)\s+"       # cost basis
-        r"\$([\d,]+\.?\d*)\s+"       # proceeds
-        r"[+\-]?\s*\$[\d,]+\.?\d*\s+"  # gain/loss (note: may have space between sign and $)
-        r"USD\s+(\w+)"               # stock source
-    )
+    from app.importers.fidelity_pdf_parser import FidelityPDFParser
 
     # Step 1: Parse PDF locally to find required month-years
-    try:
-        import pdfplumber
-    except ImportError:
-        print("Error: pdfplumber not installed. Run: pip install pdfplumber")
-        sys.exit(1)
-
-    months: set[str] = set()
     with open(file_path, "rb") as f:
         pdf_bytes = f.read()
-
-    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-        in_sales = False
-        for page in pdf.pages:
-            text = page.extract_text() or ""
-            for line in text.splitlines():
-                if "Stock sales" in line:
-                    in_sales = True
-                if in_sales:
-                    m = _SALE_ROW_RE.search(line)
-                    if m:
-                        from datetime import datetime as _dt
-                        try:
-                            d = _dt.strptime(m.group(1), "%b-%d-%Y")
-                            months.add(d.strftime("%Y-%m"))
-                        except ValueError:
-                            pass
+    months_list = FidelityPDFParser.extract_required_month_years(pdf_bytes)
+    months = set(months_list)
 
     if not months:
         print("No sale transactions found in PDF.")

@@ -148,17 +148,3 @@ curl -X POST http://localhost:8000/assets/{id}/price/refresh
 ```
 
 NPS NAV is fetched from [npsnav.in](https://npsnav.in/nps-api) — scheme codes are auto-discovered by matching asset names.
-
-## Phase Status
-
-| Phase | Status |
-|---|---|
-| 1 — Core engine (models, CRUD, XIRR, FD/PPF returns) | ✅ Complete |
-| 2 — Imports + price feeds | ✅ Complete |
-| 3 — FIFO lots, allocation, overview, asset detail | ✅ Complete |
-| 4 — Goals engine | ✅ Complete |
-| 5 — Tax module | ✅ Complete |
-| 6 — Cloud deployment (Docker, PostgreSQL, auth) | 🔲 Pending |
-| 7 — Polish (snapshots, net worth chart, async refresh) | 🔲 Pending |
-
-See `execution_plan.md` for full details.

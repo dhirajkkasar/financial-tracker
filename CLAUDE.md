@@ -17,7 +17,10 @@ Personal, local-first, single-user investment portfolio tracker.
 ```bash
 cd backend
 
-# Install dependencies (uses uv lockfile)
+# Install dependencies (uses uv lockfile — recommended)
+uv sync --all-extras
+
+# Or using pip
 pip install -e ".[dev]"
 
 # Run dev server (seeds interest rates + auto-matures past-due FDs on startup)
@@ -104,7 +107,6 @@ Use native IDs from source systems where available; fall back to SHA-256 hash:
 | Source | `txn_id` Strategy |
 |---|---|
 | Zerodha tradebook CSV | Native `trade_id` from file |
-| Groww CSV | Native `order_id` from file |
 | NSDL NPS CSV | Native transaction reference number |
 | CAS PDF (CAMS/KFintech) | Check for reference number in PDF text first; fall back to `SHA256(folio + isin + date + units + type + amount_paise)` |
 | Manual entry (FD, PPF, EPF, Gold, Real Estate) | `SHA256(asset_id + date + amount_paise + type + user_ref_if_any)` |

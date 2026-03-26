@@ -1100,7 +1100,7 @@ def cmd_import_fidelity_sale(file_path: str) -> None:
 
 - [ ] **Step 5.3: Register the new subcommands in `main()`**
 
-In `backend/cli.py`, in the `main()` function, add two subparser entries after the `groww` entry:
+In `backend/cli.py`, in the `main()` function, add two subparser entries after the `zerodha` entry:
 
 ```python
     s = import_sub.add_parser("fidelity-rsu", help="Import Fidelity RSU holding CSV (MARKET_TICKER.csv)")
@@ -1119,7 +1119,7 @@ And in the dispatch block where `args.source` is handled, add:
             cmd_import_fidelity_sale(args.file)
 ```
 
-Locate the existing dispatch block (around the section with `elif args.source == "zerodha"`) and add the two new entries immediately after the `groww` case.
+Locate the existing dispatch block (around the section with `elif args.source == "zerodha"`) and add the two new entries immediately after the `zerodha` case.
 
 - [ ] **Step 5.4: Update help comment at the top of cli.py**
 

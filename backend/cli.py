@@ -7,7 +7,6 @@ Usage (server must be running):
   python cli.py import cas <file>
   python cli.py import nps <file>
   python cli.py import zerodha <file>
-  python cli.py import groww <file>
   python cli.py import fidelity-rsu <file>    # Fidelity RSU holding CSV
   python cli.py import fidelity-sale <file>   # Fidelity tax-cover sale PDF
 
@@ -669,9 +668,6 @@ def build_parser() -> argparse.ArgumentParser:
     s = import_sub.add_parser("zerodha", help="Import Zerodha tradebook CSV")
     s.add_argument("file", help="Path to CSV")
 
-    s = import_sub.add_parser("groww", help="Import Groww CSV")
-    s.add_argument("file", help="Path to CSV")
-
     s = import_sub.add_parser("fidelity-rsu", help="Import Fidelity RSU holding CSV (MARKET_TICKER.csv)")
     s.add_argument("file", help="Path to CSV file")
 
@@ -862,8 +858,6 @@ def main():
             cmd_import_nps(args.file)
         elif args.source == "zerodha":
             cmd_import_broker_csv(args.file, broker="zerodha")
-        elif args.source == "groww":
-            cmd_import_broker_csv(args.file, broker="groww")
         elif args.source == "fidelity-rsu":
             cmd_import_fidelity_rsu(args.file)
         elif args.source == "fidelity-sale":

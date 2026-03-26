@@ -128,7 +128,7 @@ class ImportService:
                 date=txn.date,
                 units=txn.units,
                 price_per_unit=txn.price_per_unit,
-                forex_rate=None,
+                forex_rate=txn.forex_rate,
                 amount_inr=amount_paise,
                 charges_inr=charges_paise,
                 lot_id=lot_id,
@@ -259,12 +259,13 @@ class ImportService:
             if existing:
                 return existing
 
+        currency = "USD" if txn.asset_type in {"STOCK_US", "RSU"} else "INR"
         return asset_repo.create(
             name=txn.asset_name,
             identifier=txn.asset_identifier or None,
             asset_type=asset_type,
             asset_class=asset_class,
-            currency="INR",
+            currency=currency,
         )
 
     def _txn_to_dict(self, txn: ParsedTransaction) -> dict:

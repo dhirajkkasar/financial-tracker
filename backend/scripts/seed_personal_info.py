@@ -174,6 +174,13 @@ def seed(db):
     print("Done.")
 
 
-if __name__ == "__main__":
-    with SessionLocal() as db:
+def main():
+    db = SessionLocal()
+    try:
         seed(db)
+    finally:
+        db.close()
+
+
+if __name__ == "__main__":
+    main()

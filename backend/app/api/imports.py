@@ -1,12 +1,15 @@
+import json as _json
 import logging
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.importers.broker_csv_parser import ZerodhaImporter
 from app.importers.cas_parser import CASImporter
+from app.importers.fidelity_pdf_parser import FidelityPDFParser
+from app.importers.fidelity_rsu_csv_parser import FidelityRSUImporter
 from app.importers.nps_csv_parser import NPSImporter
 from app.middleware.error_handler import NotFoundError, ValidationError
 from app.models.asset import AssetType
@@ -125,3 +128,70 @@ async def import_epf_pdf(
     file_bytes = await file.read()
     svc = PPFEPFImportService(db)
     return svc.import_epf(file_bytes)
+
+
+@router.post("/fidelity-rsu-csv")
+async def import_fidelity_rsu_csv(
+    file: UploadFile = File(...),
+    exchange_rates: str = Form(..., description='JSON object e.g. {"2025-03": 86.5}'),
+    svc: ImportService = Depends(get_import_service),
+):
+    """Import Fidelity RSU holding CSV. Filename must be MARKET_TICKER.csv.
+    exchange_rates: JSON string mapping 'YYYY-MM' to USD/INR float.
+    Returns 422 if any vest month-year is missing from exchange_rates.
+    Returns preview_id for use with POST /import/commit.
+    """
+    try:
+        rates: dict[str, float] = _json.loads(exchange_rates)
+    except Exception:
+        raise ValidationError('exchange_rates must be valid JSON, e.g. {"2025-03": 86.5}')
+
+    file_bytes = await file.read()
+
+    # Validate all required months are covered before parsing
+    required = FidelityRSUImporter.extract_required_month_years(file_bytes)
+    missing = [m for m in required if m not in rates]
+    if missing:
+        raise ValidationError(
+            f"Missing exchange rates for month(s): {', '.join(missing)}. "
+            f"Provide USD/INR rate for each."
+        )
+
+    result = FidelityRSUImporter(exchange_rates=rates).parse(file_bytes, file.filename or "")
+    if result.errors and not result.transactions:
+        raise ValidationError(f"Parse failed: {'; '.join(result.errors)}")
+    return svc.preview(transactions=result.transactions)
+
+
+@router.post("/fidelity-sale-pdf")
+async def import_fidelity_sale_pdf(
+    file: UploadFile = File(...),
+    exchange_rates: str = Form(..., description='JSON object e.g. {"2025-03": 86.0}'),
+    svc: ImportService = Depends(get_import_service),
+):
+    """Import Fidelity tax-cover SELL transactions from a transaction summary PDF.
+    exchange_rates: JSON string mapping 'YYYY-MM' to USD/INR float (use RBI monthly average).
+    Returns 422 if any sale month-year is missing from exchange_rates.
+    Returns preview_id for use with POST /import/commit.
+    SELL transactions are tagged 'Tax cover sale' in notes for tax-page visibility.
+    """
+    try:
+        rates: dict[str, float] = _json.loads(exchange_rates)
+    except Exception:
+        raise ValidationError("exchange_rates must be valid JSON")
+
+    file_bytes = await file.read()
+
+    # Validate all required months are covered before parsing
+    required = FidelityPDFParser.extract_required_month_years(file_bytes)
+    missing = [m for m in required if m not in rates]
+    if missing:
+        raise ValidationError(
+            f"Missing exchange rates for month(s): {', '.join(missing)}. "
+            f"Provide USD/INR rate for each."
+        )
+
+    result = FidelityPDFParser(exchange_rates=rates).parse(file_bytes, file.filename or "")
+    if result.errors and not result.transactions:
+        raise ValidationError(f"Parse failed: {'; '.join(result.errors)}")
+    return svc.preview(transactions=result.transactions)

@@ -10,6 +10,7 @@ import { StatCardSkeleton } from '@/components/ui/Skeleton'
 import { AllocationDonut } from '@/components/charts/AllocationDonut'
 import { AssetTypeDonut } from '@/components/charts/AssetTypeDonut'
 import { NetWorthChart } from '@/components/charts/NetWorthChart'
+import { GoalsWidget } from '@/components/domain/GoalsWidget'
 import { formatXIRR, formatPct } from '@/lib/formatters'
 import { usePrivateMoney } from '@/hooks/usePrivateMoney'
 import { ASSET_TYPE_LABELS } from '@/constants'
@@ -120,6 +121,9 @@ export default function OverviewPage() {
         <h2 className="mb-4 text-[10px] font-semibold uppercase tracking-[0.12em] text-tertiary">Net Worth Over Time</h2>
         <NetWorthChart data={snapshots} loading={snapshotsLoading} />
       </div>
+
+      {/* Goals */}
+      <GoalsWidget />
 
       {/* Two donuts */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">

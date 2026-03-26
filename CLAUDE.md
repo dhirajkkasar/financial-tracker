@@ -53,6 +53,10 @@ python cli.py import zerodha <file>
 python cli.py list assets
 python cli.py refresh-prices
 python cli.py snapshot
+python cli.py add goal --name "Retirement" --target 10000000 --date 2040-01-01 --asset "HDFC MF:50" --asset "PPF SBI:50" --assumed-return 12.0
+python cli.py update goal-allocation --goal "Retirement" --asset "HDFC MF" --pct 30
+python cli.py remove goal-allocation --goal "Retirement" --asset "HDFC MF"
+python cli.py delete goal --name "Retirement"
 ```
 
 ### Frontend
@@ -152,6 +156,10 @@ VALUATION_BASED = PPF, REAL_ESTATE
 - Must be a **whole number and a multiple of 10** (10, 20, 30 ... 100)
 - Violation → API returns 422
 - `current_value_toward_goal = asset_current_value × allocation_pct / 100`
+- `find_goal()` in `cli.py` fuzzy-matches goal names via `difflib.get_close_matches(cutoff=0.4)` — mirrors `find_asset()`
+- `--asset "Name:pct"` parsed with `rsplit(":", 1)` to handle colons in asset names
+- Allocation POST failures in `add goal` are non-fatal — goal is still created, error printed, execution continues
+- `_api()` handles 204 No Content (DELETE endpoints) by returning `{}` when response has no content
 
 ### Tax Module (Phase 5 — complete)
 - **FY2024-25 rates only** (no historical rate table needed):
@@ -196,6 +204,11 @@ VALUATION_BASED = PPF, REAL_ESTATE
 ---
 
 ## Frontend — Key Decisions
+
+### Goals Overview Widget
+- `GoalsWidget` (`components/domain/GoalsWidget.tsx`) renders compact goal progress rows on the overview page
+- Uses existing `useGoals()` hook — no new API calls; placed between Net Worth Chart and allocation donuts in `app/page.tsx`
+- Uses design-system tokens (bg-card, border-border, text-accent) — NOT hardcoded Tailwind colors like the older `GoalCard` component
 
 ### P&L Display (no ST/LT detail on listing pages)
 - **Current P&L** = unrealized gains (st_unrealised + lt_unrealised) if lot-based, else current − invested

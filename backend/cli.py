@@ -25,6 +25,13 @@ Usage (server must be running):
   python cli.py add epf-contribution --asset "My EPF" --month-year 03/2026 --employee-share 5000 --eps-share 1250 --employer-share 3750
   python cli.py add epf-contribution --asset "My EPF" --month-year 03/2026 --employee-share 5000 --employee-interest 500 --employer-interest 400 --eps-interest 50
 
+  python cli.py add goal --name "Retirement" --target 10000000 --date 2040-01-01 --asset "HDFC MF:50" --asset "PPF SBI:50"
+  python cli.py add goal --name "Emergency Fund" --target 500000 --date 2026-12-31
+
+  python cli.py update goal-allocation --goal "Retirement" --asset "HDFC MF" --pct 30
+  python cli.py remove goal-allocation --goal "Retirement" --asset "HDFC MF"
+  python cli.py delete goal --name "Retirement"
+
   python cli.py list assets
   python cli.py refresh-prices
   python cli.py snapshot
@@ -53,6 +60,8 @@ def _api(method: str, path: str, **kwargs):
         sys.exit(f"Cannot connect to {BASE}. Is the server running?")
     if not r.ok:
         sys.exit(f"API error {r.status_code}: {r.text}")
+    if r.status_code == 204 or not r.content:
+        return {}
     return r.json()
 
 
@@ -68,6 +77,18 @@ def find_asset(name_query: str) -> dict:
     asset = name_map[matches[0]]
     print(f"  → matched: {asset['name']} (id={asset['id']})")
     return asset
+
+
+def find_goal(name_query: str) -> dict:
+    """Fuzzy-match a goal by name. Exits if no match found."""
+    goals = _api("get", "/goals")
+    name_map = {g["name"]: g for g in goals}
+    matches = get_close_matches(name_query, name_map.keys(), n=1, cutoff=0.4)
+    if not matches:
+        sys.exit(f"No goal matching '{name_query}'. Check existing goals via GET /goals.")
+    goal = name_map[matches[0]]
+    print(f"  → matched goal: {goal['name']} (id={goal['id']})")
+    return goal
 
 
 def _find_or_create_asset(name: str, asset_type: str, asset_class: str,
@@ -372,6 +393,80 @@ def cmd_add_txn(asset: str, txn_type: str, date: str, amount: float,
     return txn
 
 
+# ── Goal commands ─────────────────────────────────────────────────────────────
+
+def cmd_add_goal(name: str, target: float, date: str,
+                 assets: list[str] | None = None,
+                 notes: str | None = None,
+                 assumed_return: float = 12.0) -> dict:
+    """Create a goal and optionally assign assets with allocation percentages."""
+    # Parse and validate --asset "Name:pct" entries upfront
+    allocations: list[tuple[str, int]] = []
+    for spec in (assets or []):
+        try:
+            asset_name, pct_str = spec.rsplit(":", 1)
+            pct = int(pct_str)
+        except (ValueError, AttributeError):
+            sys.exit(f"Invalid --asset format '{spec}'. Use 'AssetName:pct' (e.g. 'HDFC MF:50')")
+        if pct % 10 != 0 or not (10 <= pct <= 100):
+            sys.exit(f"Allocation % must be a multiple of 10 between 10 and 100, got {pct} for '{asset_name}'")
+        allocations.append((asset_name.strip(), pct))
+
+    goal = _api("post", "/goals", json={
+        "name": name,
+        "target_amount_inr": target,
+        "target_date": date,
+        "notes": notes,
+        "assumed_return_pct": assumed_return,
+    })
+    print(f"✓ Goal created: {goal['name']} (id={goal['id']}) — ₹{target:,.0f} by {date}")
+
+    for asset_name, pct in allocations:
+        asset = find_asset(asset_name)
+        try:
+            _api("post", f"/goals/{goal['id']}/allocations", json={
+                "asset_id": asset["id"],
+                "allocation_pct": pct,
+            })
+            print(f"  + {asset['name']}: {pct}%")
+        except SystemExit as exc:
+            print(f"  ! Failed to allocate '{asset_name}' {pct}%: {exc}")
+
+    return goal
+
+
+def cmd_update_goal_allocation(goal_name: str, asset_name: str, pct: int) -> dict:
+    """Update the allocation % of an asset within a goal."""
+    goal = find_goal(goal_name)
+    asset = find_asset(asset_name)
+    allocations = _api("get", f"/goals/{goal['id']}/allocations")
+    match = next((a for a in allocations if a["asset_id"] == asset["id"]), None)
+    if not match:
+        sys.exit(f"No allocation found for '{asset['name']}' in goal '{goal['name']}'")
+    _api("put", f"/goals/{goal['id']}/allocations/{match['id']}", json={"allocation_pct": pct})
+    print(f"✓ Updated: {goal['name']} → {asset['name']}: {pct}%")
+    return match
+
+
+def cmd_remove_goal_allocation(goal_name: str, asset_name: str) -> None:
+    """Remove an asset allocation from a goal."""
+    goal = find_goal(goal_name)
+    asset = find_asset(asset_name)
+    allocations = _api("get", f"/goals/{goal['id']}/allocations")
+    match = next((a for a in allocations if a["asset_id"] == asset["id"]), None)
+    if not match:
+        sys.exit(f"No allocation found for '{asset['name']}' in goal '{goal['name']}'")
+    _api("delete", f"/goals/{goal['id']}/allocations/{match['id']}")
+    print(f"✓ Removed: '{asset['name']}' from goal '{goal['name']}'")
+
+
+def cmd_delete_goal(name: str) -> None:
+    """Delete a goal and all its allocations."""
+    goal = find_goal(name)
+    _api("delete", f"/goals/{goal['id']}")
+    print(f"✓ Goal deleted: {goal['name']} (id={goal['id']})")
+
+
 # ── Utility commands ──────────────────────────────────────────────────────────
 
 def cmd_list_assets() -> list:
@@ -534,6 +629,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_epf.add_argument("--eps-interest", type=float, default=None, dest="eps_interest",
                        help="EPS interest in INR (optional)")
 
+    # add goal
+    p_goal = add_sub.add_parser("goal", help="Create a goal and optionally assign assets")
+    p_goal.add_argument("--name", required=True, help="Goal name")
+    p_goal.add_argument("--target", type=float, required=True, help="Target corpus in INR")
+    p_goal.add_argument("--date", required=True, help="Target date YYYY-MM-DD")
+    p_goal.add_argument("--asset", action="append", dest="assets", metavar="NAME:PCT",
+                        help="Asset allocation in 'Name:pct' format; repeatable (e.g. 'HDFC MF:50')")
+    p_goal.add_argument("--notes", help="Optional notes")
+    p_goal.add_argument("--assumed-return", type=float, default=12.0, dest="assumed_return",
+                        help="Expected annual return %% (default: 12.0)")
+
     # add valuation
     p_val = add_sub.add_parser("valuation", help="Add a manual valuation to an existing asset")
     p_val.add_argument("--asset", required=True, help="Asset name (fuzzy matched)")
@@ -558,6 +664,30 @@ def build_parser() -> argparse.ArgumentParser:
     p_list = sub.add_parser("list", help="List resources")
     list_sub = p_list.add_subparsers(dest="resource", metavar="RESOURCE")
     list_sub.add_parser("assets", help="List all assets")
+
+    # ── update ────────────────────────────────────────────────────────────────
+    p_update = sub.add_parser("update", help="Update an existing resource")
+    update_sub = p_update.add_subparsers(dest="kind", metavar="KIND")
+
+    p_update_ga = update_sub.add_parser("goal-allocation", help="Update an asset's allocation % within a goal")
+    p_update_ga.add_argument("--goal", required=True, help="Goal name (fuzzy matched)")
+    p_update_ga.add_argument("--asset", required=True, help="Asset name (fuzzy matched)")
+    p_update_ga.add_argument("--pct", type=int, required=True, help="New allocation % (multiple of 10)")
+
+    # ── remove ────────────────────────────────────────────────────────────────
+    p_remove = sub.add_parser("remove", help="Remove an allocation or other resource")
+    remove_sub = p_remove.add_subparsers(dest="kind", metavar="KIND")
+
+    p_remove_ga = remove_sub.add_parser("goal-allocation", help="Remove an asset from a goal")
+    p_remove_ga.add_argument("--goal", required=True, help="Goal name (fuzzy matched)")
+    p_remove_ga.add_argument("--asset", required=True, help="Asset name (fuzzy matched)")
+
+    # ── delete ────────────────────────────────────────────────────────────────
+    p_delete = sub.add_parser("delete", help="Delete a resource")
+    delete_sub = p_delete.add_subparsers(dest="kind", metavar="KIND")
+
+    p_delete_goal = delete_sub.add_parser("goal", help="Delete a goal and all its allocations")
+    p_delete_goal.add_argument("--name", required=True, help="Goal name (fuzzy matched)")
 
     # ── utilities ─────────────────────────────────────────────────────────────
     sub.add_parser("refresh-prices", help="Trigger price refresh for all assets")
@@ -630,6 +760,27 @@ def main():
         elif args.kind == "txn":
             cmd_add_txn(args.asset, args.txn_type, args.date, args.amount,
                         units=args.units, price=args.price, forex=args.forex, notes=args.notes)
+        elif args.kind == "goal":
+            cmd_add_goal(args.name, args.target, args.date,
+                         assets=args.assets, notes=args.notes, assumed_return=args.assumed_return)
+
+    elif args.command == "update":
+        if not args.kind:
+            parser.parse_args(["update", "--help"])
+        elif args.kind == "goal-allocation":
+            cmd_update_goal_allocation(args.goal, args.asset, args.pct)
+
+    elif args.command == "remove":
+        if not args.kind:
+            parser.parse_args(["remove", "--help"])
+        elif args.kind == "goal-allocation":
+            cmd_remove_goal_allocation(args.goal, args.asset)
+
+    elif args.command == "delete":
+        if not args.kind:
+            parser.parse_args(["delete", "--help"])
+        elif args.kind == "goal":
+            cmd_delete_goal(args.name)
 
     elif args.command == "list":
         if not args.resource:

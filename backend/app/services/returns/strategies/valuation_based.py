@@ -29,8 +29,7 @@ class ValuationBasedStrategy(AssetReturnsStrategy):
     def compute(self, asset, uow: UnitOfWork) -> AssetReturnsResponse:
         base = super().compute(asset, uow)
         if base.current_value is None:
-            return AssetReturnsResponse(
-                **base.model_dump(),
-                message="No valuation entry found. Add one via /assets/{id}/valuations.",
-            )
+            return base.model_copy(update={
+                "message": "No valuation entry found. Add one via /assets/{id}/valuations.",
+            })
         return base

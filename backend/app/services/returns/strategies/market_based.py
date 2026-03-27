@@ -83,13 +83,12 @@ class MarketBasedStrategy(AssetReturnsStrategy):
         )
 
         price_entry = uow.price_cache.get_by_asset_id(asset.id)
-        return AssetReturnsResponse(
-            **base.model_dump(),
-            st_unrealised_gain=st_unrealised if lots_data else None,
-            lt_unrealised_gain=lt_unrealised if lots_data else None,
-            price_is_stale=price_entry.is_stale if price_entry else None,
-            price_fetched_at=price_entry.fetched_at.isoformat() if price_entry and price_entry.fetched_at else None,
-        )
+        return base.model_copy(update={
+            "st_unrealised_gain": st_unrealised if lots_data else None,
+            "lt_unrealised_gain": lt_unrealised if lots_data else None,
+            "price_is_stale": price_entry.is_stale if price_entry else None,
+            "price_fetched_at": price_entry.fetched_at.isoformat() if price_entry and price_entry.fetched_at else None,
+        })
 
     def compute_lots(self, asset, uow: UnitOfWork) -> list[LotComputedResponse]:
         lots_data = self._compute_lots_data(asset, uow)

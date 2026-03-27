@@ -59,9 +59,6 @@ def test_uow_context_manager_commits_on_success(uow_session):
     assert result is not None
 
 
-@pytest.mark.xfail(
-    reason="Repos call db.commit() immediately; rollback isolation requires Plan 4 to remove those commits"
-)
 def test_uow_context_manager_rolls_back_on_exception(uow_session):
     try:
         with UnitOfWork(uow_session) as uow:

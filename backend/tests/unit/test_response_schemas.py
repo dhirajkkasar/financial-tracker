@@ -10,6 +10,12 @@ from app.schemas.responses.tax import (
     HarvestOpportunityEntry,
     UnrealisedGainEntry,
 )
+from app.schemas.responses.imports import (
+    ImportPreviewResponse,
+    ImportCommitResponse,
+    ParsedTransactionPreview,
+)
+from app.schemas.responses.prices import PriceRefreshResponse, AssetPriceEntry
 
 
 def test_paginated_response_instantiation():
@@ -86,3 +92,24 @@ def test_harvest_opportunity_entry():
         is_short_term=True,
     )
     assert e.unrealised_loss == 500.0
+
+
+def test_import_preview_response():
+    r = ImportPreviewResponse(
+        preview_id="abc-123",
+        new_count=5,
+        duplicate_count=2,
+        transactions=[],
+    )
+    assert r.preview_id == "abc-123"
+    assert r.new_count == 5
+
+
+def test_import_commit_response():
+    r = ImportCommitResponse(inserted=5, skipped=2, errors=[])
+    assert r.inserted == 5
+
+
+def test_price_refresh_response():
+    r = PriceRefreshResponse(refreshed=10, failed=1, stale=2)
+    assert r.refreshed == 10

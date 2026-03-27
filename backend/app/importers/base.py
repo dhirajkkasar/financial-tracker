@@ -1,6 +1,7 @@
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Protocol, Optional
+from typing import ClassVar, Protocol, Optional
 
 
 @dataclass
@@ -46,7 +47,32 @@ class ImportResult:
     snapshots: list[ParsedFundSnapshot] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    duplicate_count: int = 0
 
 
-class BaseImporter(Protocol):
+class LegacyBaseImporter(Protocol):
     def parse(self, file_bytes: bytes, filename: str = "") -> ImportResult: ...
+
+
+class BaseImporter(ABC):
+    """
+    Abstract base class for all file importers.
+
+    Class variables (must be set on each concrete subclass):
+        source:     identifier string, e.g. "zerodha", "cas", "groww"
+        asset_type: string asset type, e.g. "STOCK_IN", "MF"
+        format:     file format, e.g. "csv", "pdf"
+
+    Adding a new provider: create a new subclass, decorate with @register_importer.
+    No other files need to change.
+    """
+    source: ClassVar[str]
+    asset_type: ClassVar[str]
+    format: ClassVar[str]
+
+    @abstractmethod
+    def parse(self, file_bytes: bytes) -> "ImportResult": ...
+
+    def validate(self, result: "ImportResult") -> list[str]:
+        """Optional validation hook. Default: no-op. Override to add checks."""
+        return []

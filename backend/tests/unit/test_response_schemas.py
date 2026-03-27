@@ -4,6 +4,12 @@ from app.schemas.responses.returns import (
     LotComputedResponse,
     LotsPageResponse,
 )
+from app.schemas.responses.tax import (
+    TaxGainEntry,
+    TaxSummaryResponse,
+    HarvestOpportunityEntry,
+    UnrealisedGainEntry,
+)
 
 
 def test_paginated_response_instantiation():
@@ -49,3 +55,34 @@ def test_lots_page_response():
     page = LotsPageResponse(items=[lot], total=1, page=1, size=20)
     assert page.total == 1
     assert page.items[0].lot_id == "lot_001"
+
+
+def test_tax_summary_response():
+    entry = TaxGainEntry(
+        category="Equity",
+        asset_types=["STOCK_IN", "MF"],
+        st_gain=5000.0,
+        lt_gain=20000.0,
+        st_tax=1000.0,
+        lt_tax=None,
+        is_st_slab=False,
+        is_lt_slab=False,
+        ltcg_exemption_used=12500.0,
+    )
+    resp = TaxSummaryResponse(fy="2024-25", entries=[entry], total_estimated_tax=1000.0)
+    assert resp.fy == "2024-25"
+    assert len(resp.entries) == 1
+
+
+def test_harvest_opportunity_entry():
+    e = HarvestOpportunityEntry(
+        asset_id=1,
+        asset_name="Test Stock",
+        asset_type="STOCK_IN",
+        lot_id="lot_001",
+        buy_date="2023-01-01",
+        units=10.0,
+        unrealised_loss=500.0,
+        is_short_term=True,
+    )
+    assert e.unrealised_loss == 500.0

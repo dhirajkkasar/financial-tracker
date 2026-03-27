@@ -57,16 +57,22 @@ def parse_fy(fy_label: str) -> tuple[date, date]:
 
 # ── Holding period classification ─────────────────────────────────────────────
 
-def classify_holding(asset_type: str, buy_date: date, sell_date: date) -> dict:
+def classify_holding(
+    buy_date: date,
+    sell_date: date,
+    stcg_days: int,
+    asset_type: Optional[str] = None,  # kept for any legacy callers; ignored
+) -> dict:
     """
-    Return holding_days and is_short_term based on asset-type thresholds.
+    Return holding_days and is_short_term.
+
+    Pass stcg_days explicitly (from TaxRatePolicy or strategy ClassVar).
+    asset_type parameter is deprecated and ignored.
     """
-    from app.engine.lot_engine import _STCG_DAYS, EQUITY_STCG_DAYS
     holding_days = (sell_date - buy_date).days
-    threshold = _STCG_DAYS.get(asset_type, EQUITY_STCG_DAYS)
     return {
         "holding_days": holding_days,
-        "is_short_term": holding_days < threshold,
+        "is_short_term": holding_days < stcg_days,
     }
 
 
@@ -125,7 +131,9 @@ def compute_fy_realised_gains(
         if not (fy_start <= sell_date <= fy_end):
             continue
 
-        classification = classify_holding(asset_type, buy_date, sell_date)
+        from app.engine.lot_engine import _STCG_DAYS, EQUITY_STCG_DAYS
+        stcg_days = _STCG_DAYS.get(asset_type, EQUITY_STCG_DAYS)
+        classification = classify_holding(buy_date=buy_date, sell_date=sell_date, stcg_days=stcg_days)
         gain = m["realised_gain_inr"]
         if classification["is_short_term"]:
             st_gain += gain

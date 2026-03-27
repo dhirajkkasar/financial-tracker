@@ -40,55 +40,55 @@ def test_parse_fy_invalid_text():
 
 def test_classify_holding_equity_short_term():
     # Use 2023 (non-leap): Jan 1 → Dec 31 = 364 days < 365 threshold → ST
-    result = classify_holding("STOCK_IN", date(2023, 1, 1), date(2023, 12, 31))
+    result = classify_holding(date(2023, 1, 1), date(2023, 12, 31), stcg_days=365)
     assert result["holding_days"] == 364
     assert result["is_short_term"] is True
 
 
 def test_classify_holding_equity_long_term():
     # Jan 1, 2023 → Jan 1, 2024 = 365 days == threshold → LT (threshold is <365)
-    result = classify_holding("STOCK_IN", date(2023, 1, 1), date(2024, 1, 1))
+    result = classify_holding(date(2023, 1, 1), date(2024, 1, 1), stcg_days=365)
     assert result["holding_days"] == 365
     assert result["is_short_term"] is False
 
 
 def test_classify_holding_mf_same_thresholds_as_equity():
-    st = classify_holding("MF", date(2023, 1, 1), date(2023, 12, 31))
+    st = classify_holding(date(2023, 1, 1), date(2023, 12, 31), stcg_days=365)
     assert st["is_short_term"] is True
-    lt = classify_holding("MF", date(2023, 1, 1), date(2024, 1, 1))
+    lt = classify_holding(date(2023, 1, 1), date(2024, 1, 1), stcg_days=365)
     assert lt["is_short_term"] is False
 
 
 def test_classify_holding_us_stock_just_under_threshold():
     # Need < 730 days: Jan 1, 2023 → Dec 30, 2024 = 729 days → ST
-    result = classify_holding("STOCK_US", date(2023, 1, 1), date(2024, 12, 30))
+    result = classify_holding(date(2023, 1, 1), date(2024, 12, 30), stcg_days=730)
     assert result["holding_days"] == 729
     assert result["is_short_term"] is True
 
 
 def test_classify_holding_us_stock_long_term():
     # Jan 1, 2023 → Jan 2, 2025 = 731 days >= 730 → LT
-    result = classify_holding("STOCK_US", date(2023, 1, 1), date(2025, 1, 2))
+    result = classify_holding(date(2023, 1, 1), date(2025, 1, 2), stcg_days=730)
     assert result["is_short_term"] is False
 
 
 def test_classify_holding_gold_short_term():
     # Need < 1095 days: use Jan 1, 2022 → Dec 30, 2024 = 1094 days → ST
-    result = classify_holding("GOLD", date(2022, 1, 1), date(2024, 12, 30))
+    result = classify_holding(date(2022, 1, 1), date(2024, 12, 30), stcg_days=1095)
     assert result["holding_days"] == 1094
     assert result["is_short_term"] is True
 
 
 def test_classify_holding_gold_long_term():
     # Jan 1, 2022 → Jan 2, 2025 = 1096 days >= 1095 → LT
-    result = classify_holding("GOLD", date(2022, 1, 1), date(2025, 1, 2))
+    result = classify_holding(date(2022, 1, 1), date(2025, 1, 2), stcg_days=1095)
     assert result["is_short_term"] is False
 
 
 def test_classify_holding_real_estate_threshold():
-    st = classify_holding("REAL_ESTATE", date(2023, 1, 1), date(2024, 12, 30))
+    st = classify_holding(date(2023, 1, 1), date(2024, 12, 30), stcg_days=730)
     assert st["is_short_term"] is True
-    lt = classify_holding("REAL_ESTATE", date(2023, 1, 1), date(2025, 1, 2))
+    lt = classify_holding(date(2023, 1, 1), date(2025, 1, 2), stcg_days=730)
     assert lt["is_short_term"] is False
 
 
@@ -511,9 +511,34 @@ def test_tax_rate_policy_caches_file(temp_tax_config):
     assert rate1 is rate2  # same object from cache
 
 
-def test_tax_rate_policy_missing_asset_type(temp_tax_config):
+def test_tax_rate_policy_missing_asset_type(temp_tax_config):  # noqa: F811 (redefinition ok — different fixture)
     from app.engine.tax_engine import TaxRatePolicy
 
     policy = TaxRatePolicy(temp_tax_config)
     with pytest.raises(ValueError, match="No tax rate for asset_type"):
         policy.get_rate("2024-25", "UNKNOWN_TYPE")
+
+
+# ── classify_holding with explicit stcg_days ──────────────────────────────────
+
+def test_classify_holding_with_explicit_stcg_days():
+    from app.engine.tax_engine import classify_holding
+
+    result = classify_holding(
+        buy_date=date(2023, 1, 1),
+        sell_date=date(2023, 6, 1),
+        stcg_days=365,
+    )
+    assert result["is_short_term"] is True
+    assert result["holding_days"] == 151
+
+
+def test_classify_holding_long_term_explicit():
+    from app.engine.tax_engine import classify_holding
+
+    result = classify_holding(
+        buy_date=date(2022, 1, 1),
+        sell_date=date(2023, 6, 1),
+        stcg_days=365,
+    )
+    assert result["is_short_term"] is False

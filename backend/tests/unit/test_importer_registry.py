@@ -60,3 +60,30 @@ def test_registry_raises_for_unknown_source():
     registry = ImporterRegistry()
     with pytest.raises(ValueError, match="No importer for"):
         registry.get("unknown_source_xyz", "csv")
+
+
+def test_all_importers_are_registered():
+    """Import all importer modules so decorators fire, then verify registry."""
+    import app.importers.broker_csv_parser
+    import app.importers.cas_parser
+    import app.importers.nps_csv_parser
+    import app.importers.ppf_csv_parser
+    import app.importers.epf_pdf_parser
+    import app.importers.fidelity_pdf_parser
+    import app.importers.fidelity_rsu_csv_parser
+
+    from app.importers.registry import ImporterRegistry
+    registry = ImporterRegistry()
+    registered = registry.list_registered()
+
+    expected = [
+        ("zerodha", "csv"),
+        ("cas", "pdf"),
+        ("nps", "csv"),
+        ("ppf", "csv"),
+        ("epf", "pdf"),
+        ("fidelity_sale", "pdf"),
+        ("fidelity_rsu", "csv"),
+    ]
+    for key in expected:
+        assert key in registered, f"Expected {key} to be registered, got: {registered}"

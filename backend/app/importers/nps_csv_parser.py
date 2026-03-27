@@ -6,12 +6,17 @@ import re
 from datetime import datetime
 from typing import Optional
 
-from app.importers.base import ParsedTransaction, ImportResult
+from app.importers.base import ParsedTransaction, ImportResult, BaseImporter
+from app.importers.registry import register_importer
 
 logger = logging.getLogger(__name__)
 
 
-class NPSImporter:
+@register_importer
+class NPSImporter(BaseImporter):
+    source = "nps"
+    asset_type = "NPS"
+    format = "csv"
     """Parses NPS transaction statement CSV (multi-section format)."""
 
     def parse(self, file_bytes: bytes, filename: str = "") -> ImportResult:

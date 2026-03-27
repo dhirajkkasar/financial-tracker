@@ -6,7 +6,8 @@ from datetime import datetime
 
 import pdfplumber
 
-from app.importers.base import ParsedTransaction, ImportResult
+from app.importers.base import ParsedTransaction, ImportResult, BaseImporter
+from app.importers.registry import register_importer
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,11 @@ _SALE_ROW_RE = re.compile(
 _TICKER_RE = re.compile(r"^([A-Z]{1,6}):\s+.+")
 
 
-class FidelityPDFParser:
+@register_importer
+class FidelityPDFParser(BaseImporter):
+    source = "fidelity_sale"
+    asset_type = "STOCK_US"
+    format = "pdf"
     """Parses Fidelity NetBenefits transaction summary PDFs.
 
     Extracts rows from the 'Stock sales' section.

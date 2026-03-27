@@ -7,12 +7,17 @@ from typing import Optional
 
 import pdfplumber
 
-from app.importers.base import ParsedTransaction, ParsedFundSnapshot, ImportResult
+from app.importers.base import ParsedTransaction, ParsedFundSnapshot, ImportResult, BaseImporter
+from app.importers.registry import register_importer
 
 logger = logging.getLogger(__name__)
 
 
-class CASImporter:
+@register_importer
+class CASImporter(BaseImporter):
+    source = "cas"
+    asset_type = "MF"
+    format = "pdf"
     """Parses CAMS/KFintech Consolidated Account Statement PDFs."""
 
     FOLIO_PATTERN = re.compile(r"Folio No:\s*([\d\s/]+)")

@@ -43,7 +43,8 @@ from typing import Optional
 
 import pdfplumber
 
-from app.importers.base import ImportResult, ParsedTransaction
+from app.importers.base import ImportResult, ParsedTransaction, BaseImporter
+from app.importers.registry import register_importer
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +107,12 @@ class EPFImportResult(ImportResult):
     grand_total_er_deposit: float = 0.0
 
 
-class EPFPDFParser:
+@register_importer
+class EPFPDFParser(BaseImporter):
+    source = "epf"
+    asset_type = "EPF"
+    format = "pdf"
+
     """Parses EPFO Member Passbook PDFs (page 1 only)."""
 
     def parse(self, file_bytes: bytes, filename: str = "") -> EPFImportResult:

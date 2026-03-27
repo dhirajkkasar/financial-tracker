@@ -3,12 +3,17 @@ import io
 import logging
 from datetime import datetime
 
-from app.importers.base import ParsedTransaction, ImportResult
+from app.importers.base import ParsedTransaction, ImportResult, BaseImporter
+from app.importers.registry import register_importer
 
 logger = logging.getLogger(__name__)
 
 
-class ZerodhaImporter:
+@register_importer
+class ZerodhaImporter(BaseImporter):
+    source = "zerodha"
+    asset_type = "STOCK_IN"
+    format = "csv"
     """Parses Zerodha tradebook CSV files."""
 
     # Gold ETFs traded on NSE — classified as GOLD (price via NSE ticker, shown in Gold tab)

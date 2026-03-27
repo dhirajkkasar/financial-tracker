@@ -4,7 +4,8 @@ import io
 import logging
 from datetime import datetime
 
-from app.importers.base import ParsedTransaction, ImportResult
+from app.importers.base import ParsedTransaction, ImportResult, BaseImporter
+from app.importers.registry import register_importer
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,11 @@ _MONTH_ABBREVS = frozenset({
 })
 
 
-class FidelityRSUImporter:
+@register_importer
+class FidelityRSUImporter(BaseImporter):
+    source = "fidelity_rsu"
+    asset_type = "STOCK_US"
+    format = "csv"
     """Parses Fidelity RSU holding CSV exports (current holdings format).
 
     Filename format: {MARKET}_{TICKER}.csv  e.g. NASDAQ_AMZN.csv

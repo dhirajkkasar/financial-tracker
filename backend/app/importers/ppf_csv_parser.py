@@ -21,7 +21,8 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Optional
 
-from app.importers.base import ImportResult, ParsedTransaction
+from app.importers.base import ImportResult, ParsedTransaction, BaseImporter
+from app.importers.registry import register_importer
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,12 @@ def _make_txn_id(account_number: str, txn_type: str, txn_date: date, amount_pais
     return "ppf_csv_" + hashlib.sha256(raw.encode()).hexdigest()
 
 
-class PPFCSVParser:
+@register_importer
+class PPFCSVParser(BaseImporter):
+    source = "ppf"
+    asset_type = "PPF"
+    format = "csv"
+
     """Parses SBI PPF Account Statement CSV files."""
 
     def parse(self, file_bytes: bytes, filename: str = "") -> PPFCSVImportResult:

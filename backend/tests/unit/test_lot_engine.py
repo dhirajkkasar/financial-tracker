@@ -275,3 +275,41 @@ def test_match_lots_fifo_with_explicit_stcg_days_us_stock():
     matches = match_lots_fifo(lots, sells, stcg_days=730)
     assert len(matches) == 1
     assert matches[0]["is_short_term"] is False
+
+
+# ---------------------------------------------------------------------------
+# compute_gains_summary — string date handling and ST/LT paths
+# ---------------------------------------------------------------------------
+
+def test_compute_gains_summary_string_dates():
+    """compute_gains_summary accepts ISO string dates and classifies correctly."""
+    from app.engine.lot_engine import compute_gains_summary
+
+    # Short-term sell: buy 2023-01-01, sell 2023-06-01 (151 days < 365)
+    matched_sells = [
+        {
+            "buy_date": "2023-01-01",
+            "sell_date": "2023-06-01",
+            "realised_gain_inr": 500.0,
+        }
+    ]
+    result = compute_gains_summary([], matched_sells, asset_type="STOCK_IN")
+    assert result["st_realised_gain"] == pytest.approx(500.0)
+    assert result["lt_realised_gain"] == pytest.approx(0.0)
+
+
+def test_compute_gains_summary_lt_string_dates():
+    """Long-term path with string dates."""
+    from app.engine.lot_engine import compute_gains_summary
+
+    # Long-term sell: buy 2022-01-01, sell 2024-01-01 (730 days >= 365)
+    matched_sells = [
+        {
+            "buy_date": "2022-01-01",
+            "sell_date": "2024-01-01",
+            "realised_gain_inr": 1000.0,
+        }
+    ]
+    result = compute_gains_summary([], matched_sells, asset_type="STOCK_IN")
+    assert result["st_realised_gain"] == pytest.approx(0.0)
+    assert result["lt_realised_gain"] == pytest.approx(1000.0)

@@ -89,3 +89,8 @@ def test_unit_add_types_includes_buy_sip_vest():
 def test_unit_add_types_excludes_sell_and_redemption():
     assert "SELL" not in UNIT_ADD_TYPES
     assert "REDEMPTION" not in UNIT_ADD_TYPES
+
+
+def test_compute_absolute_return_zero_invested():
+    # invested=0 should return 0.0 without division error
+    assert compute_absolute_return(0, 100000.0) == 0.0

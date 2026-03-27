@@ -66,3 +66,44 @@ def test_stock_post_processor_keeps_active_when_units_remain():
     processor.process(asset, txns, FakeUoW())
 
     assert "is_active" not in asset.updates
+
+
+def test_orchestrator_preview_returns_preview_id():
+    from app.importers.pipeline import ImportPipeline
+    from app.importers.registry import ImporterRegistry, register_importer
+    from app.importers.base import BaseImporter, ImportResult
+    from app.services.imports.deduplicator import InMemoryDeduplicator
+    from app.services.imports.preview_store import PreviewStore
+    from app.services.imports.orchestrator import ImportOrchestrator
+    from app.services.event_bus import SyncEventBus
+
+    @register_importer
+    class OrchestratorTestImporter(BaseImporter):
+        source = "orch_test"
+        asset_type = "STOCK_IN"
+        format = "csv"
+
+        def parse(self, file_bytes: bytes) -> ImportResult:
+            return ImportResult(
+                source=self.source,
+                transactions=[_make_txn("orch_txn_1")],
+            )
+
+    pipeline = ImportPipeline(
+        registry=ImporterRegistry(),
+        deduplicator=InMemoryDeduplicator(set()),
+    )
+    store = PreviewStore()
+    bus = SyncEventBus()
+    orchestrator = ImportOrchestrator(
+        uow_factory=lambda: None,  # not needed for preview
+        pipeline=pipeline,
+        preview_store=store,
+        post_processors=[],
+        event_bus=bus,
+    )
+
+    response = orchestrator.preview("orch_test", "csv", b"data")
+    assert response.preview_id is not None
+    assert response.new_count == 1
+    assert response.duplicate_count == 0

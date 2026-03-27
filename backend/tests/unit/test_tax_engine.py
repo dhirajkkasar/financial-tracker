@@ -427,3 +427,93 @@ def test_harvest_unrealised_loss_field_is_absolute():
     lots = [_make_open_lot(1, "STOCK_IN", -4000.0)]
     result = find_harvest_opportunities(lots)
     assert result[0]["unrealised_loss"] == pytest.approx(4000.0)
+
+
+# ── TaxRatePolicy ─────────────────────────────────────────────────────────────
+
+import yaml
+from pathlib import Path
+
+
+@pytest.fixture
+def temp_tax_config(tmp_path):
+    """Create a minimal tax rate YAML for testing."""
+    rates = {
+        "STOCK_IN": {
+            "stcg_rate_pct": 20.0,
+            "stcg_is_slab": False,
+            "ltcg_rate_pct": 12.5,
+            "ltcg_is_slab": False,
+            "ltcg_threshold_days": 365,
+            "ltcg_exemption_inr": 125000.0,
+            "is_exempt": False,
+            "maturity_exempt": False,
+        },
+        "PPF": {
+            "stcg_rate_pct": None,
+            "stcg_is_slab": False,
+            "ltcg_rate_pct": None,
+            "ltcg_is_slab": False,
+            "ltcg_threshold_days": None,
+            "ltcg_exemption_inr": 0.0,
+            "is_exempt": True,
+            "maturity_exempt": False,
+        },
+        "FD": {
+            "stcg_rate_pct": None,
+            "stcg_is_slab": True,
+            "ltcg_rate_pct": None,
+            "ltcg_is_slab": True,
+            "ltcg_threshold_days": None,
+            "ltcg_exemption_inr": 0.0,
+            "is_exempt": False,
+            "maturity_exempt": False,
+        },
+    }
+    fy_file = tmp_path / "2024-25.yaml"
+    fy_file.write_text(yaml.dump(rates))
+    return tmp_path
+
+
+def test_tax_rate_policy_loads_stock_in(temp_tax_config):
+    from app.engine.tax_engine import TaxRatePolicy
+
+    policy = TaxRatePolicy(temp_tax_config)
+    rate = policy.get_rate("2024-25", "STOCK_IN")
+    assert rate.stcg_rate_pct == 20.0
+    assert rate.ltcg_rate_pct == 12.5
+    assert rate.ltcg_exemption_inr == 125000.0
+    assert rate.is_exempt is False
+
+
+def test_tax_rate_policy_loads_ppf_exempt(temp_tax_config):
+    from app.engine.tax_engine import TaxRatePolicy
+
+    policy = TaxRatePolicy(temp_tax_config)
+    rate = policy.get_rate("2024-25", "PPF")
+    assert rate.is_exempt is True
+
+
+def test_tax_rate_policy_missing_fy_raises(temp_tax_config):
+    from app.engine.tax_engine import TaxRatePolicy
+
+    policy = TaxRatePolicy(temp_tax_config)
+    with pytest.raises(ValueError, match="No tax rate config for FY"):
+        policy.get_rate("2099-00", "STOCK_IN")
+
+
+def test_tax_rate_policy_caches_file(temp_tax_config):
+    from app.engine.tax_engine import TaxRatePolicy
+
+    policy = TaxRatePolicy(temp_tax_config)
+    rate1 = policy.get_rate("2024-25", "STOCK_IN")
+    rate2 = policy.get_rate("2024-25", "STOCK_IN")
+    assert rate1 is rate2  # same object from cache
+
+
+def test_tax_rate_policy_missing_asset_type(temp_tax_config):
+    from app.engine.tax_engine import TaxRatePolicy
+
+    policy = TaxRatePolicy(temp_tax_config)
+    with pytest.raises(ValueError, match="No tax rate for asset_type"):
+        policy.get_rate("2024-25", "UNKNOWN_TYPE")

@@ -9,7 +9,10 @@ FY2024-25 rates:
   FD / RD / EPF        : slab rate regardless of holding
   PPF                  : EEE — fully exempt
 """
+import yaml
+from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 from typing import Optional
 
 # ₹1.25L LTCG exemption — Section 112A (equity and equity MF only)
@@ -217,6 +220,62 @@ def estimate_tax(st_gain: float, lt_gain: float, asset_type: str) -> dict:
         "is_lt_exempt": lt_rate.get("is_exempt", False),
         "ltcg_exemption_used": exemption_used,
     }
+
+
+# ── Harvest opportunities ─────────────────────────────────────────────────────
+
+# ---------------------------------------------------------------------------
+# TaxRate dataclass + TaxRatePolicy — config-driven rate lookup
+# ---------------------------------------------------------------------------
+
+@dataclass
+class TaxRate:
+    """Tax rate descriptor for one asset type in one FY."""
+    stcg_rate_pct: float | None      # None = slab rate
+    stcg_is_slab: bool
+    ltcg_rate_pct: float | None
+    ltcg_is_slab: bool
+    ltcg_threshold_days: int | None  # None = no LT distinction
+    ltcg_exemption_inr: float
+    is_exempt: bool                  # EEE (PPF)
+    maturity_exempt: bool = False    # SGB held to maturity
+
+
+class TaxRatePolicy:
+    """
+    Loads per-FY YAML config files from a directory and returns TaxRate objects.
+
+    Adding a new FY = drop a YYYY-YY.yaml file into config_dir. Zero code changes.
+
+    Usage:
+        policy = TaxRatePolicy(Path("app/config/tax_rates"))
+        rate = policy.get_rate("2024-25", "STOCK_IN")
+    """
+
+    def __init__(self, config_dir: Path):
+        self._config_dir = config_dir
+        self._cache: dict[str, dict[str, TaxRate]] = {}
+
+    def get_rate(self, fy: str, asset_type: str) -> TaxRate:
+        if fy not in self._cache:
+            path = self._config_dir / f"{fy}.yaml"
+            if not path.exists():
+                raise ValueError(
+                    f"No tax rate config for FY {fy!r}. "
+                    f"Expected file: {path}"
+                )
+            with open(path) as f:
+                raw_data: dict = yaml.safe_load(f)
+            self._cache[fy] = {
+                at: TaxRate(**fields) for at, fields in raw_data.items()
+            }
+        rates = self._cache[fy]
+        if asset_type not in rates:
+            raise ValueError(
+                f"No tax rate for asset_type={asset_type!r} in FY {fy!r}. "
+                f"Available: {sorted(rates.keys())}"
+            )
+        return rates[asset_type]
 
 
 # ── Harvest opportunities ─────────────────────────────────────────────────────

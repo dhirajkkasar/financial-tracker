@@ -15,7 +15,7 @@ from app.engine.returns import (
 from app.services.price_feed import STALE_MINUTES
 from app.engine.fd_engine import compute_fd_maturity, compute_fd_current_value, compute_rd_maturity
 from app.engine.ppf_epf_engine import get_latest_valuation
-from app.engine.lot_engine import match_lots_fifo, compute_lot_unrealised, compute_gains_summary
+from app.engine.lot_engine import match_lots_fifo, compute_lot_unrealised, compute_gains_summary, _STCG_DAYS, EQUITY_STCG_DAYS
 from app.engine.allocation import compute_allocation, find_top_gainers
 
 logger = logging.getLogger(__name__)
@@ -282,7 +282,8 @@ class ReturnsService:
                     amount_inr=abs(txn.amount_inr / 100.0),
                 ))
 
-        matched = match_lots_fifo(lots, sells)
+        stcg_days = _STCG_DAYS.get(asset_type, EQUITY_STCG_DAYS)
+        matched = match_lots_fifo(lots, sells, stcg_days=stcg_days)
 
         sold_units: dict[str, float] = {}
         for m in matched:
@@ -308,7 +309,7 @@ class ReturnsService:
                 "buy_amount_inr": lot.buy_amount_inr * scale,
             }
             if current_price is not None:
-                unrealised = compute_lot_unrealised(lot, current_price, asset_type)
+                unrealised = compute_lot_unrealised(lot, current_price, stcg_days=stcg_days)
                 scale = units_remaining / lot.units if lot.units else 0
                 entry.update({
                     "current_value": current_price * units_remaining,
@@ -318,14 +319,12 @@ class ReturnsService:
                 })
             else:
                 from datetime import date as _date
-                from app.engine.lot_engine import _STCG_DAYS, EQUITY_STCG_DAYS
                 holding_days = (_date.today() - lot.buy_date).days
-                threshold = _STCG_DAYS.get(asset_type, EQUITY_STCG_DAYS)
                 entry.update({
                     "current_value": None,
                     "unrealised_gain": None,
                     "holding_days": holding_days,
-                    "is_short_term": holding_days < threshold,
+                    "is_short_term": holding_days < stcg_days,
                 })
             open_lots.append(entry)
 

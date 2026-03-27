@@ -119,15 +119,24 @@ def match_lots_fifo(lots: list, sells: list, stcg_days: int = 365) -> list[dict]
 def compute_lot_unrealised(
     lot,
     current_price: float,
-    asset_type: str,
+    stcg_days: Optional[int] = None,
+    grandfathering_cutoff: Optional[date] = None,
     as_of: Optional[date] = None,
+    asset_type: Optional[str] = None,  # deprecated shim — use stcg_days
 ) -> dict:
     """
     Compute unrealised P&L for a single open lot.
 
+    Pass stcg_days explicitly (from TaxRatePolicy or strategy ClassVar).
+    asset_type is a deprecated shim: if stcg_days is not given, it looks
+    up _STCG_DAYS[asset_type] for backwards compatibility.
+
     Returns:
       {current_value, unrealised_gain, holding_days, is_short_term}
     """
+    if stcg_days is None:
+        stcg_days = _STCG_DAYS.get(asset_type, EQUITY_STCG_DAYS) if asset_type else EQUITY_STCG_DAYS
+
     if as_of is None:
         as_of = date.today()
 
@@ -135,9 +144,7 @@ def compute_lot_unrealised(
     current_value = lot.units * current_price
     cost = lot.buy_amount_inr
     unrealised_gain = current_value - cost
-
-    stcg_threshold = _STCG_DAYS.get(asset_type, EQUITY_STCG_DAYS)
-    is_short_term = holding_days < stcg_threshold
+    is_short_term = holding_days < stcg_days
 
     return {
         "current_value": current_value,

@@ -230,6 +230,25 @@ def test_stcg_thresholds():
 # Tests for explicit stcg_days parameter in match_lots_fifo
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Tests for explicit stcg_days parameter in compute_lot_unrealised
+# ---------------------------------------------------------------------------
+
+def test_compute_lot_unrealised_with_explicit_stcg_days():
+    lot = FakeLot(lot_id="lot1", asset_id=1, buy_date=date(2023, 1, 1), units=10,
+                  buy_price_per_unit=100.0, buy_amount_inr=1000.0)
+    result = compute_lot_unrealised(
+        lot=lot,
+        current_price=130.0,
+        stcg_days=365,
+        grandfathering_cutoff=None,
+        as_of=date(2024, 1, 1),
+    )
+    assert result["unrealised_gain"] == pytest.approx(300.0)
+    assert result["is_short_term"] is False  # 365 days exactly is NOT short term
+    assert result["holding_days"] == 365
+
+
 def test_match_lots_fifo_with_explicit_stcg_days_equity():
     """Parameterized stcg_days=365 produces same results as the old asset_type='STOCK_IN' lookup."""
     lots = [

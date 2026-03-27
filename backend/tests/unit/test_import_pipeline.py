@@ -79,3 +79,61 @@ def test_preview_store_get_unknown_id_returns_none():
 
     store = PreviewStore()
     assert store.get("nonexistent-id") is None
+
+
+def test_import_pipeline_run():
+    from app.importers.pipeline import ImportPipeline
+    from app.importers.registry import ImporterRegistry, register_importer
+    from app.importers.base import BaseImporter, ImportResult
+    from app.services.imports.deduplicator import InMemoryDeduplicator
+
+    @register_importer
+    class FakeCSVImporter(BaseImporter):
+        source = "fake_pipeline_test"
+        asset_type = "STOCK_IN"
+        format = "csv"
+
+        def parse(self, file_bytes: bytes) -> ImportResult:
+            return ImportResult(
+                source=self.source,
+                transactions=[_make_txn("pipeline_txn_1")],
+            )
+
+    registry = ImporterRegistry()
+    dedup = InMemoryDeduplicator(set())
+    pipeline = ImportPipeline(registry=registry, deduplicator=dedup)
+
+    result = pipeline.run("fake_pipeline_test", "csv", b"data")
+    assert len(result.transactions) == 1
+    assert result.transactions[0].txn_id == "pipeline_txn_1"
+
+
+def test_import_pipeline_deduplicates():
+    from app.importers.pipeline import ImportPipeline
+    from app.importers.registry import ImporterRegistry, register_importer
+    from app.importers.base import BaseImporter, ImportResult
+    from app.services.imports.deduplicator import InMemoryDeduplicator
+
+    @register_importer
+    class FakeCSVImporter2(BaseImporter):
+        source = "fake_dedup_test"
+        asset_type = "STOCK_IN"
+        format = "csv"
+
+        def parse(self, file_bytes: bytes) -> ImportResult:
+            return ImportResult(
+                source=self.source,
+                transactions=[
+                    _make_txn("existing_id"),
+                    _make_txn("new_id"),
+                ],
+            )
+
+    registry = ImporterRegistry()
+    dedup = InMemoryDeduplicator({"existing_id"})
+    pipeline = ImportPipeline(registry=registry, deduplicator=dedup)
+
+    result = pipeline.run("fake_dedup_test", "csv", b"data")
+    assert len(result.transactions) == 1
+    assert result.transactions[0].txn_id == "new_id"
+    assert result.duplicate_count == 1

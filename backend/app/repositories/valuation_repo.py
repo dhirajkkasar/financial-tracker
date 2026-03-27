@@ -10,7 +10,7 @@ class ValuationRepository:
     def create(self, **kwargs) -> Valuation:
         val = Valuation(**kwargs)
         self.db.add(val)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(val)
         return val
 
@@ -27,4 +27,4 @@ class ValuationRepository:
 
     def delete(self, val: Valuation) -> None:
         self.db.delete(val)
-        self.db.commit()
+        self.db.flush()

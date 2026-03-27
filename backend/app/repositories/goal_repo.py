@@ -10,7 +10,7 @@ class GoalRepository:
     def create(self, **kwargs) -> Goal:
         goal = Goal(**kwargs)
         self.db.add(goal)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(goal)
         return goal
 
@@ -24,19 +24,19 @@ class GoalRepository:
         for key, value in kwargs.items():
             if value is not None:
                 setattr(goal, key, value)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(goal)
         return goal
 
     def delete(self, goal: Goal) -> None:
         self.db.delete(goal)
-        self.db.commit()
+        self.db.flush()
 
     # Allocation methods
     def create_allocation(self, **kwargs) -> GoalAllocation:
         alloc = GoalAllocation(**kwargs)
         self.db.add(alloc)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(alloc)
         return alloc
 
@@ -56,10 +56,10 @@ class GoalRepository:
 
     def update_allocation(self, alloc: GoalAllocation, allocation_pct: int) -> GoalAllocation:
         alloc.allocation_pct = allocation_pct
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(alloc)
         return alloc
 
     def delete_allocation(self, alloc: GoalAllocation) -> None:
         self.db.delete(alloc)
-        self.db.commit()
+        self.db.flush()

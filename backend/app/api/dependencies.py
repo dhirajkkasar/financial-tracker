@@ -59,11 +59,25 @@ def get_import_orchestrator(db: Session = Depends(get_db)) -> ImportOrchestrator
 
 
 # ---------------------------------------------------------------------------
-# Placeholder stubs — filled in by Plan 4
+# Service factories — Plan 4
 # ---------------------------------------------------------------------------
-# Plan 4 will add:
-#   get_returns_service(db) -> ReturnsService
-#   get_tax_service(db) -> TaxService
-#   get_price_service(db) -> PriceService
-#   get_asset_service(db) -> AssetService
-#   get_transaction_service(db) -> TransactionService
+
+from app.services.asset_service import AssetService
+from app.services.transaction_service import TransactionService
+from app.services.returns.returns_service import ReturnsService as StrategyReturnsService
+from app.services.returns.strategies.registry import DefaultReturnsStrategyRegistry
+
+
+def get_asset_service(db: Session = Depends(get_db)) -> AssetService:
+    return AssetService(uow_factory=lambda: UnitOfWork(db))
+
+
+def get_transaction_service(db: Session = Depends(get_db)) -> TransactionService:
+    return TransactionService(uow_factory=lambda: UnitOfWork(db))
+
+
+def get_strategy_returns_service(db: Session = Depends(get_db)) -> StrategyReturnsService:
+    return StrategyReturnsService(
+        uow_factory=lambda: UnitOfWork(db),
+        strategy_registry=DefaultReturnsStrategyRegistry(),
+    )

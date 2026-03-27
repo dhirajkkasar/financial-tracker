@@ -1,8 +1,9 @@
 import logging
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from difflib import SequenceMatcher
-from typing import Protocol, runtime_checkable
+from typing import ClassVar, Optional, Protocol, runtime_checkable
 
 import httpx
 import yfinance as yf
@@ -12,6 +13,35 @@ from app.models.asset import Asset, AssetType
 logger = logging.getLogger(__name__)
 
 TROY_OZ_TO_GRAMS = 31.1035
+
+
+# ---------------------------------------------------------------------------
+# Self-registering fetcher infrastructure
+# ---------------------------------------------------------------------------
+
+_FETCHER_REGISTRY: dict[str, type["BasePriceFetcher"]] = {}
+
+
+def register_fetcher(cls):
+    """Class decorator: register a fetcher for each of its declared asset_types."""
+    for at in cls.asset_types:
+        _FETCHER_REGISTRY[at] = cls
+    return cls
+
+
+class BasePriceFetcher(ABC):
+    """
+    Abstract base class for all price fetchers.
+
+    Class variables (must be set on each concrete subclass):
+        asset_types:         list of AssetType strings this fetcher handles
+        staleness_threshold: timedelta after which a cached price is stale
+    """
+    asset_types: ClassVar[list[str]]
+    staleness_threshold: ClassVar[timedelta]
+
+    @abstractmethod
+    def fetch(self, asset: Asset) -> Optional["PriceResult"]: ...
 
 
 @dataclass
@@ -30,8 +60,11 @@ class PriceFetcher(Protocol):
     def fetch(self, asset: Asset) -> PriceResult | None: ...
 
 
-class MFAPIFetcher:
+@register_fetcher
+class MFAPIFetcher(BasePriceFetcher):
     """Fetches MF NAV from mfapi.in."""
+    asset_types: ClassVar[list[str]] = ["MF"]
+    staleness_threshold: ClassVar[timedelta] = timedelta(days=1)
     BASE_URL = "https://api.mfapi.in/mf"
 
     def fetch(self, asset: Asset) -> PriceResult | None:
@@ -85,8 +118,11 @@ class MFAPIFetcher:
             return None
 
 
-class YFinanceFetcher:
+@register_fetcher
+class YFinanceFetcher(BasePriceFetcher):
     """Fetches price from yfinance. For INR assets pass suffix='.NS', for USD pass suffix=''."""
+    asset_types: ClassVar[list[str]] = ["STOCK_IN", "STOCK_US", "RSU", "GOLD", "SGB"]
+    staleness_threshold: ClassVar[timedelta] = timedelta(hours=6)
 
     def __init__(self, suffix: str = ".NS", use_name_as_ticker: bool = False):
         self.suffix = suffix
@@ -182,7 +218,8 @@ class GoldFetcher:
             return None
 
 
-class NPSNavFetcher:
+@register_fetcher
+class NPSNavFetcher(BasePriceFetcher):
     """Fetches NPS NAV from npsnav.in.
 
     Usage pattern (refresh_all):
@@ -193,6 +230,8 @@ class NPSNavFetcher:
       fetch() falls back to a single /api/schemes call if no code is resolved yet.
     """
 
+    asset_types: ClassVar[list[str]] = ["NPS"]
+    staleness_threshold: ClassVar[timedelta] = timedelta(days=1)
     SCHEMES_URL = "https://npsnav.in/api/schemes"
     NAV_URL = "https://npsnav.in/api/{code}"
 

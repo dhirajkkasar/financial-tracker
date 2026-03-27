@@ -8,7 +8,7 @@ from app.models.asset import Asset, AssetType
 from app.models.price_cache import PriceCache
 from app.repositories.asset_repo import AssetRepository
 from app.repositories.price_cache_repo import PriceCacheRepository
-from app.services.price_feed import FETCHER_REGISTRY, STALE_MINUTES, NPSNavFetcher, PriceFetcher, PriceResult
+from app.services.price_feed import FETCHER_REGISTRY, STALE_MINUTES, _FETCHER_REGISTRY, NPSNavFetcher, PriceFetcher, PriceResult
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +209,11 @@ class PriceService:
         return {"refreshed": refreshed, "failed": failed}
 
     def _is_stale(self, asset_type: AssetType, fetched_at: datetime) -> bool:
+        # Try new self-declaring registry first (timedelta-based)
+        fetcher_cls = _FETCHER_REGISTRY.get(asset_type.value if hasattr(asset_type, "value") else str(asset_type))
+        if fetcher_cls is not None:
+            return datetime.utcnow() - fetched_at > fetcher_cls.staleness_threshold
+        # Fallback: legacy STALE_MINUTES dict
         threshold = STALE_MINUTES.get(asset_type)
         if threshold is None:
             return False

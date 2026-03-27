@@ -10,7 +10,7 @@ class ImportantDataRepository:
     def create(self, **kwargs) -> ImportantData:
         obj = ImportantData(**kwargs)
         self.db.add(obj)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(obj)
         return obj
 
@@ -27,10 +27,10 @@ class ImportantDataRepository:
         for key, value in kwargs.items():
             if value is not None:
                 setattr(obj, key, value)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(obj)
         return obj
 
     def delete(self, obj: ImportantData) -> None:
         self.db.delete(obj)
-        self.db.commit()
+        self.db.flush()

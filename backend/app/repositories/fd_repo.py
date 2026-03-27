@@ -10,7 +10,7 @@ class FDRepository:
     def create(self, **kwargs) -> FDDetail:
         fd = FDDetail(**kwargs)
         self.db.add(fd)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(fd)
         return fd
 
@@ -21,6 +21,6 @@ class FDRepository:
         for key, value in kwargs.items():
             if value is not None:
                 setattr(fd, key, value)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(fd)
         return fd

@@ -18,7 +18,7 @@ class PriceCacheRepository:
             existing.source = source
             existing.fetched_at = fetched_at or datetime.utcnow()
             existing.is_stale = is_stale
-            self.db.commit()
+            self.db.flush()
             self.db.refresh(existing)
             return existing
         pc = PriceCache(
@@ -29,6 +29,6 @@ class PriceCacheRepository:
             is_stale=is_stale,
         )
         self.db.add(pc)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(pc)
         return pc

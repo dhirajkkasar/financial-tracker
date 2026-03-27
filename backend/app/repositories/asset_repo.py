@@ -14,7 +14,7 @@ class AssetRepository:
     def create(self, **kwargs) -> Asset:
         asset = Asset(**kwargs)
         self.db.add(asset)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(asset)
         return asset
 
@@ -40,7 +40,7 @@ class AssetRepository:
         for key, value in kwargs.items():
             if value is not None:
                 setattr(asset, key, value)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(asset)
         return asset
 
@@ -61,6 +61,6 @@ class AssetRepository:
 
     def soft_delete(self, asset: Asset) -> Asset:
         asset.is_active = False
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(asset)
         return asset

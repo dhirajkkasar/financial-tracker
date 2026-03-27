@@ -86,7 +86,7 @@ def _make_txn_id(account_number: str, txn_type: str, txn_date: date, amount_pais
 
 
 @register_importer
-class PPFCSVParser(BaseImporter):
+class PPFCSVImporter(BaseImporter):
     source = "ppf"
     asset_type = "PPF"
     format = "csv"

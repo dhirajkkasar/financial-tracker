@@ -13,13 +13,13 @@ def _make_sample_pdf_bytes() -> bytes:
     pytest.skip("fidelity_sale_sample.pdf fixture not available")
 
 
-class TestFidelityPDFParser:
+class TestFidelityPDFImporter:
     RATES = {"2025-03": 86.0, "2025-09": 84.5}
 
     def _parse(self):
-        from app.importers.fidelity_pdf_parser import FidelityPDFParser
+        from app.importers.fidelity_pdf_importer import FidelityPDFImporter
         data = _make_sample_pdf_bytes()
-        return FidelityPDFParser(exchange_rates=self.RATES).parse(data, "fidelity_sale.pdf")
+        return FidelityPDFImporter(exchange_rates=self.RATES).parse(data, "fidelity_sale.pdf")
 
     def test_parse_returns_two_transactions(self):
         result = self._parse()
@@ -59,9 +59,9 @@ class TestFidelityPDFParser:
         assert "Tax cover sale" in (txn.notes or "")
 
     def test_parse_txn_id_is_stable(self):
-        from app.importers.fidelity_pdf_parser import FidelityPDFParser
+        from app.importers.fidelity_pdf_importer import FidelityPDFImporter
         data = _make_sample_pdf_bytes()
-        imp = FidelityPDFParser(exchange_rates=self.RATES)
+        imp = FidelityPDFImporter(exchange_rates=self.RATES)
         id1 = imp.parse(data, "f.pdf").transactions[0].txn_id
         id2 = imp.parse(data, "f.pdf").transactions[0].txn_id
         assert id1 == id2
@@ -73,15 +73,15 @@ class TestFidelityPDFParser:
         assert len(ids) == len(set(ids))
 
     def test_extract_required_month_years(self):
-        from app.importers.fidelity_pdf_parser import FidelityPDFParser
+        from app.importers.fidelity_pdf_importer import FidelityPDFImporter
         data = _make_sample_pdf_bytes()
-        months = FidelityPDFParser.extract_required_month_years(data)
+        months = FidelityPDFImporter.extract_required_month_years(data)
         assert "2025-03" in months
         assert "2025-09" in months
 
     def test_missing_rate_adds_error(self):
-        from app.importers.fidelity_pdf_parser import FidelityPDFParser
+        from app.importers.fidelity_pdf_importer import FidelityPDFImporter
         data = _make_sample_pdf_bytes()
-        result = FidelityPDFParser(exchange_rates={"2025-03": 86.0}).parse(data, "f.pdf")
+        result = FidelityPDFImporter(exchange_rates={"2025-03": 86.0}).parse(data, "f.pdf")
         # 2025-09 row should error
         assert any("2025-09" in e for e in result.errors)

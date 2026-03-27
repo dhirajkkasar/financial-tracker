@@ -64,13 +64,13 @@ def test_registry_raises_for_unknown_source():
 
 def test_all_importers_are_registered():
     """Import all importer modules so decorators fire, then verify registry."""
-    import app.importers.broker_csv_parser
-    import app.importers.cas_parser
-    import app.importers.nps_csv_parser
-    import app.importers.ppf_csv_parser
-    import app.importers.epf_pdf_parser
-    import app.importers.fidelity_pdf_parser
-    import app.importers.fidelity_rsu_csv_parser
+    import app.importers.zerodha_importer
+    import app.importers.cas_importer
+    import app.importers.nps_csv_importer
+    import app.importers.ppf_csv_importer
+    import app.importers.epf_pdf_importer
+    import app.importers.fidelity_pdf_importer
+    import app.importers.fidelity_rsu_csv_importer
 
     from app.importers.registry import ImporterRegistry
     registry = ImporterRegistry()

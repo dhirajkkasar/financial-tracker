@@ -316,7 +316,7 @@ git commit -m "feat(importers): add ImporterRegistry and @register_importer deco
 ## Task 3: Register existing importers
 
 **Files:**
-- Modify: `backend/app/importers/broker_csv_parser.py`
+- Modify: `backend/app/importers/zerodha_importer.py`
 - Modify: `backend/app/importers/cas_parser.py`
 - Modify: `backend/app/importers/nps_csv_parser.py`
 - Modify: `backend/app/importers/ppf_csv_parser.py`
@@ -335,7 +335,7 @@ Append to `backend/tests/unit/test_importer_registry.py`:
 def test_all_importers_are_registered():
     """Import all importer modules so decorators fire, then verify registry."""
     # Force module loading — decorators register on import
-    import app.importers.broker_csv_parser
+    import app.importers.zerodha_importer
     import app.importers.cas_parser
     import app.importers.nps_csv_parser
     import app.importers.ppf_csv_parser
@@ -369,13 +369,13 @@ uv run pytest tests/unit/test_importer_registry.py::test_all_importers_are_regis
 
 Expected: Fails — none of the importers are registered yet.
 
-- [ ] **Step 3: Register broker_csv_parser.py (Zerodha)**
+- [ ] **Step 3: Register zerodha_importer.py (Zerodha)**
 
-Find the main importer class in `backend/app/importers/broker_csv_parser.py`. It should be named something like `ZerodhaImporter` or `BrokerCSVParser`.
+Find the main importer class in `backend/app/importers/zerodha_importer.py`. It should be named something like `ZerodhaImporter` or `BrokerCSVParser`.
 
 ```bash
 cd backend
-grep -n "^class " app/importers/broker_csv_parser.py
+grep -n "^class " app/importers/zerodha_importer.py
 ```
 
 Add at the top of the file:
@@ -430,7 +430,7 @@ uv run pytest tests/unit/test_importer_registry.py -v
 uv run pytest --tb=short -q  # full suite
 ```
 
-Expected: All tests pass. Existing importer-specific tests (test_cas_parser.py, test_broker_csv_parser.py, etc.) should still pass unchanged.
+Expected: All tests pass. Existing importer-specific tests (test_cas_parser.py, test_zerodha_importer.py, etc.) should still pass unchanged.
 
 - [ ] **Step 7: Commit**
 
@@ -1633,7 +1633,7 @@ Expected: All tests pass. Importer coverage ≥ 85%.
 ```bash
 cd backend
 uv run python -c "
-import app.importers.broker_csv_parser
+import app.importers.zerodha_importer
 import app.importers.cas_parser
 import app.importers.nps_csv_parser
 import app.importers.ppf_csv_parser

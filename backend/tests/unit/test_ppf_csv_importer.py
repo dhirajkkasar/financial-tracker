@@ -1,7 +1,7 @@
 """Unit tests for PPF CSV parser — uses an inline minimal CSV fixture."""
 from datetime import date
 
-from app.importers.ppf_csv_parser import PPFCSVParser, _make_txn_id
+from app.importers.ppf_csv_importer import PPFCSVImporter, _make_txn_id
 
 # Minimal CSV mimicking the SBI PPF statement format (3 transactions)
 MINI_CSV = b""",,,,,,,
@@ -20,9 +20,9 @@ Date,Details,,,Ref No./Cheque No,Debit,Credit,Balance
 """
 
 
-class TestPPFCSVParser:
+class TestPPFCSVImporter:
     def setup_method(self):
-        self.result = PPFCSVParser().parse(MINI_CSV)
+        self.result = PPFCSVImporter().parse(MINI_CSV)
 
     def test_parse_returns_ppf_csv_source(self):
         assert self.result.source == "ppf_csv"
@@ -100,15 +100,15 @@ class TestPPFCSVParser:
         assert march_txn.txn_id == expected
 
 
-class TestPPFCSVParserErrors:
+class TestPPFCSVImporterErrors:
     def test_missing_account_number_returns_error(self):
         csv = b"Date,Details,,,Ref,Debit,Credit,Balance\n01/01/2024,Test,,,,-,1000.00,1000.00\n"
-        result = PPFCSVParser().parse(csv)
+        result = PPFCSVImporter().parse(csv)
         assert any("account number" in e.lower() for e in result.errors)
 
     def test_missing_transaction_table_returns_error(self):
         csv = b"Account No  :  32256576916,,,,,,\n"
-        result = PPFCSVParser().parse(csv)
+        result = PPFCSVImporter().parse(csv)
         assert any("transaction table" in e.lower() for e in result.errors)
 
     def test_no_transactions_returns_error(self):
@@ -117,5 +117,5 @@ class TestPPFCSVParserErrors:
             b"IFSC Code  :  SBIN0013547,,,,,,\n"
             b"Date,Details,,,Ref No./Cheque No,Debit,Credit,Balance\n"
         )
-        result = PPFCSVParser().parse(csv)
+        result = PPFCSVImporter().parse(csv)
         assert any("no transactions" in e.lower() for e in result.errors)

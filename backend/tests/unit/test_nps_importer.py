@@ -1,6 +1,6 @@
 import pytest
 from pathlib import Path
-from app.importers.nps_csv_parser import NPSImporter
+from app.importers.nps_csv_importer import NPSImporter
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 

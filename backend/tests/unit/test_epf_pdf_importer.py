@@ -2,7 +2,7 @@
 from tests.fixtures_data import PARSED_EPF
 
 
-class TestEPFPDFParser:
+class TestEPFPDFImporter:
     def test_parse_returns_import_result(self):
         assert PARSED_EPF.source == "epf_pdf"
 

@@ -11,8 +11,8 @@ import uuid
 
 from sqlalchemy.orm import Session
 
-from app.importers.ppf_csv_parser import PPFCSVParser
-from app.importers.epf_pdf_parser import EPFPDFParser
+from app.importers.ppf_csv_importer import PPFCSVImporter
+from app.importers.epf_pdf_importer import EPFPDFImporter
 from app.models.asset import Asset
 from app.models.transaction import TransactionType
 from app.repositories.asset_repo import AssetRepository
@@ -50,7 +50,7 @@ class PPFEPFImportService:
           {inserted, skipped, valuation_created, valuation_value, valuation_date,
            account_number, errors}
         """
-        parser = PPFCSVParser()
+        parser = PPFCSVImporter()
         result = parser.parse(file_bytes)
 
         if result.errors:
@@ -145,7 +145,7 @@ class PPFEPFImportService:
         Returns:
           {inserted, skipped, epf_valuation_created, epf_valuation_value, errors}
         """
-        parser = EPFPDFParser()
+        parser = EPFPDFImporter()
         result = parser.parse(file_bytes)
 
         if result.errors:

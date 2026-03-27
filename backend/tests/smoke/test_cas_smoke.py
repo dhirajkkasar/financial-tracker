@@ -1,6 +1,6 @@
 import pytest
 from pathlib import Path
-from app.importers.cas_parser import CASImporter
+from app.importers.cas_importer import CASImporter
 
 pytestmark = pytest.mark.smoke
 FIXTURES = Path(__file__).parent.parent / "fixtures"

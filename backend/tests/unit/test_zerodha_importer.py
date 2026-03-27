@@ -1,6 +1,6 @@
 import pytest
 from pathlib import Path
-from app.importers.broker_csv_parser import ZerodhaImporter
+from app.importers.zerodha_importer import ZerodhaImporter
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 

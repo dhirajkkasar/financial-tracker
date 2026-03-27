@@ -108,7 +108,7 @@ class EPFImportResult(ImportResult):
 
 
 @register_importer
-class EPFPDFParser(BaseImporter):
+class EPFPDFImporter(BaseImporter):
     source = "epf"
     asset_type = "EPF"
     format = "pdf"

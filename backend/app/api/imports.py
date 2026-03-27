@@ -7,12 +7,12 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_import_orchestrator
 from app.database import get_db
-from app.importers.broker_csv_parser import ZerodhaImporter
-from app.importers.cas_parser import CASImporter
+from app.importers.zerodha_importer import ZerodhaImporter
+from app.importers.cas_importer import CASImporter
 from app.services.imports.orchestrator import ImportOrchestrator
-from app.importers.fidelity_pdf_parser import FidelityPDFParser
-from app.importers.fidelity_rsu_csv_parser import FidelityRSUImporter
-from app.importers.nps_csv_parser import NPSImporter
+from app.importers.fidelity_pdf_importer import FidelityPDFImporter
+from app.importers.fidelity_rsu_csv_importer import FidelityRSUImporter
+from app.importers.nps_csv_importer import NPSImporter
 from app.middleware.error_handler import NotFoundError, ValidationError
 from app.models.asset import AssetType
 from app.services.import_service import ImportService
@@ -201,7 +201,7 @@ async def import_fidelity_sale_pdf(
     """
     rates = _parse_exchange_rates(exchange_rates)
     file_bytes = await file.read()
-    return _fidelity_preview(FidelityPDFParser, file_bytes, file.filename or "", rates, svc)
+    return _fidelity_preview(FidelityPDFImporter, file_bytes, file.filename or "", rates, svc)
 
 
 # ---------------------------------------------------------------------------

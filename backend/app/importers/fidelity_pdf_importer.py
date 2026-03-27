@@ -30,7 +30,7 @@ _TICKER_RE = re.compile(r"^([A-Z]{1,6}):\s+.+")
 
 
 @register_importer
-class FidelityPDFParser(BaseImporter):
+class FidelityPDFImporter(BaseImporter):
     source = "fidelity_sale"
     asset_type = "STOCK_US"
     format = "pdf"

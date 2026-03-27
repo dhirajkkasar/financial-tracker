@@ -11,8 +11,15 @@ from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.importers.pipeline import ImportPipeline
+from app.importers.registry import ImporterRegistry
 from app.repositories.unit_of_work import UnitOfWork, IUnitOfWorkFactory
-
+from app.services.event_bus import SyncEventBus
+from app.services.imports.deduplicator import DBDeduplicator
+from app.services.imports.orchestrator import ImportOrchestrator
+from app.services.imports.post_processors.mf import MFPostProcessor
+from app.services.imports.post_processors.stock import StockPostProcessor
+from app.services.imports.preview_store import PreviewStore
 
 # ---------------------------------------------------------------------------
 # Core: UnitOfWork factory
@@ -24,11 +31,36 @@ def get_uow_factory(db: Session = Depends(get_db)) -> IUnitOfWorkFactory:
 
 
 # ---------------------------------------------------------------------------
-# Placeholder stubs — filled in by Plans 3 and 4
+# Import orchestrator singletons (TTL-based store, stateless bus)
 # ---------------------------------------------------------------------------
-# Plan 3 will add:
-#   get_import_orchestrator(db) -> ImportOrchestrator
-#
+
+_preview_store = PreviewStore(ttl_minutes=15)
+_event_bus = SyncEventBus()
+
+# Wire corp actions handler when corp_actions_service is available
+# (Plan 4 adds: _event_bus.subscribe(ImportCompletedEvent, corp_actions_svc.on_import_completed))
+
+
+def get_import_orchestrator(db: Session = Depends(get_db)) -> ImportOrchestrator:
+    uow_factory = lambda: UnitOfWork(db)
+    txn_repo = UnitOfWork(db).transactions  # for deduplication check
+
+    pipeline = ImportPipeline(
+        registry=ImporterRegistry(),
+        deduplicator=DBDeduplicator(txn_repo),
+    )
+    return ImportOrchestrator(
+        uow_factory=uow_factory,
+        pipeline=pipeline,
+        preview_store=_preview_store,
+        post_processors=[StockPostProcessor(), MFPostProcessor()],
+        event_bus=_event_bus,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Placeholder stubs — filled in by Plan 4
+# ---------------------------------------------------------------------------
 # Plan 4 will add:
 #   get_returns_service(db) -> ReturnsService
 #   get_tax_service(db) -> TaxService

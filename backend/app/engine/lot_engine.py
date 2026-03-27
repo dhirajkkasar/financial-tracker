@@ -54,18 +54,19 @@ class SellLike(Protocol):
 # match_lots_fifo
 # ---------------------------------------------------------------------------
 
-def match_lots_fifo(lots: list, sells: list) -> list[dict]:
+def match_lots_fifo(lots: list, sells: list, stcg_days: int = 365) -> list[dict]:
     """
     Match sell events against buy lots using FIFO (earliest lot first).
 
     Args:
-        lots:  List of lot-like objects sorted by buy_date ascending.
-        sells: List of sell-like objects in chronological order.
+        lots:      List of lot-like objects sorted by buy_date ascending.
+        sells:     List of sell-like objects in chronological order.
+        stcg_days: Short-term holding threshold in days (caller-supplied).
 
     Returns:
         List of match dicts:
-          {lot_id, sell_date, units_sold, units_remaining,
-           buy_price_per_unit, sell_price_per_unit, realised_gain_inr}
+          {lot_id, sell_date, buy_date, units_sold, units_remaining,
+           buy_price_per_unit, sell_price_per_unit, realised_gain_inr, is_short_term}
     """
     # Work with mutable remaining units per lot
     remaining = {lot.lot_id: lot.units for lot in lots}
@@ -94,6 +95,7 @@ def match_lots_fifo(lots: list, sells: list) -> list[dict]:
             cost_basis = lot.buy_price_per_unit * consumed
             proceeds = sell_price * consumed
             realised_gain = proceeds - cost_basis
+            holding_days = (sell.date - lot.buy_date).days
 
             matches.append({
                 "lot_id": lot_id,
@@ -104,6 +106,7 @@ def match_lots_fifo(lots: list, sells: list) -> list[dict]:
                 "buy_price_per_unit": lot.buy_price_per_unit,
                 "sell_price_per_unit": sell_price,
                 "realised_gain_inr": realised_gain,
+                "is_short_term": holding_days < stcg_days,
             })
 
     return matches

@@ -224,3 +224,35 @@ def test_stcg_thresholds():
     assert EQUITY_STCG_DAYS == 365
     assert STOCK_US_STCG_DAYS == 730
     assert GOLD_STCG_DAYS == 1095
+
+
+# ---------------------------------------------------------------------------
+# Tests for explicit stcg_days parameter in match_lots_fifo
+# ---------------------------------------------------------------------------
+
+def test_match_lots_fifo_with_explicit_stcg_days_equity():
+    """Parameterized stcg_days=365 produces same results as the old asset_type='STOCK_IN' lookup."""
+    lots = [
+        FakeLot(lot_id="lot1", asset_id=1, buy_date=date(2023, 1, 1), units=10,
+                buy_price_per_unit=100.0, buy_amount_inr=1000.0),
+    ]
+    sells = [
+        FakeSell(date=date(2023, 6, 1), units=5, amount_inr=600.0),  # 151 days — short-term at 365
+    ]
+    matches = match_lots_fifo(lots, sells, stcg_days=365)
+    assert len(matches) == 1
+    assert matches[0]["is_short_term"] is True
+
+
+def test_match_lots_fifo_with_explicit_stcg_days_us_stock():
+    """stcg_days=730 produces long-term for a 730+ day hold."""
+    lots = [
+        FakeLot(lot_id="lot1", asset_id=1, buy_date=date(2022, 1, 1), units=10,
+                buy_price_per_unit=200.0, buy_amount_inr=2000.0),
+    ]
+    sells = [
+        FakeSell(date=date(2024, 3, 1), units=5, amount_inr=1200.0),  # 791 days — LT at 730
+    ]
+    matches = match_lots_fifo(lots, sells, stcg_days=730)
+    assert len(matches) == 1
+    assert matches[0]["is_short_term"] is False

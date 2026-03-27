@@ -71,18 +71,14 @@ class MFAPIFetcher(BasePriceFetcher):
         if not asset.is_active:
             logger.info("MFAPIFetcher: skipping inactive asset %s", asset.name)
             return None
-        
-        try:
-            scheme_code = asset.mfapi_scheme_code
-            if not scheme_code:
-                scheme_code = self._search_scheme_code(asset)
-                if not scheme_code:
-                    logger.warning("MFAPIFetcher: could not find scheme_code for %s", asset.name)
-                    return None
-                # Caller (PriceService) will persist scheme_code back to asset
-                asset._resolved_scheme_code = str(scheme_code)
 
-            resp = httpx.get(f"{self.BASE_URL}/{scheme_code}", timeout=60)
+        scheme_code = asset.mfapi_scheme_code
+        if not scheme_code:
+            logger.warning("MFAPIFetcher: no scheme_code for %s — run import to resolve", asset.name)
+            return None
+
+        try:
+            resp = httpx.get(f"{self.BASE_URL}/{scheme_code}/latest", timeout=60)
             if resp.status_code != 200:
                 logger.warning("MFAPIFetcher: HTTP %s for scheme %s", resp.status_code, scheme_code)
                 return None
@@ -90,31 +86,9 @@ class MFAPIFetcher(BasePriceFetcher):
             if data.get("status") != "SUCCESS" or not data.get("data"):
                 return None
             nav = float(data["data"][0]["nav"])
-            scheme_category = data.get("meta", {}).get("scheme_category")
-            if scheme_category:
-                asset._resolved_scheme_category = scheme_category
             return PriceResult(price_inr=nav, source="mfapi")
         except Exception as e:
             logger.warning("MFAPIFetcher: error fetching %s: %s", asset.name, e)
-            return None
-
-    def _search_scheme_code(self, asset: Asset) -> str | None:
-        """Search by scheme name, try to match by ISIN or name."""
-        try:
-            resp = httpx.get(
-                f"{self.BASE_URL}/search",
-                params={"q": asset.name[:40]},
-                timeout=30,
-            )
-            if resp.status_code != 200:
-                return None
-            results = resp.json()
-            if not results:
-                return None
-            # Return first result's scheme code (best-effort)
-            return str(results[0]["schemeCode"])
-        except Exception as e:
-            logger.warning("MFAPIFetcher: search error for %s: %s", asset.name, e)
             return None
 
 

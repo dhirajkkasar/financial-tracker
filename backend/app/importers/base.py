@@ -24,6 +24,8 @@ class ParsedTransaction:
     isin: Optional[str] = None
     exchange: Optional[str] = None
     mfapi_scheme_code: Optional[str] = None
+    scheme_category: Optional[str] = None
+    asset_class: Optional[str] = None     # e.g. "EQUITY", "DEBT" — overrides ASSET_CLASS_MAP if set
     forex_rate: Optional[float] = None    # USD/INR rate used for conversion
 
 

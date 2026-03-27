@@ -17,7 +17,6 @@ from app.repositories.unit_of_work import UnitOfWork, IUnitOfWorkFactory
 from app.services.event_bus import SyncEventBus
 from app.services.imports.deduplicator import DBDeduplicator
 from app.services.imports.orchestrator import ImportOrchestrator
-from app.services.imports.post_processors.mf import MFPostProcessor
 from app.services.imports.post_processors.stock import StockPostProcessor
 from app.services.imports.preview_store import PreviewStore
 
@@ -49,6 +48,7 @@ def get_import_orchestrator(db: Session = Depends(get_db)) -> ImportOrchestrator
         registry=ImporterRegistry(),
         deduplicator=DBDeduplicator(txn_repo),
     )
+
     return ImportOrchestrator(
         uow_factory=uow_factory,
         pipeline=pipeline,

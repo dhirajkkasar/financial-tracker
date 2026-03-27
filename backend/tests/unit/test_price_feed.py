@@ -40,33 +40,26 @@ class TestMFAPIFetcher:
         mock_get.assert_called_once()
         assert "125497" in mock_get.call_args[0][0]
 
-    def test_fetch_falls_back_to_search_when_no_scheme_code(self):
+    def test_fetch_returns_none_when_no_scheme_code(self):
+        """fetch() returns None immediately when mfapi_scheme_code is not set; no HTTP call made."""
         asset = make_mock_asset(
             asset_type=AssetType.MF,
             identifier="INF179KC1BS5",
             mfapi_scheme_code=None,
             name="HDFC Multi Cap Fund"
         )
-        search_response = [{"schemeCode": 125497, "schemeName": "HDFC Multi Cap Fund Direct Growth"}]
-        nav_response = {
-            "status": "SUCCESS",
-            "data": [{"date": "19-03-2026", "nav": "19.855"}]
-        }
         with patch("app.services.price_feed.httpx.get") as mock_get:
-            mock_get.return_value.status_code = 200
-            # First call = search, second call = NAV
-            mock_get.return_value.json.side_effect = [search_response, nav_response]
             fetcher = MFAPIFetcher()
             result = fetcher.fetch(asset)
-        assert result is not None
-        assert mock_get.call_count == 2
+        assert result is None
+        mock_get.assert_not_called()
 
-    def test_fetch_uses_non_latest_url(self):
-        """Fetcher must call /{scheme_code} not /{scheme_code}/latest to get meta."""
+    def test_fetch_uses_latest_url(self):
+        """Fetcher calls /{scheme_code}/latest for the NAV endpoint."""
         asset = make_mock_asset(asset_type=AssetType.MF, mfapi_scheme_code="125497")
         mock_response = {
             "status": "SUCCESS",
-            "meta": {"scheme_category": "Equity Scheme - Large Cap Fund"},
+            "meta": {},
             "data": [{"date": "19-03-2026", "nav": "19.855"}]
         }
         with patch("app.services.price_feed.httpx.get") as mock_get:
@@ -75,26 +68,10 @@ class TestMFAPIFetcher:
             fetcher = MFAPIFetcher()
             fetcher.fetch(asset)
         called_url = mock_get.call_args[0][0]
-        assert called_url.endswith("/125497"), f"Expected URL ending in /125497, got: {called_url}"
-        assert "/latest" not in called_url
+        assert called_url.endswith("/125497/latest"), f"Expected URL ending in /125497/latest, got: {called_url}"
 
-    def test_fetch_sets_resolved_scheme_category(self):
-        """fetch() sets asset._resolved_scheme_category when meta.scheme_category present."""
-        asset = make_mock_asset(asset_type=AssetType.MF, mfapi_scheme_code="125497")
-        mock_response = {
-            "status": "SUCCESS",
-            "meta": {"scheme_category": "Equity Scheme - Large Cap Fund"},
-            "data": [{"date": "19-03-2026", "nav": "19.855"}]
-        }
-        with patch("app.services.price_feed.httpx.get") as mock_get:
-            mock_get.return_value.status_code = 200
-            mock_get.return_value.json.return_value = mock_response
-            fetcher = MFAPIFetcher()
-            fetcher.fetch(asset)
-        assert asset._resolved_scheme_category == "Equity Scheme - Large Cap Fund"
-
-    def test_fetch_no_scheme_category_in_meta_does_not_set_attribute(self):
-        """fetch() does not set _resolved_scheme_category when meta lacks scheme_category."""
+    def test_fetch_does_not_set_resolved_scheme_category(self):
+        """fetch() never sets _resolved_scheme_category — classification is import-time only."""
         asset = make_mock_asset(asset_type=AssetType.MF, mfapi_scheme_code="125497")
         mock_response = {
             "status": "SUCCESS",

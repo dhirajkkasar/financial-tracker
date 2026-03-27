@@ -9,6 +9,8 @@ import pdfplumber
 
 from app.importers.base import ParsedTransaction, ParsedFundSnapshot, ImportResult, BaseImporter
 from app.importers.registry import register_importer
+from app.engine.mf_scheme_lookup import lookup_by_isin
+from app.engine.mf_classifier import classify_mf
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +198,14 @@ class CASImporter(BaseImporter):
         txn_hash = hashlib.sha256(hash_input.encode()).hexdigest()
         txn_id = f"cas_{txn_hash}"
 
+        mfapi_scheme_code = None
+        scheme_category = None
+        asset_class = None
+        lookup = lookup_by_isin(isin)
+        if lookup:
+            mfapi_scheme_code, scheme_category = lookup
+            asset_class = classify_mf(scheme_category).value
+
         return ParsedTransaction(
             source="cas",
             asset_name=scheme_name or isin,
@@ -209,6 +219,9 @@ class CASImporter(BaseImporter):
             amount_inr=amount_inr,
             txn_id=txn_id,
             notes=description,
+            mfapi_scheme_code=mfapi_scheme_code,
+            scheme_category=scheme_category,
+            asset_class=asset_class,
         )
 
     def _parse_closing_balance(

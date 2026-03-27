@@ -21,6 +21,8 @@ from app.schemas.responses.imports import (
     ImportCommitResponse,
     ParsedTransactionPreview,
 )
+from app.engine.mf_classifier import classify_mf
+from app.engine.mf_scheme_lookup import lookup_by_isin
 from app.services.event_bus import ImportCompletedEvent, IEventBus
 from app.services.imports.post_processors.base import IPostProcessor
 from app.services.imports.preview_store import PreviewStore
@@ -31,7 +33,6 @@ ASSET_CLASS_MAP: dict[str, AssetClass] = {
     "STOCK_IN": AssetClass.EQUITY,
     "STOCK_US": AssetClass.EQUITY,
     "RSU": AssetClass.EQUITY,
-    "MF": AssetClass.MIXED,
     "NPS": AssetClass.DEBT,
     "GOLD": AssetClass.GOLD,
     "SGB": AssetClass.GOLD,
@@ -169,29 +170,60 @@ class ImportOrchestrator:
     # ------------------------------------------------------------------
 
     def _find_or_create_asset(self, parsed_txn: ParsedTransaction, uow: UnitOfWork) -> Asset:
-        """Find asset by identifier or name; create if not found."""
+        """Find asset by identifier or name; create if not found.
+
+        For MF assets the scheme_code and scheme_category are resolved from the
+        bundled CSV only when the asset is new or its mfapi_scheme_code is empty.
+        """
         assets = uow.assets.list(active=None)
 
         # Match by identifier (ISIN / scheme code)
         if parsed_txn.asset_identifier:
             for a in assets:
                 if a.identifier == parsed_txn.asset_identifier:
+                    # Backfill scheme_code/category if missing on existing MF asset
+                    if parsed_txn.asset_type == "MF" and not a.mfapi_scheme_code:
+                        self._apply_mf_scheme(a, parsed_txn.asset_identifier)
                     return a
 
         # Match by name
         for a in assets:
             if a.name == parsed_txn.asset_name:
+                if parsed_txn.asset_type == "MF" and not a.mfapi_scheme_code:
+                    self._apply_mf_scheme(a, parsed_txn.asset_identifier)
                 return a
 
         # Create new asset
         asset_type_enum = AssetType[parsed_txn.asset_type]
+        scheme_code = None
         asset_class = ASSET_CLASS_MAP.get(parsed_txn.asset_type, AssetClass.EQUITY)
+        scheme_category = None
+        if parsed_txn.asset_type == "MF" and parsed_txn.asset_identifier:
+            lookup = lookup_by_isin(parsed_txn.asset_identifier)
+            if lookup:
+                scheme_code, scheme_category = lookup
+                asset_class = classify_mf(scheme_category)
+
         return uow.assets.create(
             name=parsed_txn.asset_name,
             identifier=parsed_txn.asset_identifier or "",
-            mfapi_scheme_code=parsed_txn.mfapi_scheme_code,
+            mfapi_scheme_code=scheme_code,
+            scheme_category=scheme_category,
             asset_type=asset_type_enum,
             asset_class=asset_class,
             currency="USD" if parsed_txn.asset_type in ("STOCK_US", "RSU") else "INR",
             is_active=True,
         )
+
+    def _apply_mf_scheme(self, asset: Asset, isin: str | None) -> None:
+        """Backfill mfapi_scheme_code and scheme_category on an existing MF asset."""
+        if not isin:
+            return
+        lookup = lookup_by_isin(isin)
+        if not lookup:
+            return
+        scheme_code, scheme_category = lookup
+        asset.mfapi_scheme_code = scheme_code
+        if not asset.scheme_category:
+            asset.scheme_category = scheme_category
+            asset.asset_class = classify_mf(scheme_category)

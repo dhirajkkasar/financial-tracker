@@ -135,6 +135,7 @@ def cmd_import_cas(file_path: str) -> dict:
     with open(file_path, "rb") as f:
         preview = _api("post", "/import/cas-pdf", files={"file": f})
     result = _api("post", "/import/commit", json={"preview_id": preview["preview_id"]})
+    cmd_refresh_prices()
     _print_import_summary("CAS", inserted=result["created_count"], skipped=result["skipped_count"])
     return result
 
@@ -144,6 +145,7 @@ def cmd_import_nps(file_path: str) -> dict:
     with open(file_path, "rb") as f:
         preview = _api("post", "/import/nps-csv", files={"file": f})
     result = _api("post", "/import/commit", json={"preview_id": preview["preview_id"]})
+    cmd_refresh_prices()
     _print_import_summary("NPS", inserted=result["created_count"], skipped=result["skipped_count"])
     return result
 
@@ -153,6 +155,7 @@ def cmd_import_broker_csv(file_path: str, broker: str) -> dict:
     with open(file_path, "rb") as f:
         preview = _api("post", f"/import/broker-csv?broker={broker}", files={"file": f})
     result = _api("post", "/import/commit", json={"preview_id": preview["preview_id"]})
+    cmd_refresh_prices()
     _print_import_summary(broker.title(), inserted=result["created_count"], skipped=result["skipped_count"])
     return result
 

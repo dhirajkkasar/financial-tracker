@@ -83,7 +83,7 @@ def test_orchestrator_preview_returns_preview_id():
         asset_type = "STOCK_IN"
         format = "csv"
 
-        def parse(self, file_bytes: bytes) -> ImportResult:
+        def parse(self, file_bytes: bytes, filename: str = "") -> ImportResult:
             return ImportResult(
                 source=self.source,
                 transactions=[_make_txn("orch_txn_1")],

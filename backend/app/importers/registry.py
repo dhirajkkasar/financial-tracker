@@ -40,7 +40,7 @@ class ImporterRegistry:
     Returns a fresh instance for each call (importers are stateless).
     """
 
-    def get(self, source: str, fmt: str) -> "BaseImporter":
+    def get(self, source: str, fmt: str, **init_kwargs) -> "BaseImporter":
         cls = _REGISTRY.get((source, fmt))
         if cls is None:
             available = sorted(_REGISTRY.keys())
@@ -48,7 +48,7 @@ class ImporterRegistry:
                 f"No importer for source={source!r} format={fmt!r}. "
                 f"Registered: {available}"
             )
-        return cls()
+        return cls(**init_kwargs)
 
     def list_registered(self) -> list[tuple[str, str]]:
         """Return all registered (source, format) keys."""

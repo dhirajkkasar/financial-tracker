@@ -67,7 +67,7 @@ def test_fidelity_rsu_csv_endpoint_preview(client):
     csv_bytes = (FIXTURES / "fidelity_rsu_sample.csv").read_bytes()
     rates = {"2025-03": 86.5, "2024-09": 83.8}
     resp = client.post(
-        "/import/fidelity-rsu-csv",
+        "/import/preview-file?source=fidelity_rsu&format=csv",
         data={"exchange_rates": json.dumps(rates)},
         files={"file": ("NASDAQ_AMZN.csv", csv_bytes, "text/csv")},
     )
@@ -79,10 +79,10 @@ def test_fidelity_rsu_csv_endpoint_preview(client):
 
 
 def test_fidelity_rsu_csv_endpoint_missing_rate_returns_422(client):
-    """POST /import/fidelity-rsu-csv with incomplete rates returns 422."""
+    """POST /import/preview-file?source=fidelity_rsu&format=csv with incomplete rates returns 422."""
     csv_bytes = (FIXTURES / "fidelity_rsu_sample.csv").read_bytes()
     resp = client.post(
-        "/import/fidelity-rsu-csv",
+        "/import/preview-file?source=fidelity_rsu&format=csv",
         data={"exchange_rates": json.dumps({"2025-03": 86.5})},  # missing 2024-09
         files={"file": ("NASDAQ_AMZN.csv", csv_bytes, "text/csv")},
     )
@@ -97,18 +97,18 @@ def test_fidelity_rsu_csv_endpoint_idempotent(client):
 
     def do_import():
         resp = client.post(
-            "/import/fidelity-rsu-csv",
+            "/import/preview-file?source=fidelity_rsu&format=csv",
             data={"exchange_rates": json.dumps(rates)},
             files={"file": ("NASDAQ_AMZN.csv", csv_bytes, "text/csv")},
         )
         preview_id = resp.json()["preview_id"]
-        return client.post("/import/commit", json={"preview_id": preview_id}).json()
+        return client.post(f"/import/commit-file/{preview_id}").json()
 
     first = do_import()
     second = do_import()
-    assert first["created_count"] == 2
-    assert second["created_count"] == 0
-    assert second["skipped_count"] == 2
+    assert first["inserted"] == 2
+    assert second["inserted"] == 0
+    assert second["skipped"] == 2
 
 
 def test_fidelity_sale_pdf_endpoint_preview(client):
@@ -119,7 +119,7 @@ def test_fidelity_sale_pdf_endpoint_preview(client):
     pdf_bytes = path.read_bytes()
     rates = {"2025-03": 86.0, "2025-09": 84.5}
     resp = client.post(
-        "/import/fidelity-sale-pdf",
+        "/import/preview-file?source=fidelity_sale&format=pdf",
         data={"exchange_rates": json.dumps(rates)},
         files={"file": ("sale.pdf", pdf_bytes, "application/pdf")},
     )
@@ -133,13 +133,13 @@ def test_fidelity_sale_pdf_endpoint_preview(client):
 
 
 def test_fidelity_sale_pdf_endpoint_missing_rate_returns_422(client):
-    """POST /import/fidelity-sale-pdf with incomplete rates returns 422."""
+    """POST /import/preview-file?source=fidelity_sale&format=pdf with incomplete rates returns 422."""
     path = FIXTURES / "fidelity_sale_sample.pdf"
     if not path.exists():
         pytest.skip("fidelity_sale_sample.pdf fixture not available")
     pdf_bytes = path.read_bytes()
     resp = client.post(
-        "/import/fidelity-sale-pdf",
+        "/import/preview-file?source=fidelity_sale&format=pdf",
         data={"exchange_rates": json.dumps({"2025-03": 86.0})},  # missing 2025-09
         files={"file": ("sale.pdf", pdf_bytes, "application/pdf")},
     )
@@ -157,12 +157,12 @@ def test_fidelity_sale_pdf_endpoint_idempotent(client):
 
     def do_import():
         resp = client.post(
-            "/import/fidelity-sale-pdf",
+            "/import/preview-file?source=fidelity_sale&format=pdf",
             data={"exchange_rates": json.dumps(rates)},
             files={"file": ("sale.pdf", pdf_bytes, "application/pdf")},
         )
         preview_id = resp.json()["preview_id"]
-        return client.post("/import/commit", json={"preview_id": preview_id}).json()
+        return client.post(f"/import/commit-file/{preview_id}").json()
 
     first = do_import()
     second = do_import()

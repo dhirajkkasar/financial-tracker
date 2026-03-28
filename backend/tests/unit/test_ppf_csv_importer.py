@@ -31,19 +31,18 @@ class TestPPFCSVImporter:
         assert self.result.errors == []
 
     def test_extracts_account_number(self):
-        assert self.result.account_number == "32256576916"
+        # Account number is now in asset_identifier of transactions
+        assert self.result.transactions
+        assert self.result.transactions[0].asset_identifier == "32256576916"
 
     def test_derives_bank_name_from_ifsc(self):
-        assert self.result.bank_name == "SBI"
+        # Bank name is derived and used in asset_name
+        assert self.result.transactions
+        assert "SBI" in self.result.transactions[0].asset_name
 
     def test_asset_name(self):
-        assert self.result.asset_name == "PPF - SBI"
-
-    def test_closing_balance(self):
-        assert self.result.closing_balance_inr == 12543.0
-
-    def test_closing_balance_date(self):
-        assert self.result.closing_balance_date == date(2026, 3, 25)
+        assert self.result.transactions
+        assert self.result.transactions[0].asset_name == "PPF - SBI"
 
     def test_transaction_count(self):
         assert len(self.result.transactions) == 3

@@ -70,8 +70,9 @@ class ImportOrchestrator:
         source: str,
         fmt: str,
         file_bytes: bytes,
+        **importer_kwargs,
     ) -> ImportPreviewResponse:
-        result = self._pipeline.run(source, fmt, file_bytes)
+        result = self._pipeline.run(source, fmt, file_bytes, **importer_kwargs)
         preview_id = self._store.put(result)
 
         txn_previews = [

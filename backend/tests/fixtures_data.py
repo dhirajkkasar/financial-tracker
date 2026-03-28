@@ -7,8 +7,6 @@ To re-verify, run: pytest -m smoke
 from datetime import date
 
 from app.importers.base import ImportResult, ParsedTransaction, ParsedFundSnapshot
-from app.importers.ppf_csv_importer import PPFCSVImportResult
-from app.importers.epf_pdf_importer import EPFImportResult
 
 
 # ---------------------------------------------------------------------------
@@ -90,13 +88,10 @@ PARSED_CAS = ImportResult(
 # 2 transactions from the minimal test CSV used in test_ppf_csv_parser.py
 # txn_ids computed via _make_txn_id("32256576916", type, date, paise)
 # ---------------------------------------------------------------------------
-PARSED_PPF_CSV = PPFCSVImportResult(
+PARSED_PPF_CSV = ImportResult(
     source="ppf_csv",
-    account_number="32256576916",
-    bank_name="SBI",
-    asset_name="PPF - SBI",
-    closing_balance_inr=12543.0,
-    closing_balance_date=date(2026, 3, 25),
+    closing_valuation_inr=12543.0,
+    closing_valuation_date=date(2026, 3, 25),
     transactions=[
         ParsedTransaction(
             source="ppf_csv",
@@ -129,14 +124,10 @@ PARSED_PPF_CSV = PPFCSVImportResult(
 # plus representative interest txns from the 2024 passbook (31/03/2025).
 # The smoke test (tests/smoke/test_epf_smoke.py) validates the full real parse.
 # ---------------------------------------------------------------------------
-PARSED_EPF = EPFImportResult(
+PARSED_EPF = ImportResult(
     source="epf_pdf",
-    member_id="BGBNG00268580000306940",
-    establishment_name="AMAZON DEVELOPMENT CENTRE (INDIA) PRIVATE LIMITED",
-    print_date=date(2026, 3, 24),
-    grand_total_emp_deposit=0.0,
-    grand_total_er_deposit=0.0,
-    net_balance_inr=0.0,
+    closing_valuation_inr=0.0,
+    closing_valuation_date=date(2026, 3, 24),
     transactions=[
         # Employee Share CONTRIBUTION — Apr-2025 (first row of 2025-2026 passbook)
         ParsedTransaction(

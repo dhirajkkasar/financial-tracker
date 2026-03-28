@@ -8,6 +8,10 @@ from fastapi.exceptions import RequestValidationError
 
 from app.middleware.error_handler import AppError, app_error_handler, validation_error_handler
 
+# Import all importer classes to trigger @register_importer decorators
+# This must happen before any ImporterRegistry() is instantiated
+import app.importers  # noqa: F401
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",

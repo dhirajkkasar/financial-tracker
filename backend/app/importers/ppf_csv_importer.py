@@ -221,6 +221,8 @@ class PPFCSVImporter(BaseImporter):
         result.closing_valuation_notes = f"Closing balance from CSV import (account {account_number})"
 
         print("**************************")
-        print(f"Parsed PPF CSV: account {account_number}, bank {bank_name}, "              f"{len(transactions)} transactions, closing balance ₹{closing_balance_inr:,.2f} on {closing_balance_date}, errors: {result.errors}")
+        balance_str = f"₹{closing_balance_inr:,.2f}" if closing_balance_inr is not None else "N/A"
+        print(f"Parsed PPF CSV: account {account_number}, bank {bank_name}, "
+              f"{len(transactions)} transactions, closing balance {balance_str} on {closing_balance_date}, errors: {result.errors}")
         print("**************************")
         return result

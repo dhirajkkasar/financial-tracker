@@ -24,9 +24,12 @@ class ImportPipeline:
         self._registry = registry
         self._deduplicator = deduplicator
 
-    def run(self, source: str, fmt: str, file_bytes: bytes) -> ImportResult:
-        importer = self._registry.get(source, fmt)
-        result = importer.parse(file_bytes)
+    def run(self, source: str, fmt: str, file_bytes: bytes, **importer_kwargs) -> ImportResult:
+        # Extract filename if provided, otherwise use empty string
+        filename = importer_kwargs.pop("filename", "")
+        
+        importer = self._registry.get(source, fmt, **importer_kwargs)
+        result = importer.parse(file_bytes, filename=filename)
         warnings = importer.validate(result)
         result.warnings.extend(warnings)
         result = self._deduplicator.filter_duplicates(result)

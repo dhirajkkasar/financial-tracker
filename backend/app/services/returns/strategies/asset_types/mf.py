@@ -1,8 +1,8 @@
 """
 MFStrategy — uses CAS snapshot as source of truth for current value.
 
-Snapshot < 30 days old → use snapshot.market_value directly.
-Snapshot ≥ 30 days old → snapshot.closing_units × latest price_cache NAV.
+Snapshot < 5 days old → use snapshot.market_value directly.
+Snapshot ≥ 5 days old → snapshot.closing_units × latest price_cache NAV.
 """
 from datetime import date
 from typing import ClassVar, Optional
@@ -12,7 +12,7 @@ from app.services.returns.strategies.base import register_strategy
 from app.services.returns.strategies.market_based import MarketBasedStrategy
 
 
-SNAPSHOT_STALE_DAYS = 30
+SNAPSHOT_STALE_DAYS = 5
 
 
 @register_strategy("MF")

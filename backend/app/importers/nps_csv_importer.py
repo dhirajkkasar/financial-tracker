@@ -217,14 +217,18 @@ class NPSImporter(BaseImporter):
             "scheme preference change" in desc_lower and desc.strip().lower().startswith("by")
         ):
             txn_type = "SWITCH_IN"
-            # Positive in CSV → stays positive
+            # Positive in CSV → flip to negative (outflow)
+            if amount > 0:
+                amount = -amount
 
         # 4. SWITCH_OUT
         elif "to switch out" in desc_lower or (
             "scheme preference change" in desc_lower and desc.strip().lower().startswith("to")
         ):
             txn_type = "SWITCH_OUT"
-            # Negative in CSV → stays negative
+            # Negative in CSV → flip to positive (inflow)
+            if amount < 0:
+                amount = -amount
 
         # 5. WITHDRAWAL
         elif "withdrawal" in desc_lower:

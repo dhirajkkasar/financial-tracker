@@ -38,8 +38,8 @@ class _Sell:
     amount_inr: float
 
 
-LOT_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST", "BONUS"}
-SELL_TYPES = {"SELL", "REDEMPTION"}
+LOT_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST", "BONUS", "SWITCH_IN", "BILLING"}
+SELL_TYPES = {"SELL", "REDEMPTION", "WITHDRAWAL", "SWITCH_OUT"}
 
 
 class MarketBasedStrategy(AssetReturnsStrategy):

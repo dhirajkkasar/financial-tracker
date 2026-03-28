@@ -315,7 +315,7 @@ def test_mf_strategy_fresh_snapshot_uses_market_value():
     strategy = MFStrategy()
     asset = _make_asset(asset_type="MF")
     snap = MagicMock()
-    snap.date = date.today() - timedelta(days=5)   # fresh (< 30 days)
+    snap.date = date.today() - timedelta(days=3)   # fresh (< 3 days)
     snap.market_value_inr = 12_000_000  # paise = ₹1,20,000
     snap.closing_units = 1000.0
     uow = _make_uow(snap=snap)
@@ -329,7 +329,7 @@ def test_mf_strategy_stale_snapshot_with_price_uses_units_x_nav():
     strategy = MFStrategy()
     asset = _make_asset(asset_type="MF")
     snap = MagicMock()
-    snap.date = date.today() - timedelta(days=45)   # stale (> 30 days)
+    snap.date = date.today() - timedelta(days=6)   # stale (> 5 days)
     snap.market_value_inr = 11_000_000
     snap.closing_units = 1000.0
     price = MagicMock()

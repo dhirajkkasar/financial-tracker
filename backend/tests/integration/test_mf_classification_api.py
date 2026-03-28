@@ -1,4 +1,4 @@
-"""Integration tests for MF scheme_category classification via price refresh."""
+"""Integration tests for MF scheme_category classification."""
 from unittest.mock import patch
 from tests.factories import make_asset
 
@@ -11,10 +11,10 @@ def _mf_nav_response(scheme_category: str) -> dict:
     }
 
 
-def test_price_refresh_sets_debt_class_for_debt_mf(client, db):
-    """After refresh, MF with Debt scheme_category gets asset_class=DEBT."""
+def test_price_refresh_does_not_change_asset_class(client, db):
+    """Price refresh must not modify asset_class — classification is set at import time."""
     asset = client.post("/assets", json=make_asset(
-        asset_type="MF", asset_class="MIXED", name="HDFC Liquid Fund",
+        asset_type="MF", asset_class="DEBT", name="HDFC Liquid Fund",
         identifier="INF179L", mfapi_scheme_code="119551"
     )).json()
 
@@ -24,12 +24,12 @@ def test_price_refresh_sets_debt_class_for_debt_mf(client, db):
         client.post(f"/assets/{asset['id']}/price/refresh")
 
     refreshed = client.get(f"/assets/{asset['id']}").json()
-    assert refreshed["asset_class"] == "DEBT"
-    assert refreshed["scheme_category"] == "Debt Scheme - Liquid Fund"
+    assert refreshed["asset_class"] == "DEBT"   # unchanged from creation
+    assert refreshed["scheme_category"] is None  # price refresh does not set this
 
 
-def test_price_refresh_sets_equity_class_for_hybrid_mf(client, db):
-    """After refresh, MF with Hybrid scheme_category gets asset_class=EQUITY."""
+def test_price_refresh_does_not_set_scheme_category(client, db):
+    """scheme_category is resolved at import time; price refresh leaves it None."""
     asset = client.post("/assets", json=make_asset(
         asset_type="MF", asset_class="MIXED", name="HDFC Balanced Fund",
         identifier="INF179H", mfapi_scheme_code="119552"
@@ -41,8 +41,8 @@ def test_price_refresh_sets_equity_class_for_hybrid_mf(client, db):
         client.post(f"/assets/{asset['id']}/price/refresh")
 
     refreshed = client.get(f"/assets/{asset['id']}").json()
-    assert refreshed["asset_class"] == "EQUITY"
-    assert refreshed["scheme_category"] == "Hybrid Scheme - Balanced Advantage Fund"
+    assert refreshed["asset_class"] == "MIXED"  # price refresh does not reclassify
+    assert refreshed["scheme_category"] is None
 
 
 def test_scheme_category_in_asset_response(client, db):

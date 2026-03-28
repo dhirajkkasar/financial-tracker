@@ -33,3 +33,23 @@ def test_empty_string_returns_equity():
 
 def test_case_insensitive():
     assert classify_mf("DEBT SCHEME - Gilt Fund") == AssetClass.DEBT
+
+
+def test_default_scheme_classifier_equity():
+    from app.engine.mf_classifier import DefaultSchemeClassifier
+    classifier = DefaultSchemeClassifier()
+    result = classifier.classify("Large Cap Fund - Growth")
+    assert result.value in ("EQUITY", "MIXED", "DEBT")  # not None
+
+
+def test_default_scheme_classifier_debt():
+    from app.engine.mf_classifier import DefaultSchemeClassifier
+    classifier = DefaultSchemeClassifier()
+    result = classifier.classify("Debt Scheme - Liquid Fund - Direct Growth")
+    assert result == AssetClass.DEBT
+
+
+def test_ischeme_classifier_protocol():
+    """Any class with a classify() method satisfies ISchemeClassifier."""
+    from app.engine.mf_classifier import ISchemeClassifier, DefaultSchemeClassifier
+    assert isinstance(DefaultSchemeClassifier(), ISchemeClassifier)

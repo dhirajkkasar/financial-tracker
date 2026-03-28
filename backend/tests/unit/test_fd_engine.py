@@ -30,3 +30,30 @@ def test_rd_maturity_known_values():
 
 def test_rd_maturity_zero_months_returns_zero():
     assert compute_rd_maturity(5000.0, 7.0, 0) == 0.0
+
+
+def test_fd_current_value_no_as_of_uses_today():
+    # as_of=None should default to today without error
+    result = compute_fd_current_value(100000.0, 8.0, "QUARTERLY", date(2020, 1, 1), date(2030, 1, 1))
+    assert result > 100000.0  # some interest has accrued
+
+
+def test_fd_current_value_after_maturity_returns_maturity_amount():
+    # as_of is past maturity_date — should return the maturity value, not compound further
+    maturity_val = compute_fd_maturity(100000.0, 8.0, "QUARTERLY", 1.0)
+    result = compute_fd_current_value(
+        100000.0, 8.0, "QUARTERLY",
+        date(2023, 1, 1), date(2024, 1, 1),
+        as_of=date(2025, 1, 1),  # 1 year past maturity
+    )
+    assert abs(result - maturity_val) < 1  # capped at maturity amount
+
+
+def test_fd_current_value_zero_tenure_returns_principal():
+    # as_of == start_date → tenure_years == 0 → return principal
+    result = compute_fd_current_value(
+        100000.0, 8.0, "QUARTERLY",
+        date(2023, 1, 1), date(2024, 1, 1),
+        as_of=date(2023, 1, 1),
+    )
+    assert result == 100000.0

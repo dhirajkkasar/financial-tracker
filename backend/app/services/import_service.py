@@ -30,7 +30,6 @@ ASSET_CLASS_MAP: dict[str, AssetClass] = {
     "STOCK_IN": AssetClass.EQUITY,
     "STOCK_US": AssetClass.EQUITY,
     "RSU": AssetClass.EQUITY,
-    "MF": AssetClass.MIXED,
     "NPS": AssetClass.DEBT,
     "GOLD": AssetClass.GOLD,
     "SGB": AssetClass.GOLD,
@@ -218,46 +217,41 @@ class ImportService:
         2. Ticker/name match within the same asset_type (fallback when ISIN is absent,
            e.g. old BSE 2018 tradebooks that exported without ISIN)
 
-        TODO: BSE vs NSE ticker name divergence (e.g. "ASHOK LEYL." vs "ASHOKLEY") means
-        the same company can still create separate assets when both ISIN and name differ.
-        Fix requires a canonical name/alias table or CDSL demat statement import.
-
-        TODO: ISIN changes due to corporate restructuring (HDFC Bank merger, IRCTC split)
-        cause the same company to appear as two assets with different ISINs. These must be
-        merged manually or resolved via NSE corporate action data once that feature is built.
-
-        TODO: Missing buys (IPO allotments, off-market transfers) have no CSV record so
-        sold shares create assets with only SELL transactions and negative net_units.
-        Fix requires importing CDSL/NSDL demat statement as authoritative source.
+        scheme_code/scheme_category on the transaction (set by the importer) are used
+        directly — no asset-type-specific logic here.
         """
         asset_type = AssetType(txn.asset_type)
-        asset_class = ASSET_CLASS_MAP.get(txn.asset_type, AssetClass.EQUITY)
 
         if txn.asset_identifier:
             existing = self.db.query(Asset).filter(
                 Asset.identifier == txn.asset_identifier
             ).first()
             if existing:
+                self._backfill_scheme_info(existing, txn)
                 return existing
-            # Identifier lookup failed — price refresh may have overwritten the stored
-            # identifier (e.g. NPS SM codes replace the original scheme-name identifier).
-            # Fall back to name+type match so we don't create a duplicate asset.
+            # Fall back to name+type match (e.g. NPS SM-code overwrote the identifier)
             existing = self.db.query(Asset).filter(
                 Asset.name == txn.asset_name,
                 Asset.asset_type == asset_type,
             ).first()
             if existing:
+                self._backfill_scheme_info(existing, txn)
                 return existing
         else:
-            # No ISIN — fall back to exact ticker/name match within the same asset type.
-            # Prevents duplicate assets when the same stock appears across multiple CSV rows
-            # with an empty ISIN field (old BSE tradebook format).
             existing = self.db.query(Asset).filter(
                 Asset.name == txn.asset_name,
                 Asset.asset_type == asset_type,
             ).first()
             if existing:
                 return existing
+
+        # New asset
+        scheme_code = txn.mfapi_scheme_code
+        scheme_category = txn.scheme_category
+        if txn.asset_class:
+            asset_class = AssetClass(txn.asset_class)
+        else:
+            asset_class = ASSET_CLASS_MAP.get(txn.asset_type, AssetClass.EQUITY)
 
         currency = "USD" if txn.asset_type in {"STOCK_US", "RSU"} else "INR"
         return asset_repo.create(
@@ -265,8 +259,20 @@ class ImportService:
             identifier=txn.asset_identifier or None,
             asset_type=asset_type,
             asset_class=asset_class,
+            mfapi_scheme_code=scheme_code,
+            scheme_category=scheme_category,
             currency=currency,
         )
+
+    def _backfill_scheme_info(self, asset: Asset, txn: "ParsedTransaction") -> None:
+        """Backfill mfapi_scheme_code/scheme_category on an existing asset from parsed data."""
+        if not txn.mfapi_scheme_code or asset.mfapi_scheme_code:
+            return
+        asset.mfapi_scheme_code = txn.mfapi_scheme_code
+        if not asset.scheme_category and txn.scheme_category:
+            asset.scheme_category = txn.scheme_category
+        if txn.asset_class:
+            asset.asset_class = AssetClass(txn.asset_class)
 
     def _txn_to_dict(self, txn: ParsedTransaction) -> dict:
         return {

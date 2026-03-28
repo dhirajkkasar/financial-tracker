@@ -1,0 +1,123 @@
+# FY2025-26 tax rates
+# Copy of 2024-25 — update when Finance Bill 2025 is passed.
+# stcg_rate_pct / ltcg_rate_pct: null means slab rate
+
+STOCK_IN:
+  stcg_rate_pct: 20.0
+  stcg_is_slab: false
+  ltcg_rate_pct: 12.5
+  ltcg_is_slab: false
+  ltcg_threshold_days: 365
+  ltcg_exemption_inr: 125000.0
+  is_exempt: false
+  maturity_exempt: false
+
+MF:
+  stcg_rate_pct: 20.0
+  stcg_is_slab: false
+  ltcg_rate_pct: 12.5
+  ltcg_is_slab: false
+  ltcg_threshold_days: 365
+  ltcg_exemption_inr: 125000.0
+  is_exempt: false
+  maturity_exempt: false
+
+STOCK_US:
+  stcg_rate_pct: null
+  stcg_is_slab: true
+  ltcg_rate_pct: 12.5
+  ltcg_is_slab: false
+  ltcg_threshold_days: 730
+  ltcg_exemption_inr: 0.0
+  is_exempt: false
+  maturity_exempt: false
+
+RSU:
+  stcg_rate_pct: null
+  stcg_is_slab: true
+  ltcg_rate_pct: 12.5
+  ltcg_is_slab: false
+  ltcg_threshold_days: 730
+  ltcg_exemption_inr: 0.0
+  is_exempt: false
+  maturity_exempt: false
+
+GOLD:
+  stcg_rate_pct: null
+  stcg_is_slab: true
+  ltcg_rate_pct: 12.5
+  ltcg_is_slab: false
+  ltcg_threshold_days: 1095
+  ltcg_exemption_inr: 0.0
+  is_exempt: false
+  maturity_exempt: false
+
+SGB:
+  stcg_rate_pct: null
+  stcg_is_slab: true
+  ltcg_rate_pct: 12.5
+  ltcg_is_slab: false
+  ltcg_threshold_days: 1095
+  ltcg_exemption_inr: 0.0
+  is_exempt: false
+  maturity_exempt: true
+
+REAL_ESTATE:
+  stcg_rate_pct: null
+  stcg_is_slab: true
+  ltcg_rate_pct: 12.5
+  ltcg_is_slab: false
+  ltcg_threshold_days: 730
+  ltcg_exemption_inr: 0.0
+  is_exempt: false
+  maturity_exempt: false
+
+FD:
+  stcg_rate_pct: null
+  stcg_is_slab: true
+  ltcg_rate_pct: null
+  ltcg_is_slab: true
+  ltcg_threshold_days: null
+  ltcg_exemption_inr: 0.0
+  is_exempt: false
+  maturity_exempt: false
+
+RD:
+  stcg_rate_pct: null
+  stcg_is_slab: true
+  ltcg_rate_pct: null
+  ltcg_is_slab: true
+  ltcg_threshold_days: null
+  ltcg_exemption_inr: 0.0
+  is_exempt: false
+  maturity_exempt: false
+
+EPF:
+  stcg_rate_pct: null
+  stcg_is_slab: true
+  ltcg_rate_pct: null
+  ltcg_is_slab: true
+  ltcg_threshold_days: null
+  ltcg_exemption_inr: 0.0
+  is_exempt: false
+  maturity_exempt: false
+
+PPF:
+  stcg_rate_pct: null
+  stcg_is_slab: false
+  ltcg_rate_pct: null
+  ltcg_is_slab: false
+  ltcg_threshold_days: null
+  ltcg_exemption_inr: 0.0
+  is_exempt: true
+  maturity_exempt: false
+
+NPS:
+  stcg_rate_pct: null
+  stcg_is_slab: true
+  ltcg_rate_pct: 12.5
+  ltcg_is_slab: false
+  ltcg_threshold_days: 365
+  ltcg_exemption_inr: 0.0
+  is_exempt: false
+  maturity_exempt: false

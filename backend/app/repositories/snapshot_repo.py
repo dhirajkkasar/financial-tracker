@@ -12,7 +12,7 @@ class SnapshotRepository:
         if existing:
             existing.total_value_paise = total_value_paise
             existing.breakdown_json = breakdown_json
-            self.db.commit()
+            self.db.flush()
             self.db.refresh(existing)
             return existing
         snapshot = PortfolioSnapshot(
@@ -21,7 +21,7 @@ class SnapshotRepository:
             breakdown_json=breakdown_json,
         )
         self.db.add(snapshot)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(snapshot)
         return snapshot
 

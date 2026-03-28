@@ -70,6 +70,51 @@ class MarketBasedStrategy(AssetReturnsStrategy):
         price_inr = price_entry.price_inr / 100  # paise → INR
         return round(total_units * price_inr, 2)
 
+    def get_invested_value(self, asset, uow: UnitOfWork) -> Optional[float]:
+        """Invested amount = cost basis of currently held lots (open lots only)."""
+        txns = uow.transactions.list_by_asset(asset.id)
+        lots = []
+        sells = []
+        
+        for t in sorted(txns, key=lambda x: x.date):
+            ttype = t.type.value if hasattr(t.type, "value") else str(t.type)
+            if ttype in LOT_TYPES and t.units:
+                is_bonus = ttype == "BONUS"
+                price_pu = 0.0 if is_bonus else (
+                    t.price_per_unit or (abs(t.amount_inr / 100.0) / t.units if t.units else 0.0)
+                )
+                lots.append(_Lot(
+                    lot_id=t.lot_id or str(t.id),
+                    buy_date=t.date,
+                    units=t.units,
+                    buy_price_per_unit=price_pu,
+                    buy_amount_inr=0.0 if is_bonus else abs(t.amount_inr / 100.0),
+                ))
+            elif ttype in SELL_TYPES and t.units:
+                sells.append(_Sell(
+                    date=t.date,
+                    units=t.units,
+                    amount_inr=abs(t.amount_inr / 100.0),
+                ))
+        
+        if not lots:
+            return 0.0
+        
+        matched = match_lots_fifo(lots, sells, stcg_days=self.stcg_days)
+        sold_units: dict[str, float] = {}
+        for m in matched:
+            sold_units[m["lot_id"]] = sold_units.get(m["lot_id"], 0.0) + m["units_sold"]
+        
+        # Sum cost basis of remaining units in open lots
+        total_cost = 0.0
+        for lot in lots:
+            units_remaining = lot.units - sold_units.get(lot.lot_id, 0.0)
+            if units_remaining > 0:
+                scale = units_remaining / lot.units if lot.units else 0.0
+                total_cost += lot.buy_amount_inr * scale
+        
+        return total_cost if total_cost > 0 else 0.0
+
     def compute(self, asset, uow: UnitOfWork) -> AssetReturnsResponse:
         """Override to include lot-based gain breakdown and price metadata."""
         base = super().compute(asset, uow)
@@ -91,31 +136,94 @@ class MarketBasedStrategy(AssetReturnsStrategy):
         })
 
     def compute_lots(self, asset, uow: UnitOfWork) -> list[LotComputedResponse]:
-        lots_data = self._compute_lots_data(asset, uow)
-        return [
-            LotComputedResponse(
-                lot_id=l["lot_id"],
-                buy_date=l["buy_date"],
-                units=l["units"],
-                buy_price_per_unit=l["buy_price_per_unit"],
-                buy_amount_inr=l["buy_amount_inr"],
-                current_price=l.get("current_price", 0.0),
-                current_value=l.get("current_value", 0.0),
-                holding_days=l["holding_days"],
-                is_short_term=l["is_short_term"],
-                unrealised_gain=l["unrealised_gain"],
-                unrealised_gain_pct=l.get("unrealised_gain_pct", 0.0),
-            )
-            for l in lots_data
-        ]
+        """Compute FIFO lots, with optional current value and unrealised gain when price available."""
+        txns = uow.transactions.list_by_asset(asset.id)
+        lots = []
+        sells = []
+        
+        for t in sorted(txns, key=lambda x: x.date):
+            ttype = t.type.value if hasattr(t.type, "value") else str(t.type)
+            if ttype in LOT_TYPES and t.units:
+                is_bonus = ttype == "BONUS"
+                price_pu = 0.0 if is_bonus else (
+                    t.price_per_unit or (abs(t.amount_inr / 100.0) / t.units if t.units else 0.0)
+                )
+                lots.append(_Lot(
+                    lot_id=t.lot_id or str(t.id),
+                    buy_date=t.date,
+                    units=t.units,
+                    buy_price_per_unit=price_pu,
+                    buy_amount_inr=0.0 if is_bonus else abs(t.amount_inr / 100.0),
+                ))
+            elif ttype in SELL_TYPES and t.units:
+                sells.append(_Sell(
+                    date=t.date,
+                    units=t.units,
+                    amount_inr=abs(t.amount_inr / 100.0),
+                ))
+        
+        if not lots:
+            return []
+        
+        matched = match_lots_fifo(lots, sells, stcg_days=self.stcg_days)
+        sold_units: dict[str, float] = {}
+        for m in matched:
+            sold_units[m["lot_id"]] = sold_units.get(m["lot_id"], 0.0) + m["units_sold"]
+        
+        price_entry = uow.price_cache.get_by_asset_id(asset.id)
+        current_price = (price_entry.price_inr / 100) if price_entry else None
+        
+        result = []
+        as_of = date.today()
+        for lot in lots:
+            units_remaining = lot.units - sold_units.get(lot.lot_id, 0.0)
+            if units_remaining <= 0:
+                continue
+            
+            scale = units_remaining / lot.units if lot.units else 0.0
+            cost = lot.buy_amount_inr * scale
+            
+            # Compute unrealised gain only if price is available
+            current_val = None
+            holding_days = (as_of - lot.buy_date).days
+            is_short_term = holding_days < self.stcg_days
+            unrealised_gain = None
+            unrealised_gain_pct = 0.0
+            
+            if current_price is not None:
+                current_val = current_price * units_remaining
+                lot_data = compute_lot_unrealised(
+                    lot=lot,
+                    current_price=current_price,
+                    stcg_days=self.stcg_days,
+                    grandfathering_cutoff=GRANDFATHERING_CUTOFF,
+                    as_of=as_of,
+                )
+                unrealised_gain = lot_data["unrealised_gain"] * scale
+                unrealised_gain_pct = (unrealised_gain / cost * 100) if cost > 0 else 0.0
+                is_short_term = lot_data["is_short_term"]
+            
+            result.append(LotComputedResponse(
+                lot_id=lot.lot_id,
+                buy_date=lot.buy_date,
+                units=units_remaining,
+                buy_price_per_unit=lot.buy_price_per_unit,
+                buy_amount_inr=cost,
+                current_price=current_price or 0.0,
+                current_value=current_val or 0.0,
+                holding_days=holding_days,
+                is_short_term=is_short_term,
+                unrealised_gain=unrealised_gain or 0.0,
+                unrealised_gain_pct=unrealised_gain_pct,
+            ))
+        
+        return result
 
     def _compute_lots_data(self, asset, uow: UnitOfWork) -> list[dict]:
-        """Build open lot dicts with unrealised gain data for this asset."""
-        price_entry = uow.price_cache.get_by_asset_id(asset.id)
-        if price_entry is None:
-            return []
-        current_price = price_entry.price_inr / 100
-
+        """Build open lot dicts with unrealised gain data for this asset.
+        
+        Returns lot data even without a price (unrealised_gain will be None).
+        """
         txns = uow.transactions.list_by_asset(asset.id)
         lots = []
         sells = []
@@ -140,10 +248,16 @@ class MarketBasedStrategy(AssetReturnsStrategy):
                     amount_inr=abs(t.amount_inr / 100.0),
                 ))
 
+        if not lots:
+            return []
+
         matched = match_lots_fifo(lots, sells, stcg_days=self.stcg_days)
         sold_units: dict[str, float] = {}
         for m in matched:
             sold_units[m["lot_id"]] = sold_units.get(m["lot_id"], 0.0) + m["units_sold"]
+
+        price_entry = uow.price_cache.get_by_asset_id(asset.id)
+        current_price = (price_entry.price_inr / 100) if price_entry else None
 
         as_of = date.today()
         result = []
@@ -151,27 +265,35 @@ class MarketBasedStrategy(AssetReturnsStrategy):
             units_remaining = lot.units - sold_units.get(lot.lot_id, 0.0)
             if units_remaining <= 0:
                 continue
-            lot_data = compute_lot_unrealised(
-                lot=lot,
-                current_price=current_price,
-                stcg_days=self.stcg_days,
-                grandfathering_cutoff=GRANDFATHERING_CUTOFF,
-                as_of=as_of,
-            )
+            
             scale = units_remaining / lot.units if lot.units else 0.0
             cost = lot.buy_amount_inr * scale
-            unrealised = lot_data["unrealised_gain"] * scale
+            holding_days = (as_of - lot.buy_date).days
+            is_short_term = holding_days < self.stcg_days
+            unrealised_gain = None
+            
+            if current_price is not None:
+                lot_data = compute_lot_unrealised(
+                    lot=lot,
+                    current_price=current_price,
+                    stcg_days=self.stcg_days,
+                    grandfathering_cutoff=GRANDFATHERING_CUTOFF,
+                    as_of=as_of,
+                )
+                unrealised_gain = lot_data["unrealised_gain"] * scale
+                is_short_term = lot_data["is_short_term"]
+            
             result.append({
                 "lot_id": lot.lot_id,
                 "buy_date": lot.buy_date,
                 "units": units_remaining,
                 "buy_price_per_unit": lot.buy_price_per_unit,
                 "buy_amount_inr": cost,
-                "current_price": current_price,
-                "current_value": current_price * units_remaining,
-                "holding_days": lot_data["holding_days"],
-                "is_short_term": lot_data["is_short_term"],
-                "unrealised_gain": unrealised,
-                "unrealised_gain_pct": (unrealised / cost * 100) if cost > 0 else 0.0,
+                "current_price": current_price or 0.0,
+                "current_value": (current_price * units_remaining) if current_price else None,
+                "holding_days": holding_days,
+                "is_short_term": is_short_term,
+                "unrealised_gain": unrealised_gain if unrealised_gain is not None else 0.0,
+                "unrealised_gain_pct": (unrealised_gain / cost * 100) if (unrealised_gain and cost > 0) else 0.0,
             })
         return result

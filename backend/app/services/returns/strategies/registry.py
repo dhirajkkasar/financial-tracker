@@ -9,6 +9,8 @@ if TYPE_CHECKING:
 class IReturnsStrategyRegistry(Protocol):
     def get(self, asset_type: str) -> "AssetReturnsStrategy": ...
 
+    def get_portfolio_strategies(self) -> list["AssetReturnsStrategy"]: ...
+
 
 class DefaultReturnsStrategyRegistry:
     """
@@ -52,3 +54,8 @@ class DefaultReturnsStrategyRegistry:
                 f"Registered: {sorted(self._map.keys())}"
             )
         return strategy
+
+    def get_portfolio_strategies(self) -> list["AssetReturnsStrategy"]:
+        """Return all registered strategy instances (for portfolio-level aggregation)."""
+        self._ensure_loaded()
+        return list(self._map.values())

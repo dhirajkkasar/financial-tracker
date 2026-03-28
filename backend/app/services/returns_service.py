@@ -770,20 +770,12 @@ class ReturnsService:
         breakdown.sort(key=lambda x: x["total_current_value"] or 0, reverse=True)
         return {"breakdown": breakdown}
 
-    # Only 4 allocation classes are used in the donut chart.
-    # NPS is always treated as DEBT (has equity portion but classified as fixed income).
-    # MIXED class (hybrid MFs) is folded into EQUITY.
-    # Debt MFs stored with DEBT class stay as DEBT.
-    _ALLOCATION_TYPE_OVERRIDE = {
-        "NPS": "DEBT",
-    }
-
     def get_allocation(self) -> dict:
         """Return current value grouped by asset_class with percentages.
 
-        Applies overrides so the response only contains the 4 canonical classes:
-        EQUITY, DEBT, GOLD, REAL_ESTATE.  MIXED is folded into EQUITY except
-        where an asset_type override applies (NPS → DEBT).
+        Only contains the 4 canonical classes: EQUITY, DEBT, GOLD, REAL_ESTATE.
+        MIXED class (hybrid MFs) is folded into EQUITY.
+        NPS is imported with DEBT classification (no override needed).
         """
         assets = self.asset_repo.list(active=True)
         entries = []
@@ -792,9 +784,7 @@ class ReturnsService:
                 current_value = self._get_current_value(asset)
                 if current_value and current_value > 0:
                     asset_class = asset.asset_class.value
-                    if asset.asset_type.value in self._ALLOCATION_TYPE_OVERRIDE:
-                        asset_class = self._ALLOCATION_TYPE_OVERRIDE[asset.asset_type.value]
-                    elif asset_class == "MIXED":
+                    if asset_class == "MIXED":
                         asset_class = "EQUITY"
                     entries.append({
                         "asset_class": asset_class,

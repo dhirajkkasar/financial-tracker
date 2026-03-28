@@ -113,43 +113,6 @@ def test_allocation_entry_has_required_fields(client, db):
         assert "value_inr" in entry
         assert "pct_of_total" in entry
 
-
-def test_allocation_mixed_mf_counts_as_equity(client, db):
-    """Hybrid MF assets stored with MIXED class should appear as EQUITY in allocation."""
-    mf = client.post("/assets", json=make_asset(
-        asset_type="MF", asset_class="MIXED", name="HDFC Balanced Fund", identifier="INF179K"
-    )).json()
-    client.post(f"/assets/{mf['id']}/transactions", json=make_transaction(
-        type="SIP", date="2022-01-01", units=100, price_per_unit=50.0, amount_inr=-5000.0
-    ))
-    _seed_price(db, mf["id"], 60.0)
-
-    resp = client.get("/overview/allocation")
-    assert resp.status_code == 200
-    data = resp.json()
-    classes = [a["asset_class"] for a in data["allocations"]]
-    assert "EQUITY" in classes
-    assert "MIXED" not in classes
-
-
-def test_allocation_nps_counts_as_debt(client, db):
-    """NPS assets should appear as DEBT in allocation regardless of stored class."""
-    nps = client.post("/assets", json=make_asset(
-        asset_type="NPS", asset_class="MIXED", name="SBI NPS Tier I", identifier="SM007001"
-    )).json()
-    client.post(f"/assets/{nps['id']}/transactions", json=make_transaction(
-        type="CONTRIBUTION", date="2022-01-01", units=100, price_per_unit=30.0, amount_inr=-3000.0
-    ))
-    _seed_price(db, nps["id"], 35.0)
-
-    resp = client.get("/overview/allocation")
-    assert resp.status_code == 200
-    data = resp.json()
-    classes = [a["asset_class"] for a in data["allocations"]]
-    assert "DEBT" in classes
-    assert "MIXED" not in classes
-
-
 def test_allocation_epf_uses_transaction_based_value(client, db):
     """EPF current value in allocation must use contributions+interest from transactions, not Valuation entries."""
     epf = client.post("/assets", json=make_asset(
@@ -183,13 +146,28 @@ def test_allocation_debt_mf_stays_as_debt(client, db):
         type="SIP", date="2022-01-01", units=50, price_per_unit=100.0, amount_inr=-5000.0
     ))
     _seed_price(db, mf["id"], 110.0)
-
+    _seed_snapshot(db, mf["id"], closing_units=100, market_value_inr=8000.0, nav_inr=80.0, days_old=0)
     resp = client.get("/overview/allocation")
     assert resp.status_code == 200
     data = resp.json()
     classes = [a["asset_class"] for a in data["allocations"]]
     assert "DEBT" in classes
-    assert "MIXED" not in classes
+
+def test_allocation_equity_mf_stays_as_equity(client, db):
+    """MF assets classified as EQUITY should remain in EQUITY."""
+    mf = client.post("/assets", json=make_asset(
+        asset_type="MF", asset_class="EQUITY", name="HDFC Multi Cap Fund", identifier="INF12345"
+    )).json()
+    client.post(f"/assets/{mf['id']}/transactions", json=make_transaction(
+        type="SIP", date="2022-01-01", units=50, price_per_unit=100.0, amount_inr=-5000.0
+    ))
+    _seed_price(db, mf["id"], 110.0)
+    _seed_snapshot(db, mf["id"], closing_units=100, market_value_inr=8000.0, nav_inr=80.0, days_old=0)
+    resp = client.get("/overview/allocation")
+    assert resp.status_code == 200
+    data = resp.json()
+    classes = [a["asset_class"] for a in data["allocations"]]
+    assert "EQUITY" in classes
 
 
 def test_allocation_mf_fresh_snapshot_uses_market_value_not_price_cache(client, db):

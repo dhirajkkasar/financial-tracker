@@ -24,16 +24,19 @@ class MFStrategy(MarketBasedStrategy):
         snap = uow.cas_snapshots.get_latest_by_asset_id(asset.id)
         if snap is None:
             raise ValidationError(
-                f"MF asset '{asset.name}' has no CAS snapshot. "
-                "Import a CAS PDF to initialise holdings."
+                f"No CAS snapshot found for '{asset.name}'. "
+                "Please import your CAS PDF statement first."
             )
+
         today = date.today()
         snap_age = (today - snap.date).days
         if snap_age < SNAPSHOT_STALE_DAYS:
-            return snap.market_value_inr / 100  # paise → INR
+            return snap.market_value_inr / 100  # paise -> INR
+
         # Stale snapshot: recompute using latest NAV
         price_entry = uow.price_cache.get_by_asset_id(asset.id)
         if price_entry is None:
             return snap.market_value_inr / 100  # best guess
+
         nav = price_entry.price_inr / 100
         return round(snap.closing_units * nav, 2)

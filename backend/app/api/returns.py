@@ -10,15 +10,17 @@ from app.schemas.returns import (
     ReturnResponse, OverviewReturnsResponse, BreakdownResponse,
     AllocationResponse, GainersResponse, BulkReturnResponse,
 )
-from app.services.returns_service import ReturnsService
+from app.services.returns.strategies.registry import DefaultReturnsStrategyRegistry
+from app.services.returns.portfolio_returns_service import PortfolioReturnsService
 
 router = APIRouter(tags=["returns"])
 
 ALLOWED_PAGE_SIZES = {10, 25, 50}
 
 
-def get_returns_service(db: Session = Depends(get_db)) -> ReturnsService:
-    return ReturnsService(db)
+def get_portfolio_returns_service(db: Session = Depends(get_db)) -> PortfolioReturnsService:
+    strategy_registry = DefaultReturnsStrategyRegistry()
+    return PortfolioReturnsService(db, strategy_registry)
 
 
 def _paginate(items: list, page: int, page_size: int) -> dict:
@@ -35,14 +37,14 @@ def _paginate(items: list, page: int, page_size: int) -> dict:
 
 
 @router.get("/assets/{asset_id}/returns", response_model=ReturnResponse)
-def get_asset_returns(asset_id: int, svc: ReturnsService = Depends(get_returns_service)):
+def get_asset_returns(asset_id: int, svc: PortfolioReturnsService = Depends(get_portfolio_returns_service)):
     return svc.get_asset_returns(asset_id)
 
 
 @router.get("/returns/bulk", response_model=BulkReturnResponse)
 def get_bulk_returns(
     asset_ids: str = Query(..., description="Comma-separated asset IDs"),
-    svc: ReturnsService = Depends(get_returns_service),
+    svc: PortfolioReturnsService = Depends(get_portfolio_returns_service),
 ):
     ids = [int(i.strip()) for i in asset_ids.split(",") if i.strip()]
     results = []
@@ -60,7 +62,7 @@ def get_asset_lots(
     open_page: int = Query(1, ge=1),
     matched_page: int = Query(1, ge=1),
     page_size: int = Query(10),
-    svc: ReturnsService = Depends(get_returns_service),
+    svc: PortfolioReturnsService = Depends(get_portfolio_returns_service),
 ):
     if page_size not in ALLOWED_PAGE_SIZES:
         raise ValidationError(f"page_size must be one of {sorted(ALLOWED_PAGE_SIZES)}, got {page_size}")
@@ -72,19 +74,19 @@ def get_asset_lots(
 
 
 @router.get("/returns/breakdown", response_model=BreakdownResponse)
-def get_returns_breakdown(svc: ReturnsService = Depends(get_returns_service)):
+def get_returns_breakdown(svc: PortfolioReturnsService = Depends(get_portfolio_returns_service)):
     return svc.get_breakdown()
 
 
 @router.get("/overview/allocation", response_model=AllocationResponse)
-def get_overview_allocation(svc: ReturnsService = Depends(get_returns_service)):
+def get_overview_allocation(svc: PortfolioReturnsService = Depends(get_portfolio_returns_service)):
     return svc.get_allocation()
 
 
 @router.get("/overview/gainers", response_model=GainersResponse)
 def get_overview_gainers(
     n: int = Query(5, ge=1, le=20, description="Number of top gainers/losers to return"),
-    svc: ReturnsService = Depends(get_returns_service),
+    svc: PortfolioReturnsService = Depends(get_portfolio_returns_service),
 ):
     return svc.get_gainers(n=n)
 
@@ -92,7 +94,7 @@ def get_overview_gainers(
 @router.get("/returns/overview", response_model=OverviewReturnsResponse)
 def get_returns_overview(
     types: Optional[str] = Query(None, description="Comma-separated asset types, e.g. STOCK_IN,MF"),
-    svc: ReturnsService = Depends(get_returns_service),
+    svc: PortfolioReturnsService = Depends(get_portfolio_returns_service),
 ):
     asset_types = [t.strip() for t in types.split(",")] if types else None
     return svc.get_overview(asset_types=asset_types)

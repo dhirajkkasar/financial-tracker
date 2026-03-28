@@ -145,12 +145,31 @@ class ImportOrchestrator:
                     logger.warning("Failed to import txn %s: %s", parsed_txn.txn_id, exc)
                     errors.append(str(exc))
 
-            # Persist CAS snapshots if present (placeholder — full impl in future)
-            for snap in result.snapshots:
-                try:
-                    pass
-                except Exception as exc:
-                    errors.append(f"Snapshot error: {exc}")
+            # Create closing valuation if the importer populated one (e.g. PPF CSV)
+            print("Post-processing imported transactions...")
+            print(f"Closing valuation: INR {result.closing_valuation_inr}, date {result.closing_valuation_date}")
+            if (
+                result.closing_valuation_inr is not None
+                and result.closing_valuation_date is not None
+            ):
+                first_txn = result.transactions[0] if result.transactions else None
+                if first_txn:
+                    try:
+                        asset = self._find_or_create_asset(first_txn, uow)
+                        print(f"Creating closing valuation for asset '{asset})")
+                        uow.valuations.create(
+                            asset_id=asset.id,
+                            date=result.closing_valuation_date,
+                            value_inr=int(result.closing_valuation_inr * 100),
+                            source=result.closing_valuation_source or "import",
+                            notes=result.closing_valuation_notes,
+                        )
+                    except Exception as exc:
+                        logger.warning("Failed to create closing valuation: %s", exc)
+                        errors.append(f"Valuation error: {exc}")
+                else:
+                    logger.warning("No transactions found to associate closing valuation with")
+                    errors.append("Valuation error: no transactions found for asset association")
 
         # Publish event for each unique asset_type inserted
         if inserted > 0:

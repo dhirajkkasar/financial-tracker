@@ -54,6 +54,8 @@ class ReturnsService:
             return self._compute_fd_returns(asset)
         elif asset_type == "EPF":
             return self._compute_epf_returns(asset)
+        elif asset_type == "PPF":
+            return self._compute_ppf_returns(asset)
         elif asset_type in VALUATION_BASED_TYPES:
             return self._compute_valuation_based_returns(asset)
         else:
@@ -528,6 +530,49 @@ class ReturnsService:
         Compute returns for EPF assets from transactions only.
 
         total_invested = sum of all CONTRIBUTION outflows (employee + employer + pension/EPS)
+        current_value  = total_invested + sum of all INTEREST inflows
+        XIRR           = cashflows from contributions + (today, current_value)
+        """
+        asset_id = asset.id
+        transactions = self.txn_repo.list_by_asset(asset_id)
+
+        total_invested = 0.0
+        total_interest = 0.0
+        cashflows = []
+
+        for txn in transactions:
+            amount_inr = txn.amount_inr / 100.0
+            txn_type = txn.type.value
+            if txn_type in OUTFLOW_TYPES:
+                cashflows.append((txn.date, amount_inr))  # negative
+                total_invested += abs(amount_inr)
+            elif txn_type == "INTEREST":
+                total_interest += amount_inr
+
+        current_value = total_invested + total_interest
+
+        if current_value > 0:
+            cashflows.append((date.today(), current_value))
+
+        xirr = compute_xirr(cashflows) if len(cashflows) >= 2 else None
+        abs_return = compute_absolute_return(total_invested, current_value) if total_invested > 0 else None
+
+        return {
+            "asset_id": asset_id,
+            "asset_type": "EPF",
+            "xirr": xirr,
+            "cagr": None,
+            "absolute_return": abs_return,
+            "total_invested": total_invested,
+            "current_value": current_value if total_invested > 0 else None,
+            "message": None,
+        }
+    
+    def _compute_ppf_returns(self, asset) -> dict:
+        """
+        Compute returns for PPF assets from transactions only.
+
+        total_invested = sum of all CONTRIBUTION outflows
         current_value  = total_invested + sum of all INTEREST inflows
         XIRR           = cashflows from contributions + (today, current_value)
         """

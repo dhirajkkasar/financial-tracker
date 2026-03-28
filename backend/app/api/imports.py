@@ -14,10 +14,10 @@ from app.importers.fidelity_pdf_importer import FidelityPDFImporter
 from app.importers.fidelity_rsu_csv_importer import FidelityRSUImporter
 from app.importers.nps_csv_importer import NPSImporter
 from app.middleware.error_handler import NotFoundError, ValidationError
-from app.models.asset import AssetType
 from app.services.import_service import ImportService
-from app.services.ppf_epf_import_service import PPFEPFImportService
 from app.services.price_service import PriceService
+from app.importers.epf_pdf_importer import EPFPDFImporter
+from app.importers.ppf_csv_importer import PPFCSVImporter
 
 logger = logging.getLogger(__name__)
 
@@ -80,56 +80,26 @@ def commit_import(
     result = svc.commit(body.preview_id)
     if result is None:
         raise NotFoundError(f"Preview '{body.preview_id}' not found or expired")
-
-    # Trigger NPS price refresh after import
-    if "NPS" in result.get("asset_types", []):
-        try:
-            nps_refresh = PriceService(db).refresh_by_type(AssetType.NPS)
-            result["nps_refresh"] = nps_refresh
-        except Exception as e:
-            logger.warning("NPS price refresh failed after import: %s", e)
-
     return result
 
 
 @router.post("/ppf-csv")
 async def import_ppf_csv(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
+    svc: ImportService = Depends(get_import_service),
 ):
-    """
-    Import a PPF account statement CSV (SBI format).
-
-    The PPF asset must already exist with identifier = account number.
-    Credits with "INTEREST" in details → INTEREST transactions (positive inflow).
-    Other credits → CONTRIBUTION transactions (negative outflow).
-    A Valuation entry is created from the closing balance.
-
-    Returns {inserted, skipped, valuation_created, valuation_value, valuation_date,
-             account_number, errors}
-    """
     file_bytes = await file.read()
-    svc = PPFEPFImportService(db)
-    return svc.import_ppf_csv(file_bytes)
-
+    result = PPFCSVImporter().parse(file_bytes, file.filename or "")
+    return svc.preview(result.transactions)
 
 @router.post("/epf-pdf")
 async def import_epf_pdf(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
+    svc: ImportService = Depends(get_import_service),
 ):
-    """
-    Import an EPFO Member Passbook PDF.
-
-    The EPF asset must already exist in the DB with identifier = member_id.
-    All transactions (employee share, employer share, pension/EPS, interest, transfer)
-    are imported under the single EPF asset.
-
-    Returns {inserted, skipped, epf_valuation_created, epf_valuation_value, errors}
-    """
     file_bytes = await file.read()
-    svc = PPFEPFImportService(db)
-    return svc.import_epf(file_bytes)
+    result = EPFPDFImporter().parse(file_bytes, file.filename or "")
+    return svc.preview(result.transactions)
 
 
 def _parse_exchange_rates(exchange_rates: str) -> dict[str, float]:

@@ -113,20 +113,18 @@ def _find_or_create_asset(name: str, asset_type: str, asset_class: str,
 def cmd_import_ppf(file_path: str) -> dict:
     _check_file(file_path)
     with open(file_path, "rb") as f:
-        result = _api("post", "/import/ppf-csv", files={"file": f})
-    _print_import_summary("PPF", inserted=result["inserted"], skipped=result["skipped"], errors=result.get("errors", []))
-    if result.get("valuation_created"):
-        print(f"  → Valuation created: ₹{result['valuation_value']:,.2f} on {result['valuation_date']}")
+        preview = _api("post", "/import/ppf-csv", files={"file": f})
+    result = _api("post", "/import/commit", json={"preview_id": preview["preview_id"]})
+    _print_import_summary("PPF", inserted=result["created_count"], skipped=result["skipped_count"])
     return result
 
 
 def cmd_import_epf(file_path: str) -> dict:
     _check_file(file_path)
     with open(file_path, "rb") as f:
-        result = _api("post", "/import/epf-pdf", files={"file": f})
-    _print_import_summary("EPF", inserted=result["inserted"], skipped=result["skipped"], errors=result.get("errors", []))
-    print(f"  EPS: {result['inserted']} inserted, {result['skipped']} skipped"
-          + (" (asset created)" if result.get("asset_created") else ""))
+        preview = _api("post", "/import/epf-pdf", files={"file": f})
+    result = _api("post", "/import/commit", json={"preview_id": preview["preview_id"]})
+    _print_import_summary("EPF", inserted=result["created_count"], skipped=result["skipped_count"])
     return result
 
 
@@ -211,6 +209,7 @@ def cmd_import_fidelity_rsu(file_path: str) -> None:
         return
 
     result = _api("post", "/import/commit", json={"preview_id": preview["preview_id"]})
+    cmd_refresh_prices()
     _print_import_summary(
         "Fidelity RSU",
         inserted=result["created_count"],

@@ -50,6 +50,10 @@ class ImportResult:
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     duplicate_count: int = 0
+    closing_valuation_inr: Optional[float] = None
+    closing_valuation_date: Optional[date] = None
+    closing_valuation_source: Optional[str] = None
+    closing_valuation_notes: Optional[str] = None
 
 
 class LegacyBaseImporter(Protocol):

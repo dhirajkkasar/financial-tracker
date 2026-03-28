@@ -41,14 +41,14 @@ IFSC_BANK_MAP = {
 }
 
 
-@dataclass
-class PPFCSVImportResult(ImportResult):
-    """Extended ImportResult with PPF-specific metadata."""
-    account_number: str = ""
-    bank_name: str = ""
-    asset_name: str = ""
-    closing_balance_inr: float = 0.0
-    closing_balance_date: Optional[date] = None
+# @dataclass
+# class PPFCSVImportResult(ImportResult):
+#     """Extended ImportResult with PPF-specific metadata."""
+#     account_number: str = ""
+#     bank_name: str = ""
+#     asset_name: str = ""
+#     closing_balance_inr: float = 0.0
+#     closing_balance_date: Optional[date] = None
 
 
 def _parse_inr_amount(s: str) -> Optional[float]:
@@ -93,8 +93,8 @@ class PPFCSVImporter(BaseImporter):
 
     """Parses SBI PPF Account Statement CSV files."""
 
-    def parse(self, file_bytes: bytes, filename: str = "") -> PPFCSVImportResult:
-        result = PPFCSVImportResult(source="ppf_csv")
+    def parse(self, file_bytes: bytes, filename: str = "") -> ImportResult:
+        result = ImportResult(source="ppf_csv")
 
         try:
             text = file_bytes.decode("utf-8-sig", errors="replace")
@@ -153,12 +153,12 @@ class PPFCSVImporter(BaseImporter):
             result.errors.append("Could not find transaction table in CSV")
             return result
 
-        result.account_number = account_number
+        # result.account_number = account_number
         bank_code = ifsc_code[:4] if ifsc_code and len(ifsc_code) >= 4 else ""
-        result.bank_name = IFSC_BANK_MAP.get(bank_code, bank_code or "Unknown Bank")
-        result.asset_name = f"PPF - {result.bank_name}"
-        result.closing_balance_inr = closing_balance_inr or 0.0
-        result.closing_balance_date = closing_balance_date
+        bank_name = IFSC_BANK_MAP.get(bank_code, bank_code or "Unknown Bank")
+        asset_name = f"PPF - {bank_name}"
+        # result.closing_balance_inr = closing_balance_inr or 0.0
+        # result.closing_balance_date = closing_balance_date
 
         # ── Phase 2: parse transaction rows ─────────────────────────────────
         transactions = []
@@ -197,7 +197,7 @@ class PPFCSVImporter(BaseImporter):
 
             transactions.append(ParsedTransaction(
                 source="ppf_csv",
-                asset_name=result.asset_name,
+                asset_name=asset_name,
                 asset_identifier=account_number,
                 asset_type="PPF",
                 txn_type=txn_type,
@@ -211,7 +211,16 @@ class PPFCSVImporter(BaseImporter):
         result.transactions = transactions
 
         # Fallback: use first transaction date as closing balance date
-        if result.closing_balance_date is None and transactions:
-            result.closing_balance_date = transactions[0].date
+        # if result.closing_balance_date is None and transactions:
+        #     result.closing_balance_date = transactions[0].date
 
+        # Populate base ImportResult fields for orchestrator valuation creation
+        result.closing_valuation_inr = closing_balance_inr or 0.0
+        result.closing_valuation_date = closing_balance_date
+        result.closing_valuation_source = "ppf_csv"
+        result.closing_valuation_notes = f"Closing balance from CSV import (account {account_number})"
+
+        print("**************************")
+        print(f"Parsed PPF CSV: account {account_number}, bank {bank_name}, "              f"{len(transactions)} transactions, closing balance ₹{closing_balance_inr:,.2f} on {closing_balance_date}, errors: {result.errors}")
+        print("**************************")
         return result

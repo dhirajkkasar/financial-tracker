@@ -26,7 +26,7 @@ class CasSnapshotRepository:
             total_cost_inr=total_cost_inr,
         )
         self.db.add(snap)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(snap)
         return snap
 

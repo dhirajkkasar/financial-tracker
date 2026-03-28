@@ -144,6 +144,7 @@ def cmd_import_nps(file_path: str) -> dict:
     with open(file_path, "rb") as f:
         preview = _api("post", "/import/nps-csv", files={"file": f})
     result = _api("post", "/import/commit", json={"preview_id": preview["preview_id"]})
+    cmd_refresh_prices()
     _print_import_summary("NPS", inserted=result["created_count"], skipped=result["skipped_count"])
     return result
 
@@ -162,7 +163,7 @@ def cmd_import_fidelity_rsu(file_path: str) -> None:
     Prompts for USD/INR exchange rate per vest month.
     """
     _check_file(file_path)
-    from app.importers.fidelity_rsu_csv_parser import FidelityRSUImporter
+    from app.importers.fidelity_rsu_csv_importer import FidelityRSUImporter
 
     # Step 1: Parse CSV locally to find required month-years
     with open(file_path, "rb") as f:
@@ -225,12 +226,12 @@ def cmd_import_fidelity_sale(file_path: str) -> None:
     """
     _check_file(file_path)
     import json
-    from app.importers.fidelity_pdf_parser import FidelityPDFParser
+    from app.importers.fidelity_pdf_importer import FidelityPDFImporter
 
     # Step 1: Parse PDF locally to find required month-years
     with open(file_path, "rb") as f:
         pdf_bytes = f.read()
-    months_list = FidelityPDFParser.extract_required_month_years(pdf_bytes)
+    months_list = FidelityPDFImporter.extract_required_month_years(pdf_bytes)
     months = set(months_list)
 
     if not months:

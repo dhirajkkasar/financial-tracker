@@ -8,7 +8,7 @@ from app.models.asset import Asset, AssetType
 from app.models.price_cache import PriceCache
 from app.repositories.asset_repo import AssetRepository
 from app.repositories.price_cache_repo import PriceCacheRepository
-from app.services.price_feed import FETCHER_REGISTRY, STALE_MINUTES, NPSNavFetcher, PriceFetcher, PriceResult
+from app.services.price_feed import FETCHER_REGISTRY, STALE_MINUTES, _FETCHER_REGISTRY, NPSNavFetcher, PriceFetcher, PriceResult
 
 logger = logging.getLogger(__name__)
 
@@ -56,21 +56,9 @@ class PriceService:
                 self.db.commit()
             return None
 
-        # Persist resolved scheme_code if MF fetcher discovered it
-        if hasattr(asset, "_resolved_scheme_code") and asset._resolved_scheme_code:
-            asset.mfapi_scheme_code = asset._resolved_scheme_code
-            self.db.commit()
-
         # Persist resolved NPS scheme code to identifier
         if hasattr(asset, "_resolved_nps_scheme_code") and asset._resolved_nps_scheme_code:
             asset.identifier = asset._resolved_nps_scheme_code
-            self.db.commit()
-
-        # Persist scheme_category and reclassify asset_class for MF assets
-        if hasattr(asset, "_resolved_scheme_category") and asset._resolved_scheme_category:
-            from app.engine.mf_classifier import classify_mf
-            asset.scheme_category = asset._resolved_scheme_category
-            asset.asset_class = classify_mf(asset.scheme_category)
             self.db.commit()
 
         price_paise = round(result.price_inr * 100)
@@ -120,11 +108,11 @@ class PriceService:
         with ThreadPoolExecutor(max_workers=workers) as pool:
             fetch_results = list(pool.map(_fetch, other_fetchable))
 
-        # MF assets: sequential fetch with 60s delay to avoid mfapi.in throttling
+        # MF assets: sequential fetch with 1s delay to avoid mfapi.in throttling
         for i, asset_fetcher in enumerate(mf_fetchable):
             if i > 0:
-                logger.info("refresh_all: waiting 61s before next mfapi call (%d/%d)", i + 1, len(mf_fetchable))
-                time.sleep(61)
+                logger.info("refresh_all: waiting 1s before next mfapi call (%d/%d)", i + 1, len(mf_fetchable))
+                time.sleep(1)
             fetch_results.append(_fetch(asset_fetcher))
 
         # Phase 2: sequential DB writes
@@ -137,8 +125,6 @@ class PriceService:
                 failed += 1
                 continue
 
-            if hasattr(asset, "_resolved_scheme_code") and asset._resolved_scheme_code:
-                asset.mfapi_scheme_code = asset._resolved_scheme_code
             if hasattr(asset, "_resolved_nps_scheme_code") and asset._resolved_nps_scheme_code:
                 asset.identifier = asset._resolved_nps_scheme_code
             if hasattr(asset, "_resolved_scheme_category") and asset._resolved_scheme_category:
@@ -209,6 +195,11 @@ class PriceService:
         return {"refreshed": refreshed, "failed": failed}
 
     def _is_stale(self, asset_type: AssetType, fetched_at: datetime) -> bool:
+        # Try new self-declaring registry first (timedelta-based)
+        fetcher_cls = _FETCHER_REGISTRY.get(asset_type.value if hasattr(asset_type, "value") else str(asset_type))
+        if fetcher_cls is not None:
+            return datetime.utcnow() - fetched_at > fetcher_cls.staleness_threshold
+        # Fallback: legacy STALE_MINUTES dict
         threshold = STALE_MINUTES.get(asset_type)
         if threshold is None:
             return False

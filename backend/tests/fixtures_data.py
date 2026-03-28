@@ -7,8 +7,8 @@ To re-verify, run: pytest -m smoke
 from datetime import date
 
 from app.importers.base import ImportResult, ParsedTransaction, ParsedFundSnapshot
-from app.importers.ppf_csv_parser import PPFCSVImportResult
-from app.importers.epf_pdf_parser import EPFImportResult
+from app.importers.ppf_csv_importer import PPFCSVImportResult
+from app.importers.epf_pdf_importer import EPFImportResult
 
 
 # ---------------------------------------------------------------------------

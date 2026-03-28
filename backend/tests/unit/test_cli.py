@@ -162,6 +162,7 @@ class TestImportBrokerCSV:
         csv.write_text("header\n")
         requests_mock.post(f"{BASE}/import/nps-csv", json={"preview_id": "n1", "transactions": [], "new_count": 4, "duplicate_count": 0})
         requests_mock.post(f"{BASE}/import/commit", json={"created_count": 4, "skipped_count": 0, "snapshot_count": 0})
+        requests_mock.post(f"{BASE}/prices/refresh-all", json={"status": "ok"})
         cli.cmd_import_nps(str(csv))
         assert requests_mock.request_history[0].path == "/import/nps-csv"
 

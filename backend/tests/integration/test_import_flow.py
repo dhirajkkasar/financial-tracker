@@ -203,7 +203,7 @@ class TestCASPDFPreview:
 
 class TestPPFImport:
     def _post_ppf(self, client):
-        with patch("app.services.ppf_epf_import_service.PPFCSVParser") as MockPPF:
+        with patch("app.services.ppf_epf_import_service.PPFCSVImporter") as MockPPF:
             MockPPF.return_value.parse.return_value = PARSED_PPF_CSV
             return client.post(
                 "/import/ppf-csv",
@@ -269,7 +269,7 @@ class TestEPFImport:
         return asset
 
     def _post_epf(self, client):
-        with patch("app.services.ppf_epf_import_service.EPFPDFParser") as MockEPF:
+        with patch("app.services.ppf_epf_import_service.EPFPDFImporter") as MockEPF:
             MockEPF.return_value.parse.return_value = PARSED_EPF
             return client.post(
                 "/import/epf-pdf",

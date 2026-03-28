@@ -1,16 +1,18 @@
 import json as _json
 import logging
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.api.dependencies import get_import_orchestrator
 from app.database import get_db
-from app.importers.broker_csv_parser import ZerodhaImporter
-from app.importers.cas_parser import CASImporter
-from app.importers.fidelity_pdf_parser import FidelityPDFParser
-from app.importers.fidelity_rsu_csv_parser import FidelityRSUImporter
-from app.importers.nps_csv_parser import NPSImporter
+from app.importers.zerodha_importer import ZerodhaImporter
+from app.importers.cas_importer import CASImporter
+from app.services.imports.orchestrator import ImportOrchestrator
+from app.importers.fidelity_pdf_importer import FidelityPDFImporter
+from app.importers.fidelity_rsu_csv_importer import FidelityRSUImporter
+from app.importers.nps_csv_importer import NPSImporter
 from app.middleware.error_handler import NotFoundError, ValidationError
 from app.models.asset import AssetType
 from app.services.import_service import ImportService
@@ -199,4 +201,40 @@ async def import_fidelity_sale_pdf(
     """
     rates = _parse_exchange_rates(exchange_rates)
     file_bytes = await file.read()
-    return _fidelity_preview(FidelityPDFParser, file_bytes, file.filename or "", rates, svc)
+    return _fidelity_preview(FidelityPDFImporter, file_bytes, file.filename or "", rates, svc)
+
+
+# ---------------------------------------------------------------------------
+# New orchestrator-based endpoints (Plan 3)
+# ---------------------------------------------------------------------------
+
+@router.post("/preview-file")
+async def preview_file_import(
+    source: str,
+    format: str,
+    file: UploadFile = File(...),
+    orchestrator: ImportOrchestrator = Depends(get_import_orchestrator),
+):
+    """Preview a file import using the new ImportOrchestrator pipeline.
+
+    source: e.g. 'zerodha', 'cas', 'nps', 'ppf', 'epf', 'fidelity_sale', 'fidelity_rsu'
+    format: 'csv' or 'pdf'
+    """
+    file_bytes = await file.read()
+    try:
+        response = orchestrator.preview(source, format, file_bytes)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return response
+
+
+@router.post("/commit-file/{preview_id}")
+def commit_file_import(
+    preview_id: str,
+    orchestrator: ImportOrchestrator = Depends(get_import_orchestrator),
+):
+    """Commit a previously previewed file import."""
+    response = orchestrator.commit(preview_id)
+    if response is None:
+        raise HTTPException(status_code=404, detail="Preview not found or expired")
+    return response

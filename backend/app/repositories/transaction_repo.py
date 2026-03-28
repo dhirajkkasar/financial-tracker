@@ -10,7 +10,7 @@ class TransactionRepository:
     def create(self, **kwargs) -> Transaction:
         txn = Transaction(**kwargs)
         self.db.add(txn)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(txn)
         return txn
 
@@ -49,10 +49,10 @@ class TransactionRepository:
         for key, value in kwargs.items():
             if value is not None:
                 setattr(txn, key, value)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(txn)
         return txn
 
     def delete(self, txn: Transaction) -> None:
         self.db.delete(txn)
-        self.db.commit()
+        self.db.flush()

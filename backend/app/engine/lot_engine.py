@@ -54,18 +54,19 @@ class SellLike(Protocol):
 # match_lots_fifo
 # ---------------------------------------------------------------------------
 
-def match_lots_fifo(lots: list, sells: list) -> list[dict]:
+def match_lots_fifo(lots: list, sells: list, stcg_days: int = 365) -> list[dict]:
     """
     Match sell events against buy lots using FIFO (earliest lot first).
 
     Args:
-        lots:  List of lot-like objects sorted by buy_date ascending.
-        sells: List of sell-like objects in chronological order.
+        lots:      List of lot-like objects sorted by buy_date ascending.
+        sells:     List of sell-like objects in chronological order.
+        stcg_days: Short-term holding threshold in days (caller-supplied).
 
     Returns:
         List of match dicts:
-          {lot_id, sell_date, units_sold, units_remaining,
-           buy_price_per_unit, sell_price_per_unit, realised_gain_inr}
+          {lot_id, sell_date, buy_date, units_sold, units_remaining,
+           buy_price_per_unit, sell_price_per_unit, realised_gain_inr, is_short_term}
     """
     # Work with mutable remaining units per lot
     remaining = {lot.lot_id: lot.units for lot in lots}
@@ -94,6 +95,7 @@ def match_lots_fifo(lots: list, sells: list) -> list[dict]:
             cost_basis = lot.buy_price_per_unit * consumed
             proceeds = sell_price * consumed
             realised_gain = proceeds - cost_basis
+            holding_days = (sell.date - lot.buy_date).days
 
             matches.append({
                 "lot_id": lot_id,
@@ -104,6 +106,7 @@ def match_lots_fifo(lots: list, sells: list) -> list[dict]:
                 "buy_price_per_unit": lot.buy_price_per_unit,
                 "sell_price_per_unit": sell_price,
                 "realised_gain_inr": realised_gain,
+                "is_short_term": holding_days < stcg_days,
             })
 
     return matches
@@ -116,15 +119,24 @@ def match_lots_fifo(lots: list, sells: list) -> list[dict]:
 def compute_lot_unrealised(
     lot,
     current_price: float,
-    asset_type: str,
+    stcg_days: Optional[int] = None,
+    grandfathering_cutoff: Optional[date] = None,
     as_of: Optional[date] = None,
+    asset_type: Optional[str] = None,  # deprecated shim — use stcg_days
 ) -> dict:
     """
     Compute unrealised P&L for a single open lot.
 
+    Pass stcg_days explicitly (from TaxRatePolicy or strategy ClassVar).
+    asset_type is a deprecated shim: if stcg_days is not given, it looks
+    up _STCG_DAYS[asset_type] for backwards compatibility.
+
     Returns:
       {current_value, unrealised_gain, holding_days, is_short_term}
     """
+    if stcg_days is None:
+        stcg_days = _STCG_DAYS.get(asset_type, EQUITY_STCG_DAYS) if asset_type else EQUITY_STCG_DAYS
+
     if as_of is None:
         as_of = date.today()
 
@@ -132,9 +144,7 @@ def compute_lot_unrealised(
     current_value = lot.units * current_price
     cost = lot.buy_amount_inr
     unrealised_gain = current_value - cost
-
-    stcg_threshold = _STCG_DAYS.get(asset_type, EQUITY_STCG_DAYS)
-    is_short_term = holding_days < stcg_threshold
+    is_short_term = holding_days < stcg_days
 
     return {
         "current_value": current_value,

@@ -40,55 +40,55 @@ def test_parse_fy_invalid_text():
 
 def test_classify_holding_equity_short_term():
     # Use 2023 (non-leap): Jan 1 → Dec 31 = 364 days < 365 threshold → ST
-    result = classify_holding("STOCK_IN", date(2023, 1, 1), date(2023, 12, 31))
+    result = classify_holding(date(2023, 1, 1), date(2023, 12, 31), stcg_days=365)
     assert result["holding_days"] == 364
     assert result["is_short_term"] is True
 
 
 def test_classify_holding_equity_long_term():
     # Jan 1, 2023 → Jan 1, 2024 = 365 days == threshold → LT (threshold is <365)
-    result = classify_holding("STOCK_IN", date(2023, 1, 1), date(2024, 1, 1))
+    result = classify_holding(date(2023, 1, 1), date(2024, 1, 1), stcg_days=365)
     assert result["holding_days"] == 365
     assert result["is_short_term"] is False
 
 
 def test_classify_holding_mf_same_thresholds_as_equity():
-    st = classify_holding("MF", date(2023, 1, 1), date(2023, 12, 31))
+    st = classify_holding(date(2023, 1, 1), date(2023, 12, 31), stcg_days=365)
     assert st["is_short_term"] is True
-    lt = classify_holding("MF", date(2023, 1, 1), date(2024, 1, 1))
+    lt = classify_holding(date(2023, 1, 1), date(2024, 1, 1), stcg_days=365)
     assert lt["is_short_term"] is False
 
 
 def test_classify_holding_us_stock_just_under_threshold():
     # Need < 730 days: Jan 1, 2023 → Dec 30, 2024 = 729 days → ST
-    result = classify_holding("STOCK_US", date(2023, 1, 1), date(2024, 12, 30))
+    result = classify_holding(date(2023, 1, 1), date(2024, 12, 30), stcg_days=730)
     assert result["holding_days"] == 729
     assert result["is_short_term"] is True
 
 
 def test_classify_holding_us_stock_long_term():
     # Jan 1, 2023 → Jan 2, 2025 = 731 days >= 730 → LT
-    result = classify_holding("STOCK_US", date(2023, 1, 1), date(2025, 1, 2))
+    result = classify_holding(date(2023, 1, 1), date(2025, 1, 2), stcg_days=730)
     assert result["is_short_term"] is False
 
 
 def test_classify_holding_gold_short_term():
     # Need < 1095 days: use Jan 1, 2022 → Dec 30, 2024 = 1094 days → ST
-    result = classify_holding("GOLD", date(2022, 1, 1), date(2024, 12, 30))
+    result = classify_holding(date(2022, 1, 1), date(2024, 12, 30), stcg_days=1095)
     assert result["holding_days"] == 1094
     assert result["is_short_term"] is True
 
 
 def test_classify_holding_gold_long_term():
     # Jan 1, 2022 → Jan 2, 2025 = 1096 days >= 1095 → LT
-    result = classify_holding("GOLD", date(2022, 1, 1), date(2025, 1, 2))
+    result = classify_holding(date(2022, 1, 1), date(2025, 1, 2), stcg_days=1095)
     assert result["is_short_term"] is False
 
 
 def test_classify_holding_real_estate_threshold():
-    st = classify_holding("REAL_ESTATE", date(2023, 1, 1), date(2024, 12, 30))
+    st = classify_holding(date(2023, 1, 1), date(2024, 12, 30), stcg_days=730)
     assert st["is_short_term"] is True
-    lt = classify_holding("REAL_ESTATE", date(2023, 1, 1), date(2025, 1, 2))
+    lt = classify_holding(date(2023, 1, 1), date(2025, 1, 2), stcg_days=730)
     assert lt["is_short_term"] is False
 
 
@@ -427,3 +427,118 @@ def test_harvest_unrealised_loss_field_is_absolute():
     lots = [_make_open_lot(1, "STOCK_IN", -4000.0)]
     result = find_harvest_opportunities(lots)
     assert result[0]["unrealised_loss"] == pytest.approx(4000.0)
+
+
+# ── TaxRatePolicy ─────────────────────────────────────────────────────────────
+
+import yaml
+from pathlib import Path
+
+
+@pytest.fixture
+def temp_tax_config(tmp_path):
+    """Create a minimal tax rate YAML for testing."""
+    rates = {
+        "STOCK_IN": {
+            "stcg_rate_pct": 20.0,
+            "stcg_is_slab": False,
+            "ltcg_rate_pct": 12.5,
+            "ltcg_is_slab": False,
+            "ltcg_threshold_days": 365,
+            "ltcg_exemption_inr": 125000.0,
+            "is_exempt": False,
+            "maturity_exempt": False,
+        },
+        "PPF": {
+            "stcg_rate_pct": None,
+            "stcg_is_slab": False,
+            "ltcg_rate_pct": None,
+            "ltcg_is_slab": False,
+            "ltcg_threshold_days": None,
+            "ltcg_exemption_inr": 0.0,
+            "is_exempt": True,
+            "maturity_exempt": False,
+        },
+        "FD": {
+            "stcg_rate_pct": None,
+            "stcg_is_slab": True,
+            "ltcg_rate_pct": None,
+            "ltcg_is_slab": True,
+            "ltcg_threshold_days": None,
+            "ltcg_exemption_inr": 0.0,
+            "is_exempt": False,
+            "maturity_exempt": False,
+        },
+    }
+    fy_file = tmp_path / "2024-25.yaml"
+    fy_file.write_text(yaml.dump(rates))
+    return tmp_path
+
+
+def test_tax_rate_policy_loads_stock_in(temp_tax_config):
+    from app.engine.tax_engine import TaxRatePolicy
+
+    policy = TaxRatePolicy(temp_tax_config)
+    rate = policy.get_rate("2024-25", "STOCK_IN")
+    assert rate.stcg_rate_pct == 20.0
+    assert rate.ltcg_rate_pct == 12.5
+    assert rate.ltcg_exemption_inr == 125000.0
+    assert rate.is_exempt is False
+
+
+def test_tax_rate_policy_loads_ppf_exempt(temp_tax_config):
+    from app.engine.tax_engine import TaxRatePolicy
+
+    policy = TaxRatePolicy(temp_tax_config)
+    rate = policy.get_rate("2024-25", "PPF")
+    assert rate.is_exempt is True
+
+
+def test_tax_rate_policy_missing_fy_raises(temp_tax_config):
+    from app.engine.tax_engine import TaxRatePolicy
+
+    policy = TaxRatePolicy(temp_tax_config)
+    with pytest.raises(ValueError, match="No tax rate config for FY"):
+        policy.get_rate("2099-00", "STOCK_IN")
+
+
+def test_tax_rate_policy_caches_file(temp_tax_config):
+    from app.engine.tax_engine import TaxRatePolicy
+
+    policy = TaxRatePolicy(temp_tax_config)
+    rate1 = policy.get_rate("2024-25", "STOCK_IN")
+    rate2 = policy.get_rate("2024-25", "STOCK_IN")
+    assert rate1 is rate2  # same object from cache
+
+
+def test_tax_rate_policy_missing_asset_type(temp_tax_config):  # noqa: F811 (redefinition ok — different fixture)
+    from app.engine.tax_engine import TaxRatePolicy
+
+    policy = TaxRatePolicy(temp_tax_config)
+    with pytest.raises(ValueError, match="No tax rate for asset_type"):
+        policy.get_rate("2024-25", "UNKNOWN_TYPE")
+
+
+# ── classify_holding with explicit stcg_days ──────────────────────────────────
+
+def test_classify_holding_with_explicit_stcg_days():
+    from app.engine.tax_engine import classify_holding
+
+    result = classify_holding(
+        buy_date=date(2023, 1, 1),
+        sell_date=date(2023, 6, 1),
+        stcg_days=365,
+    )
+    assert result["is_short_term"] is True
+    assert result["holding_days"] == 151
+
+
+def test_classify_holding_long_term_explicit():
+    from app.engine.tax_engine import classify_holding
+
+    result = classify_holding(
+        buy_date=date(2022, 1, 1),
+        sell_date=date(2023, 6, 1),
+        stcg_days=365,
+    )
+    assert result["is_short_term"] is False

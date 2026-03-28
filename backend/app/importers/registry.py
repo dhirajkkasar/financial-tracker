@@ -48,7 +48,17 @@ class ImporterRegistry:
                 f"No importer for source={source!r} format={fmt!r}. "
                 f"Registered: {available}"
             )
-        return cls(**init_kwargs)
+        # Resolve the class symbol from its module at runtime. This allows
+        # tests to patch the importer class on the module (unittest.mock.patch)
+        # and have the registry pick up the patched symbol.
+        try:
+            import importlib
+            mod = importlib.import_module(cls.__module__)
+            current = getattr(mod, cls.__name__, cls)
+            cls_to_instantiate = current
+        except Exception:
+            cls_to_instantiate = cls
+        return cls_to_instantiate(**init_kwargs)
 
     def list_registered(self) -> list[tuple[str, str]]:
         """Return all registered (source, format) keys."""

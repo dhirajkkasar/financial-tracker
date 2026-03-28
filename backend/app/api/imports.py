@@ -1,4 +1,3 @@
-import json as _json
 import logging
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
@@ -10,38 +9,27 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/import", tags=["import"])
 
 
-def _parse_exchange_rates(exchange_rates: str) -> dict[str, float]:
-    """Parse and validate the exchange_rates JSON field."""
-    try:
-        parsed = _json.loads(exchange_rates)
-    except Exception:
-        raise ValidationError('exchange_rates must be valid JSON, e.g. {"2025-03": 86.5}')
-    if not isinstance(parsed, dict) or not all(isinstance(v, (int, float)) for v in parsed.values()):
-        raise ValidationError('exchange_rates values must be numbers, e.g. {"2025-03": 86.5}')
-    return parsed
-
-
 @router.post("/preview-file")
 async def preview_file_import(
     source: str = Query(..., description="Importer source: zerodha/cas/nps/ppf/epf/fidelity_rsu/fidelity_sale"),
     format: str = Query(..., description="File format: csv or pdf"),
     file: UploadFile = File(...),
-    exchange_rates: str | None = Form(None, description='JSON object e.g. {"2025-03": 86.5}'),
+    user_inputs: str | None = Form(None, description='JSON object e.g. {"2025-03": 86.5} for fidelity sources'),
     orchestrator: ImportOrchestrator = Depends(get_import_orchestrator),
 ):
     """Preview a file import using ImportOrchestrator.
 
-    For fidelity sources, exchange_rates is required.
+    For fidelity sources, user_inputs (exchange rates) is required.
     """
     file_bytes = await file.read()
 
     importer_kwargs = {
         "filename": file.filename or "",
     }
-    if source in {"fidelity_rsu", "fidelity_sale"}:
-        if not exchange_rates:
-            raise ValidationError("exchange_rates is required for fidelity imports")
-        importer_kwargs["exchange_rates"] = _parse_exchange_rates(exchange_rates)
+    
+    # Pass user_inputs as-is string if provided (will be validated by importer)
+    if user_inputs:
+        importer_kwargs["user_inputs"] = user_inputs
 
     try:
         response = orchestrator.preview(source, format, file_bytes, **importer_kwargs)
@@ -51,6 +39,9 @@ async def preview_file_import(
         if "No importer for" in error_msg:
             raise HTTPException(status_code=400, detail=error_msg)
         raise HTTPException(status_code=422, detail=error_msg)
+    except ValidationError as exc:
+        # Validation errors from pipeline already mapped to 422
+        raise
     
     return response
 

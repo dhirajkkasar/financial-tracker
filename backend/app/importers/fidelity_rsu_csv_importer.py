@@ -4,7 +4,8 @@ import io
 import logging
 from datetime import datetime
 
-from app.importers.base import ParsedTransaction, ImportResult, BaseImporter
+from app.importers.base import ParsedTransaction, ImportResult, BaseImporter, ValidationResult
+from app.importers.helpers import ExchangeRateValidationHelper
 from app.importers.registry import register_importer
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,25 @@ class FidelityRSUImporter(BaseImporter):
     """
 
     def __init__(self, exchange_rates: dict[str, float] | None = None):
+        """Initialize with optional exchange_rates for backward compatibility.
+        
+        In the new flow, exchange_rates should be validated via validate() method,
+        not passed to constructor. But we accept them here for backward compatibility
+        with existing tests.
+        """
         self.exchange_rates = exchange_rates or {}
+
+    def validate(self, result: ImportResult, **kwargs) -> ValidationResult:
+        """Post-parse validation: verify exchange_rates completeness.
+        
+        Args:
+            result: ImportResult from parse()
+            **kwargs: Should contain 'user_inputs' as JSON string of exchange_rates
+        
+        Returns:
+            ValidationResult with errors if exchange_rates are missing for required months
+        """
+        return ExchangeRateValidationHelper.validate_exchange_rates(result, **kwargs)
 
     @staticmethod
     def extract_required_month_years(file_bytes: bytes) -> list[str]:
@@ -88,12 +107,19 @@ class FidelityRSUImporter(BaseImporter):
         cost_basis_total = float(row["Cost basis"].replace(",", "").removeprefix("$"))
         cost_basis_per_share = float(row["Cost basis/share"].replace(",", "").removeprefix("$"))
 
+        # For backward compatibility: if exchange_rates were provided to constructor, use them
+        # Otherwise, leave amount_inr as placeholder (will be calculated during commit with validated exchange_rates)
         month_year = vest_date.strftime("%Y-%m")
         forex_rate = self.exchange_rates.get(month_year)
-        if forex_rate is None:
+        if forex_rate is None and self.exchange_rates:
+            # Exchange_rates provided but missing this month
             raise ValueError(f"No exchange rate provided for {month_year}")
-
-        amount_inr = -(cost_basis_total * forex_rate)  # VEST = outflow (negative)
+        
+        if forex_rate:
+            amount_inr = -(cost_basis_total * forex_rate)  # VEST = outflow (negative)
+        else:
+            amount_inr = 0.0  # Placeholder
+        
         txn_id = self._make_txn_id(ticker, vest_date.isoformat(), quantity, cost_basis_per_share)
 
         return ParsedTransaction(

@@ -2,6 +2,7 @@
 Importer module - all submodules must be imported for decorators to register importers.
 """
 # Import all importer classes to trigger @register_importer decorators
+from app.importers.base import ValidationResult
 from app.importers.zerodha_importer import ZerodhaImporter
 from app.importers.cas_importer import CASImporter
 from app.importers.nps_csv_importer import NPSImporter
@@ -18,4 +19,5 @@ __all__ = [
     "EPFPDFImporter",
     "FidelityRSUImporter",
     "FidelityPDFImporter",
+    "ValidationResult",
 ]

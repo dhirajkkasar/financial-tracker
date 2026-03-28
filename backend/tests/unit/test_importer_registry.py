@@ -33,8 +33,10 @@ def test_validate_default_returns_empty_list():
 
     importer = MinimalImporter()
     result = importer.parse(b"")
-    warnings = importer.validate(result)
-    assert warnings == []
+    validation_result = importer.validate(result)
+    assert validation_result.is_valid is True
+    assert validation_result.errors == []
+    assert validation_result.required_inputs == {}
 
 
 def test_register_importer_decorator():

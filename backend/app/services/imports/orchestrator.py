@@ -73,6 +73,7 @@ class ImportOrchestrator:
         **importer_kwargs,
     ) -> ImportPreviewResponse:
         result = self._pipeline.run(source, fmt, file_bytes, **importer_kwargs)
+        logger.info("ImportOrchestrator.preview: result.transactions=%d, duplicate_count=%s", len(result.transactions), getattr(result, 'duplicate_count', None))
         preview_id = self._store.put(result)
 
         txn_previews = [
@@ -107,14 +108,19 @@ class ImportOrchestrator:
             return None  # expired or not found
 
         inserted = 0
-        skipped = 0
+        skipped = getattr(result, "duplicate_count", 0)
         errors: list[str] = []
+        touched_stock_assets: dict[int, Asset] = {}
 
         with self._uow_factory() as uow:
             for parsed_txn in result.transactions:
                 try:
                     # Find or create the asset
                     asset = self._find_or_create_asset(parsed_txn, uow)
+
+                    # Track stock assets for post-commit corp actions
+                    if parsed_txn.asset_type in ("STOCK_IN", "STOCK_US"):
+                        touched_stock_assets[asset.id] = asset
 
                     # Check for duplicate (second-pass safety)
                     if uow.transactions.get_by_txn_id(parsed_txn.txn_id):
@@ -181,6 +187,26 @@ class ImportOrchestrator:
                     inserted_count=inserted,
                 )
             )
+
+        # Auto-trigger corporate actions for newly imported stock assets (non-blocking).
+        if touched_stock_assets:
+            try:
+                from app.services.corp_actions_service import CorpActionsService
+                # Use a fresh UnitOfWork/session for corp actions
+                try:
+                    uow_for_corp = self._uow_factory()
+                    corp_svc = CorpActionsService(uow_for_corp.session)
+                except Exception:
+                    # Fallback: import directly with no session if factory unavailable
+                    corp_svc = CorpActionsService(None)
+
+                for asset in touched_stock_assets.values():
+                    try:
+                        corp_svc.process_asset(asset)
+                    except Exception as e:
+                        logger.warning("Corp actions failed for asset %d '%s': %s", asset.id, asset.name, e)
+            except Exception as e:
+                logger.warning("CorpActionsService unavailable: %s", e)
 
         self._store.delete(preview_id)
         return ImportCommitResponse(inserted=inserted, skipped=skipped, errors=errors)

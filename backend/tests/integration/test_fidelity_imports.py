@@ -68,7 +68,7 @@ def test_fidelity_rsu_csv_endpoint_preview(client):
     rates = {"2025-03": 86.5, "2024-09": 83.8}
     resp = client.post(
         "/import/preview-file?source=fidelity_rsu&format=csv",
-        data={"exchange_rates": json.dumps(rates)},
+        data={"user_inputs": json.dumps(rates)},
         files={"file": ("NASDAQ_AMZN.csv", csv_bytes, "text/csv")},
     )
     assert resp.status_code == 200
@@ -83,7 +83,7 @@ def test_fidelity_rsu_csv_endpoint_missing_rate_returns_422(client):
     csv_bytes = (FIXTURES / "fidelity_rsu_sample.csv").read_bytes()
     resp = client.post(
         "/import/preview-file?source=fidelity_rsu&format=csv",
-        data={"exchange_rates": json.dumps({"2025-03": 86.5})},  # missing 2024-09
+        data={"user_inputs": json.dumps({"2025-03": 86.5})},  # missing 2024-09
         files={"file": ("NASDAQ_AMZN.csv", csv_bytes, "text/csv")},
     )
     assert resp.status_code == 422
@@ -98,7 +98,7 @@ def test_fidelity_rsu_csv_endpoint_idempotent(client):
     def do_import():
         resp = client.post(
             "/import/preview-file?source=fidelity_rsu&format=csv",
-            data={"exchange_rates": json.dumps(rates)},
+            data={"user_inputs": json.dumps(rates)},
             files={"file": ("NASDAQ_AMZN.csv", csv_bytes, "text/csv")},
         )
         preview_id = resp.json()["preview_id"]
@@ -120,7 +120,7 @@ def test_fidelity_sale_pdf_endpoint_preview(client):
     rates = {"2025-03": 86.0, "2025-09": 84.5}
     resp = client.post(
         "/import/preview-file?source=fidelity_sale&format=pdf",
-        data={"exchange_rates": json.dumps(rates)},
+        data={"user_inputs": json.dumps(rates)},
         files={"file": ("sale.pdf", pdf_bytes, "application/pdf")},
     )
     assert resp.status_code == 200
@@ -140,7 +140,7 @@ def test_fidelity_sale_pdf_endpoint_missing_rate_returns_422(client):
     pdf_bytes = path.read_bytes()
     resp = client.post(
         "/import/preview-file?source=fidelity_sale&format=pdf",
-        data={"exchange_rates": json.dumps({"2025-03": 86.0})},  # missing 2025-09
+        data={"user_inputs": json.dumps({"2025-03": 86.0})},  # missing 2025-09
         files={"file": ("sale.pdf", pdf_bytes, "application/pdf")},
     )
     assert resp.status_code == 422
@@ -158,7 +158,7 @@ def test_fidelity_sale_pdf_endpoint_idempotent(client):
     def do_import():
         resp = client.post(
             "/import/preview-file?source=fidelity_sale&format=pdf",
-            data={"exchange_rates": json.dumps(rates)},
+            data={"user_inputs": json.dumps(rates)},
             files={"file": ("sale.pdf", pdf_bytes, "application/pdf")},
         )
         preview_id = resp.json()["preview_id"]

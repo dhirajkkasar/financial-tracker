@@ -196,7 +196,7 @@ def cmd_import_fidelity_rsu(file_path: str) -> None:
             "post",
             "/import/preview-file?source=fidelity_rsu&format=csv",
             files={"file": (os.path.basename(file_path), f, "text/csv")},
-            data={"exchange_rates": json.dumps(exchange_rates)},
+            data={"user_inputs": json.dumps(exchange_rates)},
         )
 
     print(f"\nPreview: {preview['new_count']} new, {preview['duplicate_count']} duplicate")

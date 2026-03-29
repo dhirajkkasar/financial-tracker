@@ -44,8 +44,6 @@ class CASImporter(BaseImporter):
         except Exception as e:
             result.errors.append(f"Failed to parse CAS PDF: {e}")
             logger.warning("CAS parse error: %s", e)
-        print(f"Parsed {len(result.transactions)} transactions and {len(result.snapshots)} snapshots from CAS")
-        print(result.snapshots)
         return result
 
     def _extract_text(self, file_bytes: bytes) -> str:
@@ -92,15 +90,11 @@ class CASImporter(BaseImporter):
                 continue
 
             # Closing balance → end of transaction section; extract snapshot
-            print("********************")
-            print(stripped)
-            print("********************")
             if "Closing Unit Balance:" in stripped:
                 in_transactions = False
                 snap = self._parse_closing_balance(
                     stripped, current_isin, current_scheme_name
                 )
-                print(f"Parsed snapshot: {snap}")
                 if snap:
                     result.snapshots.append(snap)
                 continue

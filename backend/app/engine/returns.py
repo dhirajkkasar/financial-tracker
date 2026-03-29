@@ -51,7 +51,9 @@ def compute_xirr(cashflows: list[tuple[date, float]]) -> float | None:
         result = brentq(npv, -0.9999, 100.0, xtol=1e-8, maxiter=500)
         if -1 < result < 100:
             return round(result, 6)
-    except Exception:
+    except Exception as e:
+        logger.error(f"Brentq - Error occurred while computing XIRR: {e}")
+        logger.info(f"cashflows: {cashflows}")
         pass
 
     # Fallback: Newton-Raphson from multiple starting points including deeply negative
@@ -69,10 +71,12 @@ def compute_xirr(cashflows: list[tuple[date, float]]) -> float | None:
                     break
                 rate = new_rate
             if isinstance(rate, complex):
+                logger.warning(f"Complex XIRR result {rate} for guess {guess}")
                 continue
             if -1 < rate < 100 and abs(npv(rate)) < 1.0:
                 return round(rate, 6)
-        except (ZeroDivisionError, OverflowError, TypeError, ValueError):
+        except (ZeroDivisionError, OverflowError, TypeError, ValueError) as e:
+            logger.error(f"Error occurred while computing XIRR for guess {guess}: {e}")
             continue
     logger.warning("XIRR convergence failed")
     return None
@@ -80,6 +84,8 @@ def compute_xirr(cashflows: list[tuple[date, float]]) -> float | None:
 
 def compute_cagr(start_value: float, end_value: float, years: float) -> float | None:
     if years <= 0 or start_value <= 0:
+        logger.warning("Invalid input for CAGR: start_value=%s, end_value=%s, years=%s",
+                       start_value, end_value, years)
         return None
     return (end_value / start_value) ** (1 / years) - 1
 

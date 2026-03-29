@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.middleware.error_handler import NotFoundError, ValidationError
+from app.models.goal import GoalAllocation
 from app.repositories.asset_repo import AssetRepository
 from app.repositories.goal_repo import GoalRepository
 from app.schemas.goal import (
@@ -11,6 +12,8 @@ from app.schemas.goal import (
     GoalAllocationCreate, GoalAllocationUpdate, GoalAllocationResponse,
     GoalAllocationWithAsset,
 )
+from app.services.returns.portfolio_returns_service import PortfolioReturnsService
+from app.services.returns.strategies.registry import DefaultReturnsStrategyRegistry
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/goals", tags=["goals"])
@@ -24,7 +27,6 @@ def _validate_pct(pct: int):
 
 
 def _sum_allocations(db: Session, asset_id: int, exclude_allocation_id: int | None = None) -> int:
-    from app.models.goal import GoalAllocation
     q = db.query(GoalAllocation).filter(GoalAllocation.asset_id == asset_id)
     if exclude_allocation_id is not None:
         q = q.filter(GoalAllocation.id != exclude_allocation_id)
@@ -53,8 +55,8 @@ def _validate_final_sum(db: Session, asset_id: int, exclude_allocation_id: int |
 
 def _compute_goal_response(goal, db: Session) -> GoalResponse:
     """Build GoalResponse with live progress fields."""
-    from app.services.returns_service import ReturnsService
-    svc = ReturnsService(db)
+    strategy_registry = DefaultReturnsStrategyRegistry()
+    svc = PortfolioReturnsService(db, strategy_registry)
 
     allocs_out: list[GoalAllocationWithAsset] = []
     total_current = 0.0
@@ -154,7 +156,6 @@ def list_allocations(goal_id: int, db: Session = Depends(get_db)):
     repo = GoalRepository(db)
     if not repo.get_by_id(goal_id):
         raise NotFoundError(f"Goal {goal_id} not found")
-    from app.models.goal import GoalAllocation
     return db.query(GoalAllocation).filter(GoalAllocation.goal_id == goal_id).all()
 
 

@@ -4,6 +4,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
+from app.engine.mf_classifier import classify_mf
+from app.middleware.error_handler import NotFoundError
 from app.models.asset import Asset, AssetType
 from app.models.price_cache import PriceCache
 from app.repositories.asset_repo import AssetRepository
@@ -34,7 +36,6 @@ class PriceService:
         """Fetch fresh price and upsert PriceCache. Returns None if no fetcher."""
         asset = self.asset_repo.get_by_id(asset_id)
         if not asset:
-            from app.middleware.error_handler import NotFoundError
             raise NotFoundError(f"Asset {asset_id} not found")
         
         if not asset.is_active:
@@ -128,7 +129,6 @@ class PriceService:
             if hasattr(asset, "_resolved_nps_scheme_code") and asset._resolved_nps_scheme_code:
                 asset.identifier = asset._resolved_nps_scheme_code
             if hasattr(asset, "_resolved_scheme_category") and asset._resolved_scheme_category:
-                from app.engine.mf_classifier import classify_mf
                 asset.scheme_category = asset._resolved_scheme_category
                 asset.asset_class = classify_mf(asset.scheme_category)
 

@@ -10,10 +10,12 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from app.engine.allocation import compute_allocation, find_top_gainers
+from app.engine.lot_engine import match_lots_fifo
 from app.middleware.error_handler import NotFoundError
 from app.repositories.unit_of_work import UnitOfWork, IUnitOfWorkFactory
+from app.services.returns.strategies.market_based import LOT_TYPES, SELL_TYPES, _Lot, _Sell
 from app.services.returns.strategies.registry import IReturnsStrategyRegistry
-from app.engine.allocation import compute_allocation, find_top_gainers
 
 logger = logging.getLogger(__name__)
 
@@ -83,9 +85,6 @@ class PortfolioReturnsService:
 
     def get_asset_lots(self, asset_id: int) -> dict:
         """Compute FIFO lots and matched sells for a single asset using its strategy."""
-        from app.engine.lot_engine import match_lots_fifo
-        from app.services.returns.strategies.market_based import LOT_TYPES, SELL_TYPES, _Lot, _Sell
-
         with self.uow_factory() as uow:
             asset = uow.assets.get_by_id(asset_id)
             if not asset:
@@ -138,11 +137,13 @@ class PortfolioReturnsService:
                     for m in matched:
                         matched_sells.append({
                             "lot_id": m["lot_id"],
+                            "buy_date": m["buy_date"],
                             "buy_price_per_unit": m["buy_price_per_unit"],
+                            "sell_date": m["sell_date"],
                             "sell_price_per_unit": m["sell_price_per_unit"],
                             "units_sold": m["units_sold"],
                             "is_short_term": m["is_short_term"],
-                            "realised_gain": m["realised_gain_inr"],
+                            "realised_gain_inr": m["realised_gain_inr"],
                         })
 
             return {
@@ -193,10 +194,6 @@ class PortfolioReturnsService:
                     strategy = self.strategy_registry.get(asset_type)
                     response = strategy.compute(asset, uow)
 
-                    print("***********************")
-                    print(response)
-                    print("***********************")
-
                     current_value = response.current_value
                     if current_value and current_value > 0:
                         asset_class = asset.asset_class.value
@@ -239,7 +236,13 @@ class PortfolioReturnsService:
                 except Exception as e:
                     logger.warning("Error computing gainers for asset %d: %s", asset.id, str(e))
 
-            return find_top_gainers(entries, n=n)
+            gainers = find_top_gainers(entries, n=n, gainers=True)
+            losers = find_top_gainers(entries, n=n, gainers=False)
+            
+            return {
+                "gainers": gainers,
+                "losers": losers,
+            }
 
     def get_overview(self, asset_types: Optional[list[str]] = None) -> dict:
         """High-level portfolio metrics across optionally filtered asset types."""

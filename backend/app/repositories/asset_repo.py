@@ -20,6 +20,9 @@ class AssetRepository:
 
     def get_by_id(self, asset_id: int) -> Optional[Asset]:
         return self.db.query(Asset).filter(Asset.id == asset_id).first()
+    
+    def get_by_identifier(self, identifier: str) -> Optional[Asset]:
+        return self.db.query(Asset).filter(Asset.identifier == identifier).first()
 
     def list(
         self,

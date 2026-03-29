@@ -10,6 +10,6 @@ from typing import ClassVar, Protocol
 class IPostProcessor(Protocol):
     asset_types: ClassVar[list[str]]
 
-    def process(self, asset, txns: list, uow) -> None:
+    def process(self, asset, import_result, uow) -> None:
         """Called after transactions are persisted for asset. May update asset state."""
         ...

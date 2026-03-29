@@ -4,8 +4,20 @@ from typing import ClassVar
 class PPFPostProcessor:
     asset_types: ClassVar[list[str]] = ["PPF"]
 
-    def process(self, asset, txns: list, uow) -> None:
+    def process(self, asset, import_result, uow) -> None:
         """
-        No-op by default — PPF-specific post-import logic can be added here.
+        Create closing valuation if provided in import_result.
         """
-        pass
+        if (
+            import_result.closing_valuation_inr is not None
+            and import_result.closing_valuation_date is not None
+        ):
+            if asset is None:
+                return
+            uow.valuations.create(
+                asset_id=asset.id,
+                date=import_result.closing_valuation_date,
+                value_inr=int(import_result.closing_valuation_inr * 100),
+                source=import_result.closing_valuation_source or "import",
+                notes=import_result.closing_valuation_notes,
+            )

@@ -14,6 +14,7 @@ No changes to ImporterRegistry or any other file.
 """
 from __future__ import annotations
 
+import importlib
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -52,7 +53,6 @@ class ImporterRegistry:
         # tests to patch the importer class on the module (unittest.mock.patch)
         # and have the registry pick up the patched symbol.
         try:
-            import importlib
             mod = importlib.import_module(cls.__module__)
             current = getattr(mod, cls.__name__, cls)
             cls_to_instantiate = current

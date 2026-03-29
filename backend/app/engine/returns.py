@@ -1,6 +1,8 @@
 from datetime import date
 import logging
 
+from scipy.optimize import brentq
+
 logger = logging.getLogger(__name__)
 
 OUTFLOW_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST", "BILLING"}
@@ -46,7 +48,6 @@ def compute_xirr(cashflows: list[tuple[date, float]]) -> float | None:
 
     # Try scipy brentq first — robust bracketed solver
     try:
-        from scipy.optimize import brentq
         result = brentq(npv, -0.9999, 100.0, xtol=1e-8, maxiter=500)
         if -1 < result < 100:
             return round(result, 6)

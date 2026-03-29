@@ -3,6 +3,9 @@ StockPostProcessor — marks STOCK_IN, STOCK_US, RSU assets inactive
 when net units reach zero after an import.
 """
 from typing import ClassVar
+import logging
+
+from app.services.corp_actions_service import CorpActionsService
 
 _UNIT_ADD_TYPES = {"BUY", "SIP", "VEST", "BONUS"}
 _UNIT_SUB_TYPES = {"SELL", "REDEMPTION"}
@@ -11,16 +14,22 @@ _UNIT_SUB_TYPES = {"SELL", "REDEMPTION"}
 class StockPostProcessor:
     asset_types: ClassVar[list[str]] = ["STOCK_IN", "STOCK_US", "RSU"]
 
-    def process(self, asset, txns: list, uow) -> None:
+    def process(self, asset, import_result, uow) -> None:
         """
         Compute net units for the asset by inspecting all transactions in DB.
         If net_units <= 0, mark the asset inactive.
+        Then, process corporate actions.
         """
         try:
             all_txns = uow.transactions.list_by_asset(asset.id)
         except Exception:
             # Fall back to per-call txns if repository unavailable
-            all_txns = txns or []
+            if hasattr(import_result, "transactions"):
+                all_txns = import_result.transactions or []
+            elif isinstance(import_result, list):
+                all_txns = import_result
+            else:
+                all_txns = []
 
         net_units = 0.0
         for t in all_txns:
@@ -38,3 +47,12 @@ class StockPostProcessor:
 
         if net_units <= 0:
             uow.assets.update(asset, is_active=False)
+
+        # Process corporate actions
+        try:
+            corp_svc = CorpActionsService(uow.session)
+            corp_svc.process_asset(asset)
+        except Exception as e:
+            # Log but don't fail the import
+            logger = logging.getLogger(__name__)
+            logger.warning("Corp actions failed for asset %d '%s': %s", asset.id, asset.name, e)

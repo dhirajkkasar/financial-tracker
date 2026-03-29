@@ -7,6 +7,7 @@ Snapshot ≥ 5 days old → snapshot.closing_units × latest price_cache NAV.
 from datetime import date
 from typing import ClassVar, Optional
 
+from app.middleware.error_handler import ValidationError
 from app.repositories.unit_of_work import UnitOfWork
 from app.services.returns.strategies.base import register_strategy
 from app.services.returns.strategies.market_based import MarketBasedStrategy
@@ -20,7 +21,6 @@ class MFStrategy(MarketBasedStrategy):
     stcg_days: ClassVar[int] = 365
 
     def get_current_value(self, asset, uow: UnitOfWork) -> Optional[float]:
-        from app.middleware.error_handler import ValidationError
         snap = uow.cas_snapshots.get_latest_by_asset_id(asset.id)
         if snap is None:
             raise ValidationError(

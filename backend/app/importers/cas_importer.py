@@ -44,6 +44,8 @@ class CASImporter(BaseImporter):
         except Exception as e:
             result.errors.append(f"Failed to parse CAS PDF: {e}")
             logger.warning("CAS parse error: %s", e)
+        print(f"Parsed {len(result.transactions)} transactions and {len(result.snapshots)} snapshots from CAS")
+        print(result.snapshots)
         return result
 
     def _extract_text(self, file_bytes: bytes) -> str:
@@ -90,11 +92,15 @@ class CASImporter(BaseImporter):
                 continue
 
             # Closing balance → end of transaction section; extract snapshot
+            print("********************")
+            print(stripped)
+            print("********************")
             if "Closing Unit Balance:" in stripped:
                 in_transactions = False
                 snap = self._parse_closing_balance(
                     stripped, current_isin, current_scheme_name
                 )
+                print(f"Parsed snapshot: {snap}")
                 if snap:
                     result.snapshots.append(snap)
                 continue
@@ -228,9 +234,11 @@ class CASImporter(BaseImporter):
         self, line: str, isin: Optional[str], scheme_name: Optional[str]
     ) -> Optional[ParsedFundSnapshot]:
         if not isin:
+            print(f"Cannot parse closing balance without ISIN for line: {line}")
             return None
         m = self.CLOSING_BALANCE_PATTERN.search(line)
         if not m:
+            print(f"Closing balance pattern not matched for line: {line}")
             return None
         try:
             closing_units = float(m.group(1).replace(",", ""))
@@ -238,7 +246,8 @@ class CASImporter(BaseImporter):
             nav_price = float(m.group(3).replace(",", ""))
             total_cost = float(m.group(4).replace(",", ""))
             market_value = float(m.group(5).replace(",", ""))
-        except (ValueError, IndexError):
+        except (ValueError, IndexError) as e:
+            print(f"Error parsing closing balance: {e}")
             return None
         return ParsedFundSnapshot(
             isin=isin,

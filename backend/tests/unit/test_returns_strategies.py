@@ -339,6 +339,40 @@ def test_mf_strategy_stale_snapshot_with_price_uses_units_x_nav():
     assert abs(result - 130000.0) < 0.01   # 1000 units × ₹130
 
 
+def test_mf_strategy_get_invested_value_uses_cas_cost():
+    from datetime import timedelta
+    from app.services.returns.strategies.asset_types.mf import MFStrategy
+    strategy = MFStrategy()
+    asset = _make_asset(asset_type="MF")
+    snap = MagicMock()
+    snap.date = date.today() - timedelta(days=2)
+    snap.market_value_inr = 15_000_000  # ₹1,50,000
+    snap.closing_units = 1000.0
+    snap.total_cost_inr = 12_000_000    # ₹1,20,000 CAS cost basis
+    uow = _make_uow(snap=snap)
+    result = strategy.get_invested_value(asset, uow)
+    assert abs(result - 120000.0) < 0.01   # uses CAS total_cost, not lot engine
+
+
+def test_mf_strategy_fully_redeemed_fund():
+    from datetime import timedelta
+    from app.services.returns.strategies.asset_types.mf import MFStrategy
+    strategy = MFStrategy()
+    asset = _make_asset(asset_type="MF")
+    snap = MagicMock()
+    snap.date = date.today() - timedelta(days=2)
+    snap.market_value_inr = 0
+    snap.closing_units = 0
+    snap.total_cost_inr = 0
+    buy1 = _make_txn("SIP",  -5_000_000, date(2022, 1, 1))  # ₹50,000 outflow
+    sell1 = _make_txn("REDEMPTION", 6_000_000, date(2023, 1, 1))  # ₹60,000 inflow
+    uow = _make_uow(snap=snap, transactions=[buy1, sell1])
+    result = strategy.compute(asset, uow)
+    assert result.current_value == 0
+    assert result.message == "Fully redeemed"
+    assert result.invested is not None and result.invested > 0   # sum of outflows
+
+
 def test_mf_strategy_stale_snapshot_no_price_falls_back():
     from datetime import timedelta
     from app.services.returns.strategies.asset_types.mf import MFStrategy

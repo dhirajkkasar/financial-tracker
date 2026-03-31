@@ -11,6 +11,8 @@ Personal, local-first, single-user investment portfolio tracker.
 - **DB:** SQLite locally → PostgreSQL in cloud (one `DATABASE_URL` env var switches)
 - **Execution plan:** `execution_plan.md` (7 phases; Phases 1–5 complete)
 
+---
+
 ## Commands
 
 ### Backend
@@ -168,36 +170,14 @@ Adding a new asset type: create a 3-line leaf class in `services/returns/strateg
 ### NPS Price Feed (npsnav.in)
 - **Source:** `https://npsnav.in/api`
 - **Bulk scheme resolution (once per `refresh_all`):**
-  1. `GET /api/schemes` → all 150+ scheme codes + names
-  2. Fuzzy-match each NPS asset name via `SequenceMatcher` (threshold 0.6)
-  3. Persist resolved SM code to `asset.identifier`; always overwrites with latest
-- **Per-asset NAV:** `GET /api/{scheme_code}` → plain-text float
-- **Staleness:** 1 day (same as MF)
-- If `asset.identifier` already starts with `SM`, used directly without scheme lookup
 
 ### GoalAllocation Rules
 - `allocation_pct` is set explicitly per `(asset, goal)` pair
 - **Sum of `allocation_pct` across ALL goals for one asset must equal exactly 100%** (or 0 if no allocations exist)
 - Must be a **whole number and a multiple of 10** (10, 20, 30 ... 100)
-- Violation → API returns 422
-- `current_value_toward_goal = asset_current_value × allocation_pct / 100`
-- `find_goal()` in `cli.py` fuzzy-matches goal names via `difflib.get_close_matches(cutoff=0.4)`
-- `--asset "Name:pct"` parsed with `rsplit(":", 1)` to handle colons in asset names
-- Allocation POST failures in `add goal` are non-fatal — goal still created, error printed
-- `_api()` handles 204 No Content (DELETE endpoints) by returning `{}` when response has no content
 
 ### Tax Module (Phase 5 — complete)
 - **Rates are config-driven:** `config/tax_rates/2024-25.yaml`, `config/tax_rates/2025-26.yaml`
-  - Adding a new FY = drop a new YAML file; zero code changes
-  - `TaxRatePolicy` (in `engine/tax_engine.py`) reads and caches per-FY YAML files
-  - `TaxRate` dataclass returned: `stcg_rate_pct`, `ltcg_rate_pct`, `is_stcg_slab`, `is_ltcg_slab`, `ltcg_exemption_inr`, `is_exempt`, `maturity_exempt`
-- **FY2024-25 rules:**
-  - `STOCK_IN` / equity `MF`: STCG 20% (<1yr), LTCG 12.5% (≥1yr), ₹1.25L exemption
-  - `STOCK_US` / `RSU`: STCG slab (<2yr), LTCG 12.5% (≥2yr)
-  - Debt `MF` (post Apr 2023): slab rate regardless of holding period
-  - `GOLD` / `SGB`: STCG slab (<3yr), LTCG 12.5% (≥3yr); SGB held to maturity = tax-free
-  - `REAL_ESTATE`: STCG slab (<2yr), LTCG 12.5% (≥2yr)
-  - `FD` / `RD` / `EPF` (above threshold): slab rate; `PPF`: EEE (fully exempt)
 - **API endpoints:** `GET /tax/summary?fy=2024-25`, `GET /tax/unrealised`, `GET /tax/harvest-opportunities`
 
 ### Price Fetchers (`services/price_feed.py`)
@@ -213,23 +193,6 @@ Self-registering via `@register_fetcher` decorator. `staleness_threshold` is a `
 
 Adding a new price source: create a new `@register_fetcher` class with `asset_types` and `staleness_threshold` ClassVars. No edits to existing files.
 
-### Startup Behaviour
-- FastAPI lifespan event on startup:
-  1. Seeds interest rates (idempotent)
-  2. Runs `DepositsService.mark_matured_fds()` — marks FDs/RDs past maturity date as `is_matured=True` / `is_active=False`, back-fills `maturity_amount` if missing
-- Price refresh is **on-demand only** via `python cli.py refresh-prices`
-
-### DepositsService (`backend/app/services/deposits_service.py`)
-- `mark_matured_fds()` — queries active FD/RD assets whose `maturity_date < today` and `is_matured=False`; computes `maturity_amount` from `fd_engine`; sets `is_matured=True`, `is_active=False`; commits once at the end
-- Called automatically on startup; idempotent
-
-### FD vs RD in FDDetail
-- `fd_type = FD` → `principal_amount` = lump-sum deposit (paise)
-- `fd_type = RD` → `principal_amount` = **monthly installment** (paise); total principal from `CONTRIBUTION` transactions
-
-### PPF/EPF XIRR
-- Requires at least one `Valuation` entry; returns `null` XIRR with message if none exists
-
 ---
 
 ## Backend Architecture
@@ -244,20 +207,25 @@ api/
 services/
   returns/
     strategies/
-      base.py          → AssetReturnsStrategy ABC (template method)
-      market_based.py  → MarketBasedStrategy (units × price NAV, FIFO lots)
-      valuation_based.py → ValuationBasedStrategy (latest Valuation entry)
-      asset_types/     → One 3-line leaf class per asset type (@register_strategy)
-      registry.py      → DefaultReturnsStrategyRegistry; IReturnsStrategyRegistry protocol
-    returns_service.py → Thin coordinator: looks up strategy, calls compute()
+      base.py                → AssetReturnsStrategy ABC (template method)
+      market_based.py        → MarketBasedStrategy (units × price NAV, FIFO lots)
+      valuation_based.py     → ValuationBasedStrategy (latest Valuation entry)
+      asset_types/           → One 3-line leaf class per asset type (@register_strategy)
+      registry.py            → DefaultReturnsStrategyRegistry; IReturnsStrategyRegistry protocol
+    returns_service.py       → Thin wrapper: single asset via strategy registry
+    portfolio_returns_service.py → Portfolio-level aggregations (breakdown, allocation, gainers, overview, lots)
   imports/
-    orchestrator.py    → ImportOrchestrator: preview/commit flow; fires ImportCompletedEvent
+    orchestrator.py    → ImportOrchestrator: unified preview/commit flow (handles PPF/EPF valuations)
+                         Calls importer.validate() for post-parse validation
+                         Runs post-processors; fires ImportCompletedEvent
     deduplicator.py    → InMemoryDeduplicator / DBDeduplicator (pure, injectable)
     preview_store.py   → TTL store for pending previews
     post_processors/
       base.py          → IPostProcessor protocol
       stock.py         → marks asset inactive when net_units ≤ 0
       mf.py            → persists CAS snapshots
+      ppf.py           → creates valuation from PPF CSV import
+      epf.py           → ensures EPF asset always is_active=True
   event_bus.py         → SyncEventBus + IEventBus protocol + ImportCompletedEvent
   price_feed.py        → BasePriceFetcher ABC + @register_fetcher; staleness on class
   tax_service.py       → receives TaxRatePolicy via DI
@@ -271,10 +239,16 @@ repositories/
   *.py                → All DB queries here. No db.commit() calls — UoW commits.
 
 importers/
-  base.py             → BaseImporter ABC (source / format / asset_type ClassVars)
+  base.py             → BaseImporter ABC + ValidationResult dataclass
+                        source / format / asset_type ClassVars
+                        parse() → ImportResult
+                        validate() → ValidationResult (post-parse validation hook)
   registry.py         → @register_importer decorator + ImporterRegistry
   pipeline.py         → ImportPipeline: parse → validate → deduplicate
-  *_parser.py         → Concrete importers; each decorated with @register_importer
+  helpers/
+    exchange_rate_validation_helper.py → Fidelity exchange_rates JSON validation
+  *_importer.py       → Concrete importers; each decorated with @register_importer
+                        Fidelity importers override validate() for exchange_rates checking
 
 engine/
   lot_engine.py       → stcg_days accepted as parameter (not hardcoded per asset type)
@@ -314,90 +288,15 @@ config/
 - **All wiring in `api/dependencies.py`** — the only file where concrete service/repo types appear
 - Services declare abstract dependencies (`IUnitOfWorkFactory`, `IReturnsStrategyRegistry`, etc.) in `__init__` — never instantiate anything internally
 - **Rule:** No service file may contain the word `Session` or import a concrete repo class
-- `api/dependencies.py` factory pattern:
-  ```python
-  def get_returns_service(db: Session = Depends(get_db)) -> ReturnsService:
-      return ReturnsService(
-          uow_factory=lambda: UnitOfWork(db),
-          strategy_registry=DefaultReturnsStrategyRegistry(),
-      )
-  ```
-- **Testing:** inject fakes directly — no `dependency_overrides`, no `monkeypatch`:
-  ```python
-  service = ReturnsService(
-      uow_factory=lambda: FakeUnitOfWork(assets=[sample_asset]),
-      strategy_registry=FakeStrategyRegistry(...),
-  )
-  ```
 
 ### UnitOfWork Pattern
 - Services use `with self._uow_factory() as uow:` for all DB access
-- `uow` exposes: `uow.assets`, `uow.transactions`, `uow.valuations`, `uow.price_cache`, `uow.fd`, `uow.cas_snapshots`, `uow.goals`, `uow.snapshots`, `uow.interest_rates`, `uow.important_data`
 - All writes in the block commit atomically on exit; any exception triggers full rollback
-- `uow.flush()` makes IDs available mid-block without committing
 - Repositories have **no `db.commit()` calls** — commit is solely the UoW's responsibility
-
-### Import Architecture
-- **Adding a new importer:** create `importers/new_source_parser.py` extending `BaseImporter` with `@register_importer`. No other files change.
-- **`ImportOrchestrator`** (`services/imports/orchestrator.py`): preview → store result → commit → run post-processors → fire `ImportCompletedEvent`
-- **`ImportPipeline`** (`importers/pipeline.py`): `parse → validate → deduplicate` — called by orchestrator
-- **Post-processors** (`services/imports/post_processors/`): implement `IPostProcessor` protocol; registered per asset type in `api/dependencies.py`
-- **`SyncEventBus`** (`services/event_bus.py`): subscribe handlers at startup in `api/dependencies.py`; `ImportOrchestrator` only knows `IEventBus`, not concrete handlers
-
-### Exception Hierarchy
-`AppError → NotFoundError / DuplicateError / ValidationError`
-
-### Schemas
-- **`schemas/responses/`** — service-layer typed output; services annotate return types with these
-- **`MoneyMixin`** — paise↔INR conversion applied in response model validators; never scattered in service code
-- **`schemas/requests/`** — existing, unchanged
-
-### Logging
-`logging` module only. `WARNING` for failed fetches; `INFO` for imports/refreshes.
-
-### Test Structure
-```
-tests/
-├── conftest.py          # Shared: in-memory SQLite fixture (db), TestClient, DI overrides
-├── factories.py         # make_asset(), make_transaction(), make_cashflow() helpers
-├── fixtures/            # Static files: sample_cas.pdf, zerodha_tradebook.csv, nps_sample.csv
-├── unit/
-│   ├── conftest.py      # Unit-specific fixtures (no DB, no HTTP)
-│   └── test_*.py        # Pure engine + strategy tests — use FakeUnitOfWork, not mocks
-└── integration/
-    ├── conftest.py      # Seeded DB state fixtures
-    └── test_*.py        # TestClient tests against in-memory SQLite
-```
-- Integration test DB fixture is `db` (not `test_db`)
-- Unit tests for strategies use `FakeUnitOfWork` injected directly — no `dependency_overrides`
 
 ---
 
 ## Frontend — Key Decisions
-
-### Goals Overview Widget
-- `GoalsWidget` (`components/domain/GoalsWidget.tsx`) renders compact goal progress rows on the overview page
-- Uses existing `useGoals()` hook — no new API calls; placed between Net Worth Chart and allocation donuts in `app/page.tsx`
-- Uses design-system tokens (bg-card, border-border, text-accent) — NOT hardcoded Tailwind colors
-
-### P&L Display
-- **Current P&L** = unrealized gains (st_unrealised + lt_unrealised) if lot-based, else current − invested
-- **All-time P&L** = unrealized + realized (all 4 lot fields) if lot-based, else same as Current P&L
-- ST/LT breakdown removed from HoldingsTable and AssetSummaryCards — detail only on the Tax page
-- `AssetSummaryCards` always shows 5 cards: Invested | Current Value | Current P&L (with %) | All-time P&L | XIRR
-- `HoldingsTable` columns: Name | Type | Invested | Current Value | Current P&L (INR + % sub) | All-time P&L | XIRR
-- Deposit assets (FD/RD) show an extra row: Taxable Interest | Est. Tax (30%)
-
-### Asset Ordering
-- All asset listing pages sort by `current_value` descending (nulls last) — in `useAssetsWithReturns`
-
-### Overview Breakdown Table
-- "Summary by Asset Type" table includes Current P&L and All-time P&L columns
-- All-time P&L includes inactive/closed asset net transactions (realized gains from sold positions)
-
-### Nav Tabs
-Defined in `constants/index.ts` → `NAV_TABS`:
-Overview | Stocks | Mutual Funds | Deposits | PPF | EPF | NPS | US Stocks | Gold | Real Estate | Goals | Tax | Personal Info
 
 ### Frontend Architecture
 ```
@@ -409,77 +308,14 @@ lib/api.ts          → Fully typed API client; all calls go through here
 lib/formatters.ts   → formatINR, formatPct, formatXIRR (handles null → '—'); never format inline in JSX
 constants/index.ts  → Asset type labels, colors, thresholds, NAV_TABS — no magic strings in components
 ```
-- **Server vs Client Components**: default Server; `'use client'` only for charts, forms, sliders
-- **Loading states**: `<Skeleton />` per section — no full-page spinners
-- **Error Boundaries**: wrap all chart sections
-
 ---
 
-## Known Fixes Applied (docs were stale)
-1. `api-routes.md` — added `RSU` to asset_type enum; added `VEST` to transaction type enum
-2. Frontend directory is `frontend/app/` (no `/src/` prefix — App Router directly in `frontend/`)
-3. NPS returns: MARKET_BASED (not VALUATION_BASED); NAV auto-fetched from npsnav.in
-4. `requirements.md` mentions React+Vite — project uses Next.js (ignore)
-5. Test conftest fixture is `db` (not `test_db`) — in-memory SQLite session used in integration tests
+### CLI Usage
+```bash
+python cli.py import fidelity-rsu NASDAQ_AMZN.csv --exchange-rates '{"2025-03": 86.5, "2025-04": 85.2}'
+python cli.py import fidelity-sale sale.pdf --exchange-rates '{"2025-02": 84.0}'
+```
 
----
-
-## PPF / EPF Import
-
-### PPF CSV Parser (`backend/app/importers/ppf_csv_parser.py`)
-- Parses SBI PPF account statement CSVs; account number from header; bank from IFSC first 4 chars
-- Asset name: `"PPF - {bank_name}"` (e.g. "PPF - SBI")
-- `txn_id`: `ppf_csv_` + SHA256(account_number|txn_type|date_iso|amount_paise)
-- "INTEREST" in details → `INTEREST`; other credits → `CONTRIBUTION`; debits → `WITHDRAWAL`
-- Service auto-creates one `Valuation` from closing balance
-
-### EPF PDF Parser (`backend/app/importers/epf_pdf_parser.py`)
-- Parses **page 1 only** of EPFO member passbook PDFs (page 2 = "Taxable Data" — causes duplicates)
-- **"Cont. For MMYYYY" rows** → up to 3 CONTRIBUTION transactions (Employee / Employer / EPS)
-- **CR rows without "Cont. For"** (transfer-ins) → CONTRIBUTION with "Transfer In - *" notes
-- **"Int. Updated upto" rows** → 3 separate INTEREST transactions (Employee / Employer / EPS)
-- **"Deduction of TDS" row** → INTEREST with negative amount
-- **"Claim: Against PARA 57(1)" row** → 1 TRANSFER transaction
-- EPF asset always `is_active=True`; invested = sum CONTRIBUTION outflows; current = invested + INTEREST inflows − TDS
-
-### PPFEPFImportService (`backend/app/services/ppf_epf_import_service.py`)
-- Direct import (no preview/commit); raises `NotFoundError` (→ 404) if asset doesn't exist
-- `POST /import/ppf-csv` — returns `{inserted, skipped, valuation_created, ...}`
-- `POST /import/epf-pdf` — returns `{inserted, skipped, epf_valuation_created, ...}`
-
-### EPF Manual Contribution CLI (`add epf-contribution`)
-- `--employee-share` required; `--eps-share` defaults 1250; `--employer-share` defaults `employee - eps`
-- Stable txn_ids via `"epf_" + sha256("|".join(parts))` — must match PDF parser exactly
-- Catch `SystemExit` and check `"409" in str(exc)` to treat duplicates as skipped
-
-### EPS Convention
-- No separate EPS asset; all contributions roll up to EPF asset with `notes="Pension Contribution (EPS)"`
-
----
-
-## Fidelity RSU Import
-
-### Fidelity RSU CSV Parser (`backend/app/importers/fidelity_rsu_csv_parser.py`)
-- Filename must be `{MARKET}_{TICKER}.csv` (e.g. `NASDAQ_AMZN.csv`)
-- Creates `VEST` transactions; `txn_id`: `fidelity_rsu_` + SHA-256[:16] of `ticker|date|qty_int|cost_int`
-- `exchange_rates` dict maps `"YYYY-MM"` → USD/INR; missing month → error per row
-- Footer detection uses month-abbreviation allowlist (not `isalpha()`)
-- Call `extract_required_month_years(file_bytes)` before `parse()`
-
-### Fidelity Sale PDF Parser (`backend/app/importers/fidelity_pdf_parser.py`)
-- Uses `pdfplumber`; ticker from `"TICK: Company Name"` line
-- `txn_id`: `fidelity_sale_` + SHA-256[:16] of `ticker|date_sold|date_acquired|qty_int`
-- PDF gain/loss can be `+ $0.00` (space between sign and `$`) — regex uses `[+\-]?\s*\$`
-- Call `extract_required_month_years(file_bytes)` before `parse()`
-
-### forex_rate field
-- `ParsedTransaction.forex_rate: Optional[float]` — USD/INR at import time; persisted to `Transaction.forex_rate`
-- `currency="USD"` set automatically on `STOCK_US` assets created via Fidelity import
-
-### API Endpoints
-- `POST /import/fidelity-rsu-csv` — file + `exchange_rates` JSON form field; 422 if any month missing
-- `POST /import/fidelity-sale-pdf` — same pattern; both use `_fidelity_preview()` helper in `api/imports.py`
-
-### CLI Pattern for New Importers
-- Call `_check_file(file_path)` as first line (user-friendly error on bad path)
-- CLI calls `extract_required_month_years()` directly — never duplicate the regex inline
+# Import with exchange_rates
+python cli.py import fidelity-rsu NASDAQ_AMZN.csv --exchange-rates '{"2025-03": 86.5, "2025-04": 85.2}'
+```

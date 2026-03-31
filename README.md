@@ -303,18 +303,50 @@ uv run pytest tests/unit/
 uv run pytest tests/integration/
 ```
 
-## Importing Data
+## Unified Import Pipeline
 
-### Mutual Funds (CAS PDF)
-`POST /import/cas-pdf` — upload a CAMS or KFintech CAS PDF. Preview first, then commit.
+All file imports use a consistent **Preview → Commit** workflow:
 
-### NPS
-`POST /import/nps-csv` — upload NSDL NPS transaction statement CSV.
+1. **Preview** — Parse file, deduplicate, show preview
+2. **Commit** — Persist transactions, trigger post-processors, create valuations
 
-### Stocks
-`POST /import/broker-csv?broker=zerodha` — Zerodha tradebook CSV
+### Supported Import Formats
+
+| Source | Format | Asset Type(s) | Method |
+|---|---|---|---|
+| Zerodha | Tradebook CSV | STOCK_IN | `POST /import/preview-file` |
+| CAMS/KFintech | CAS PDF | MF | `POST /import/preview-file` |
+| NSDL | NPS CSV | NPS | `POST /import/preview-file` |
+| SBI/Banks | PPF CSV | PPF | `POST /import/preview-file` |
+| EPFO | EPF PDF | EPF | `POST /import/preview-file` |
+| Fidelity | RSU CSV | STOCK_US | `POST /import/preview-file` + exchange_rates |
+| Fidelity | Sale PDF | STOCK_US | `POST /import/preview-file` + exchange_rates |
+| Groww | CSV | MF | `POST /import/preview-file` |
+
+### Fidelity Imports (Exchange Rates)
+
+Fidelity importers require USD/INR exchange rates for the transaction months:
+
+```bash
+# CLI
+python cli.py import fidelity-rsu NASDAQ_AMZN.csv --exchange-rates '{"2025-03": 86.5, "2025-04": 85.2}'
+
+# API
+POST /import/preview-file
+  source=fidelity_rsu
+  format=csv
+  file=<file>
+  user_inputs={"2025-03": 86.5, "2025-04": 85.2}
+```
 
 All imports are **idempotent** — re-importing the same file creates 0 new records.
+
+### PPF/EPF Imports
+
+PPF and EPF now use the same orchestrator pipeline as other assets:
+- **PPF CSV** — auto-creates closing valuation from CSV balance
+- **EPF PDF** — parses monthly contributions, interests, and transfers
+- Asset auto-created if not found; EPF asset always marked `is_active=True`
 
 ## Price Feeds
 
@@ -325,6 +357,13 @@ Manual price refresh via CLI:
 python cli.py refresh-prices
 ```
 
-On startup, the backend seeds interest rates (idempotent), auto-matures past-due FDs/RDs, and attempts a background price refresh (non-blocking, logs warnings if it fails).
+On startup, the backend:
+1. Seeds interest rates (idempotent)
+2. Auto-matures past-due FDs/RDs
+3. Attempts background price refresh (non-blocking)
 
-NPS NAV is fetched from [npsnav.in](https://npsnav.in/nps-api) — scheme codes are auto-discovered by matching asset names.
+**Supported price sources:**
+- MF NAV: [mfapi.in](https://mfapi.in) — 1 day staleness
+- NPS NAV: [npsnav.in](https://npsnav.in/api) — 1 day staleness, auto-discovered by name matching
+- Stocks/Gold: [yfinance](https://finance.yahoo.com/) — 6 hours staleness
+- US stocks + forex: yfinance — 6 hours staleness

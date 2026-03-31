@@ -43,6 +43,8 @@ class AssetReturnsStrategy(ABC):
         invested = self.get_invested_value(asset, uow)
         current = self.get_current_value(asset, uow)
         cashflows = self.build_cashflows(asset, uow)
+        if current is not None and current > 0:
+            cashflows = cashflows + [(date.today(), -current)]
         xirr = compute_xirr(cashflows) if len(cashflows) >= 2 else None
         pnl = (current - invested) if (current is not None and invested is not None) else None
         pnl_pct = (pnl / invested * 100) if (pnl is not None and invested and invested > 0) else None
@@ -70,15 +72,20 @@ class AssetReturnsStrategy(ABC):
         ...
 
     def build_cashflows(self, asset, uow: UnitOfWork) -> list[tuple[date, float]]:
-        """Default: standard signed cashflows for XIRR computation."""
+        """
+        Default: iterate all non-excluded transactions, negate DB sign.
+
+        DB stores outflows as negative paise (BUY, SIP, CONTRIBUTION, VEST).
+        Negating gives a positive cashflow for outflows — consistent with the
+        convention used throughout the strategy layer. compute() appends the
+        terminal inflow (current_value, negated) so compute_xirr sees mixed signs.
+        """
         txns = uow.transactions.list_by_asset(asset.id)
-        cashflows = []
-        for t in txns:
-            if t.type.value in EXCLUDED_TYPES:
-                continue
-            amount_inr = t.amount_inr / 100  # paise → INR
-            cashflows.append((t.date, -amount_inr))  # negative = outflow for XIRR
-        return cashflows
+        return [
+            (t.date, -(t.amount_inr / 100))
+            for t in txns
+            if t.type.value not in EXCLUDED_TYPES
+        ]
 
     def compute_lots(self, asset, uow: UnitOfWork) -> list:
         """Default: lots not supported. Override in MarketBasedStrategy."""

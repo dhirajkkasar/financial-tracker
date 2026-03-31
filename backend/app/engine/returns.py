@@ -53,7 +53,6 @@ def compute_xirr(cashflows: list[tuple[date, float]]) -> float | None:
             return round(result, 6)
     except Exception as e:
         logger.error(f"Brentq - Error occurred while computing XIRR: {e}")
-        logger.info(f"cashflows: {cashflows}")
         pass
 
     # Fallback: Newton-Raphson from multiple starting points including deeply negative

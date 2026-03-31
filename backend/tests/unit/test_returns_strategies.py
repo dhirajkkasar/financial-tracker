@@ -491,6 +491,62 @@ def test_market_based_bonus_lot_buy_price_is_zero():
     assert bonus_lot is not None
 
 
+def test_market_based_compute_alltime_pnl_includes_realised():
+    from app.services.returns.strategies.asset_types.stock_in import StockINStrategy
+    strategy = StockINStrategy()
+    asset = _make_asset(asset_type="STOCK_IN")
+    price = MagicMock()
+    price.price_inr = 300000  # ₹3000/unit
+    price.is_stale = False
+    price.fetched_at = MagicMock()
+    price.fetched_at.isoformat.return_value = "2024-01-01T00:00:00"
+    # Buy 100 units at ₹1000 each
+    buy = _make_txn("BUY", -100_000_000, date(2020, 1, 1), units=100.0, lot_id="lot1", price_pu=1000.0)
+    # Sell 50 units at ₹2000 each = ₹1,00,000 inflow (realised ₹50,000 gain)
+    sell = _make_txn("SELL", 20_000_000, date(2022, 1, 1), units=50.0)
+    uow = _make_uow(price=price, transactions=[buy, sell])
+    result = strategy.compute(asset, uow)
+    # Realised: sold 50 units at ₹2000 cost ₹50,000 → gain ₹50,000
+    assert result.alltime_pnl is not None
+    # alltime_pnl >= current_pnl (includes realised)
+    assert result.alltime_pnl >= (result.current_pnl or 0)
+    assert result.st_realised_gain is not None or result.lt_realised_gain is not None
+
+
+def test_market_based_compute_sets_total_units_avg_price_current_price():
+    from app.services.returns.strategies.asset_types.stock_in import StockINStrategy
+    strategy = StockINStrategy()
+    asset = _make_asset(asset_type="STOCK_IN")
+    price = MagicMock()
+    price.price_inr = 200000   # ₹2000/unit
+    price.is_stale = False
+    price.fetched_at = MagicMock()
+    price.fetched_at.isoformat.return_value = "2024-01-01T00:00:00"
+    buy = _make_txn("BUY", -20_000_000, date(2023, 1, 1), units=100.0, lot_id="lot1", price_pu=2000.0)
+    uow = _make_uow(price=price, transactions=[buy])
+    result = strategy.compute(asset, uow)
+    assert abs((result.total_units or 0) - 100.0) < 0.01
+    assert result.avg_price is not None
+    assert abs((result.current_price or 0) - 2000.0) < 0.01
+
+
+def test_market_based_compute_sets_cagr():
+    from app.services.returns.strategies.asset_types.stock_in import StockINStrategy
+    strategy = StockINStrategy()
+    asset = _make_asset(asset_type="STOCK_IN")
+    price = MagicMock()
+    price.price_inr = 400000   # ₹4000/unit
+    price.is_stale = False
+    price.fetched_at = MagicMock()
+    price.fetched_at.isoformat.return_value = "2024-01-01T00:00:00"
+    # Buy 2 years ago at ₹2000 each
+    buy_date = date(2024, 1, 1)   # the test is run with today=2026-03-31
+    buy = _make_txn("BUY", -400_000_000, buy_date, units=100.0, lot_id="lot1", price_pu=2000.0)
+    uow = _make_uow(price=price, transactions=[buy])
+    result = strategy.compute(asset, uow)
+    assert result.cagr is not None
+
+
 # ── ReturnsService ─────────────────────────────────────────────────────────
 
 def test_returns_service_get_all_returns_empty():

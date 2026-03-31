@@ -2,25 +2,18 @@ import math
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.api.dependencies import get_portfolio_returns_service
 from app.middleware.error_handler import ValidationError
 from app.schemas.returns import (
     ReturnResponse, OverviewReturnsResponse, BreakdownResponse,
     AllocationResponse, GainersResponse, BulkReturnResponse,
 )
-from app.services.returns.strategies.registry import DefaultReturnsStrategyRegistry
 from app.services.returns.portfolio_returns_service import PortfolioReturnsService
 
 router = APIRouter(tags=["returns"])
 
 ALLOWED_PAGE_SIZES = {10, 25, 50}
-
-
-def get_portfolio_returns_service(db: Session = Depends(get_db)) -> PortfolioReturnsService:
-    strategy_registry = DefaultReturnsStrategyRegistry()
-    return PortfolioReturnsService(db, strategy_registry)
 
 
 def _paginate(items: list, page: int, page_size: int) -> dict:

@@ -1,19 +1,14 @@
 import logging
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.api.dependencies import get_tax_service
 from app.middleware.error_handler import ValidationError
 from app.services.tax_service import TaxService
 from app.engine.tax_engine import parse_fy
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/tax", tags=["tax"])
-
-
-def get_tax_service(db: Session = Depends(get_db)) -> TaxService:
-    return TaxService(db)
 
 
 @router.get("/summary")

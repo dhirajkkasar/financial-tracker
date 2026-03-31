@@ -145,6 +145,16 @@ class CorpActionsService:
                 result[k] += ar[k]
         return result
 
+    def process_asset_by_id(self, asset_id: int) -> dict:
+        """Fetch and apply corp actions for one asset by ID. Validates type."""
+        from app.middleware.error_handler import NotFoundError, ValidationError
+        asset = self.db.query(Asset).filter(Asset.id == asset_id).first()
+        if not asset:
+            raise NotFoundError(f"Asset {asset_id} not found")
+        if asset.asset_type != AssetType.STOCK_IN:
+            raise ValidationError("Corp actions only apply to STOCK_IN assets")
+        return self.process_asset(asset)
+
     def process_asset(self, asset: Asset) -> dict:
         """Fetch and apply corp actions for one asset. Returns result dict."""
         result = _empty_result()

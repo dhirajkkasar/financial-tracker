@@ -547,6 +547,90 @@ def test_market_based_compute_sets_cagr():
     assert result.cagr is not None
 
 
+# ── FDStrategy additional ──────────────────────────────────────────────────
+
+def test_fd_strategy_compute_days_to_maturity_and_accrued():
+    from app.services.returns.strategies.asset_types.fd import FDStrategy
+    strategy = FDStrategy()
+    asset = _make_asset(asset_type="FD")
+    fd = _make_fd_detail(
+        principal_paise=10_000_000,
+        rate_pct=8.0, compounding="QUARTERLY",
+        start_date=date(2024, 1, 1), maturity_date=date(2027, 1, 1),
+    )
+    contrib = _make_txn("CONTRIBUTION", -10_000_000, date(2024, 1, 1))
+    uow = _make_uow(fd_detail=fd, transactions=[contrib], valuations=[])
+    result = strategy.compute(asset, uow)
+    assert result.accrued_value_today is not None
+    assert result.days_to_maturity is not None
+    assert result.days_to_maturity >= 0
+
+
+def test_fd_strategy_taxable_interest_formula_based():
+    from app.services.returns.strategies.asset_types.fd import FDStrategy
+    strategy = FDStrategy()
+    asset = _make_asset(asset_type="FD")
+    # Cumulative FD — no INTEREST transactions posted yet
+    fd = _make_fd_detail(
+        principal_paise=10_000_000,
+        rate_pct=8.0, compounding="QUARTERLY",
+        start_date=date(2024, 1, 1), maturity_date=date(2027, 1, 1),
+    )
+    contrib = _make_txn("CONTRIBUTION", -10_000_000, date(2024, 1, 1))
+    uow = _make_uow(fd_detail=fd, transactions=[contrib], valuations=[])
+    result = strategy.compute(asset, uow)
+    # Taxable interest should be formula-based (accrued - invested), not 0
+    assert result.taxable_interest is not None
+    assert result.taxable_interest >= 0
+
+
+# ── RDStrategy additional ──────────────────────────────────────────────────
+
+def test_rd_strategy_xirr_uses_maturity_amount():
+    from app.services.returns.strategies.asset_types.rd import RDStrategy
+    strategy = RDStrategy()
+    asset = _make_asset(asset_type="RD")
+    fd = _make_fd_detail(
+        principal_paise=500_000,   # ₹5,000/month
+        rate_pct=7.0, compounding="QUARTERLY",
+        start_date=date(2023, 1, 1), maturity_date=date(2024, 1, 1),
+    )
+    contribs = [_make_txn("CONTRIBUTION", -500_000, date(2023, i, 1)) for i in range(1, 13)]
+    uow = _make_uow(fd_detail=fd, transactions=contribs)
+    result = strategy.compute(asset, uow)
+    # XIRR must be computable (maturity_amount terminal was appended)
+    assert result.xirr is not None
+    # XIRR should be roughly 7% for an RD at 7% interest
+    assert 0.04 < result.xirr < 0.12
+
+
+# ── EPFStrategy additional ─────────────────────────────────────────────────
+
+def test_epf_strategy_xirr_excludes_interest_in_cashflows():
+    from app.services.returns.strategies.asset_types.epf import EPFStrategy
+    strategy = EPFStrategy()
+    asset = _make_asset(asset_type="EPF")
+    txns = [
+        _make_txn("CONTRIBUTION", -1_200_000, date(2023, 1, 1)),  # ₹12,000
+        _make_txn("CONTRIBUTION", -1_200_000, date(2023, 4, 1)),  # ₹12,000
+        _make_txn("INTEREST", 480_000, date(2023, 12, 31)),       # ₹4,800 interest
+    ]
+    uow = _make_uow(transactions=txns)
+    flows = strategy.build_cashflows(asset, uow)
+    # Only 2 flows from CONTRIBUTION — INTEREST must NOT appear
+    assert len(flows) == 2
+    assert all(f[1] > 0 for f in flows)   # outflows negated → positive
+
+
+def test_epf_strategy_no_contributions_returns_none_current_value():
+    from app.services.returns.strategies.asset_types.epf import EPFStrategy
+    strategy = EPFStrategy()
+    asset = _make_asset(asset_type="EPF")
+    uow = _make_uow(transactions=[])
+    result = strategy.get_current_value(asset, uow)
+    assert result is None
+
+
 # ── ReturnsService ─────────────────────────────────────────────────────────
 
 def test_returns_service_get_all_returns_empty():

@@ -37,7 +37,7 @@ def active_asset(db):
         name="Parag Parikh Flexi Cap Fund",
         identifier="INF879O01027",
         asset_type=AssetType.MF,
-        asset_class=AssetClass.MIXED,
+        asset_class=AssetClass.EQUITY,
         currency="INR",
         is_active=True,
     )
@@ -53,7 +53,7 @@ def redeemed_asset(db):
         name="Aditya Birla Sun Life Large Cap Fund",
         identifier="INF209K01BR9",
         asset_type=AssetType.MF,
-        asset_class=AssetClass.MIXED,
+        asset_class=AssetClass.DEBT,
         currency="INR",
         is_active=True,  # starts active; import should flip to False
     )
@@ -189,7 +189,7 @@ class TestCasSnapshotCommit:
         from app.repositories.unit_of_work import UnitOfWork
 
         processor = MFPostProcessor()
-        unknown_asset = Asset(name="Unknown", identifier="INF999Z99ZZ9", asset_type=AssetType.MF, asset_class=AssetClass.MIXED, currency="INR")
+        unknown_asset = Asset(name="Unknown", identifier="INF999Z99ZZ9", asset_type=AssetType.MF, asset_class=AssetClass.EQUITY, currency="INR")
         db.add(unknown_asset)
         db.commit()
 

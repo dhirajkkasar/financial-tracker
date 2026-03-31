@@ -112,6 +112,8 @@ class MarketBasedStrategy(AssetReturnsStrategy):
             if units_remaining > 0:
                 scale = units_remaining / lot.units if lot.units else 0.0
                 total_cost += lot.buy_amount_inr * scale
+            else:
+                total_cost += lot.buy_amount_inr
         
         return total_cost if total_cost > 0 else 0.0
 

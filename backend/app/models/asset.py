@@ -25,7 +25,6 @@ class AssetClass(str, enum.Enum):
     DEBT = "DEBT"
     GOLD = "GOLD"
     REAL_ESTATE = "REAL_ESTATE"
-    MIXED = "MIXED"
 
 
 class Asset(Base):

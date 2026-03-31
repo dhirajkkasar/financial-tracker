@@ -90,3 +90,34 @@ class AssetReturnsStrategy(ABC):
     def compute_lots(self, asset, uow: UnitOfWork) -> list:
         """Default: lots not supported. Override in MarketBasedStrategy."""
         return []
+
+    def get_portfolio_cashflows(self, asset, uow: UnitOfWork) -> list[tuple[date, float]]:
+        """
+        Cashflows for portfolio-level XIRR aggregation (no terminal value included).
+
+        Uses raw DB sign: outflows are negative (BUY, SIP, CONTRIBUTION, VEST),
+        inflows are positive (SELL, INTEREST, DIVIDEND, etc.). The caller appends
+        the portfolio terminal inflow (+total_current_value) once all assets are
+        aggregated.
+
+        Default: all non-excluded transactions — correct for market-based assets
+        where partial sells/dividends are real cash events. ValuationBasedStrategy
+        overrides this to outflow-only to avoid double-counting embedded interest.
+        """
+        txns = uow.transactions.list_by_asset(asset.id)
+        return [
+            (t.date, t.amount_inr / 100.0)
+            for t in txns
+            if t.type.value not in EXCLUDED_TYPES
+        ]
+
+    def get_inactive_realized_gain(self, asset, uow: UnitOfWork) -> Optional[float]:
+        """
+        Realized gain from a closed/inactive position for portfolio all-time P&L.
+
+        Returns None by default — market-based assets track realized gains through
+        the lot engine (st_realised_gain / lt_realised_gain) and need no extra pass.
+        ValuationBasedStrategy overrides this for fixed-income assets where the
+        terminal gain = final_value − invested.
+        """
+        return None

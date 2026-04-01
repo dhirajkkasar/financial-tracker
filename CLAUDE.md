@@ -9,7 +9,7 @@ Personal, local-first, single-user investment portfolio tracker.
 - **Backend:** Python 3.11+ FastAPI + SQLAlchemy + Alembic (`backend/`)
 - **Frontend:** Next.js App Router + Recharts + axios (`frontend/`)
 - **DB:** SQLite locally → PostgreSQL in cloud (one `DATABASE_URL` env var switches)
-- **Execution plan:** `execution_plan.md` (7 phases; Phases 1–5 complete)
+- **Execution plan:** `execution_plan.md`
 
 ---
 
@@ -22,7 +22,7 @@ cd backend
 # Install dependencies (uses uv lockfile — recommended)
 uv sync --all-extras
 
-# Run dev server (seeds interest rates + auto-matures past-due FDs on startup)
+# Run dev server (on startup: seeds interest rates, auto-matures past-due FDs, backfills missing EPF monthly contributions)
 uvicorn app.main:app --reload
 
 # Run all tests (use uv run — bare pytest/python/python3 are not on PATH)
@@ -153,7 +153,7 @@ AssetReturnsStrategy (ABC, template method)
 │   ├── StockINStrategy          stcg_days=365
 │   ├── StockUSStrategy          stcg_days=730; override get_invested_value (USD→INR at vest)
 │   ├── RSUStrategy              stcg_days=730; override build_cashflows (VEST unit calc)
-│   ├── MFStrategy               stcg_days=365; override get_current_value (CAS snapshot first)
+│   ├── MFStrategy               stcg_days=365
 │   ├── NPSStrategy              stcg_days=365
 │   ├── GoldStrategy             stcg_days=1095
 │   └── SGBStrategy              stcg_days=1095; maturity tax-free check
@@ -176,7 +176,7 @@ Adding a new asset type: create a 3-line leaf class in `services/returns/strateg
 - **Sum of `allocation_pct` across ALL goals for one asset must equal exactly 100%** (or 0 if no allocations exist)
 - Must be a **whole number and a multiple of 10** (10, 20, 30 ... 100)
 
-### Tax Module (Phase 5 — complete)
+### Tax Module
 - **Rates are config-driven:** `config/tax_rates/2024-25.yaml`, `config/tax_rates/2025-26.yaml`
 - **API endpoints:** `GET /tax/summary?fy=2024-25`, `GET /tax/unrealised`, `GET /tax/harvest-opportunities`
 
@@ -199,8 +199,9 @@ Adding a new price source: create a new `@register_fetcher` class with `asset_ty
 
 ```
 api/
-  routes/          → HTTP only: parse request → call service → return response model
+  *.py             → HTTP only: parse request → call service → return response model
                      No db: Session. No repo imports. No business logic.
+                     Routes live directly in app/api/ (e.g. assets.py, returns.py, corp_actions.py)
   dependencies.py  → ALL concrete wiring. Every service factory lives here.
                      Rule: no other file may instantiate a concrete service or repo.
 
@@ -226,9 +227,12 @@ services/
       mf.py            → persists CAS snapshots
       ppf.py           → creates valuation from PPF CSV import
       epf.py           → ensures EPF asset always is_active=True
-  event_bus.py         → SyncEventBus + IEventBus protocol + ImportCompletedEvent
-  price_feed.py        → BasePriceFetcher ABC + @register_fetcher; staleness on class
-  tax_service.py       → receives TaxRatePolicy via DI
+  event_bus.py              → SyncEventBus + IEventBus protocol + ImportCompletedEvent
+  price_feed.py             → BasePriceFetcher ABC + @register_fetcher; staleness on class
+  tax_service.py            → receives TaxRatePolicy via DI
+  corp_actions_service.py   → fetches NSE corp actions (bonus, split, dividend) and applies transactions
+  important_data_service.py → key-value store for bank accounts, MF folios, identity docs, insurance
+  epf_auto_contrib_service.py → backfills missing EPF monthly CONTRIBUTION rows on startup
   snapshot_service.py
   deposits_service.py
 
@@ -254,6 +258,7 @@ engine/
   lot_engine.py       → stcg_days accepted as parameter (not hardcoded per asset type)
   tax_engine.py       → TaxRatePolicy + TaxRate dataclass; reads config/tax_rates/{FY}.yaml
   mf_classifier.py    → ISchemeClassifier protocol + DefaultSchemeClassifier
+  mf_scheme_lookup.py → lazy-loaded ISIN → (scheme_code, category) lookup from config/mf_scheme_codes/mf_schemes.csv
   returns.py          → Pure XIRR/CAGR functions
   fd_engine.py, ppf_epf_engine.py, allocation.py → pure functions, no coupling
 
@@ -285,7 +290,7 @@ config/
 - Test deps: `pytest`, `pytest-cov`, `pytest-mock`, `httpx`, `factory-boy`
 
 ### Dependency Injection
-- **All wiring in `api/dependencies.py`** — the only file where concrete service/repo types appear
+- **All wiring in `app/api/dependencies.py`** — the only file where concrete service/repo types appear
 - Services declare abstract dependencies (`IUnitOfWorkFactory`, `IReturnsStrategyRegistry`, etc.) in `__init__` — never instantiate anything internally
 - **Rule:** No service file may contain the word `Session` or import a concrete repo class
 
@@ -314,8 +319,4 @@ constants/index.ts  → Asset type labels, colors, thresholds, NAV_TABS — no m
 ```bash
 python cli.py import fidelity-rsu NASDAQ_AMZN.csv --exchange-rates '{"2025-03": 86.5, "2025-04": 85.2}'
 python cli.py import fidelity-sale sale.pdf --exchange-rates '{"2025-02": 84.0}'
-```
-
-# Import with exchange_rates
-python cli.py import fidelity-rsu NASDAQ_AMZN.csv --exchange-rates '{"2025-03": 86.5, "2025-04": 85.2}'
 ```

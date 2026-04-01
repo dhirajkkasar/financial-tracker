@@ -41,7 +41,13 @@ class ValuationBasedStrategy(AssetReturnsStrategy):
         already embedded in current_value (the portfolio terminal inflow). Including
         intermediate INTEREST inflows alongside the terminal would double-count returns.
         Applies to FD, RD, EPF, PPF, REAL_ESTATE.
+
+        Returns [] for inactive assets: their terminal value is not included in
+        total_current, so including only outflows would produce an orphaned negative
+        cashflow with no corresponding positive terminal — corrupting portfolio XIRR.
         """
+        if not asset.is_active:
+            return []
         txns = uow.transactions.list_by_asset(asset.id)
         return [
             (t.date, t.amount_inr / 100.0)

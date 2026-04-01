@@ -158,10 +158,12 @@ class PortfolioReturnsService:
 
         Includes inactive assets (matured FDs, fully-redeemed stocks, etc.) so that
         alltime_pnl reflects realized gains from closed positions.
+        Returns one row per asset_type with aggregated invested/current/pnl/xirr.
         """
         with self.uow_factory() as uow:
             assets = uow.assets.list(active=None)
-            breakdown = []
+
+            type_data: dict[str, dict] = {}
 
             for asset in assets:
                 try:
@@ -170,19 +172,55 @@ class PortfolioReturnsService:
                     response = strategy.compute(asset, uow)
 
                     total_invested = response.invested or 0.0
-                    if total_invested <= 0 or response.current_value is None or response.current_value <= 0:
+                    current_value = response.current_value or 0.0
+
+                    if total_invested <= 0 and current_value <= 0:
                         continue
 
-                    breakdown.append({
-                        "asset_type": asset_type,
-                        "total_invested": total_invested,
-                        "total_current_value": response.current_value,
-                        "xirr": response.xirr,
-                        "current_pnl": response.current_pnl,
-                        "alltime_pnl": response.alltime_pnl,
-                    })
+                    if asset_type not in type_data:
+                        type_data[asset_type] = {
+                            "total_invested": 0.0,
+                            "total_current_value": 0.0,
+                            "current_pnl": 0.0,
+                            "alltime_pnl": 0.0,
+                            "cashflows": [],
+                        }
+
+                    td = type_data[asset_type]
+                    td["total_invested"] += total_invested
+                    td["total_current_value"] += current_value
+                    td["current_pnl"] += response.current_pnl or 0.0
+                    alltime = response.alltime_pnl if response.alltime_pnl is not None else response.current_pnl
+                    td["alltime_pnl"] += alltime or 0.0
+
+                    # Collect cashflows for per-type XIRR.
+                    # Inactive market-based assets (fully sold) still have real BUY+SELL
+                    # cashflows that belong in XIRR. ValuationBasedStrategy.get_portfolio_cashflows
+                    # returns [] for inactive assets to avoid orphaned outflows.
+                    td["cashflows"].extend(strategy.get_portfolio_cashflows(asset, uow))
+
                 except Exception as e:
                     logger.warning("Error computing breakdown for asset %d: %s", asset.id, str(e))
+
+            breakdown = []
+            for asset_type, td in type_data.items():
+                total_invested = td["total_invested"]
+                total_current = td["total_current_value"]
+
+                if total_invested <= 0 and total_current <= 0:
+                    continue
+
+                cashflows = td["cashflows"] + [(date.today(), total_current)]
+                xirr = compute_xirr(cashflows) if len(cashflows) >= 2 else None
+
+                breakdown.append({
+                    "asset_type": asset_type,
+                    "total_invested": total_invested,
+                    "total_current_value": total_current,
+                    "xirr": xirr,
+                    "current_pnl": round(td["current_pnl"], 2),
+                    "alltime_pnl": round(td["alltime_pnl"], 2),
+                })
 
             breakdown.sort(key=lambda x: x["total_current_value"] or 0, reverse=True)
             return {"breakdown": breakdown}
@@ -301,12 +339,6 @@ class PortfolioReturnsService:
                         results_by_type[asset_type]["invested"] += invested
                         results_by_type[asset_type]["current_value"] += current
 
-                        # Collect cashflows for portfolio XIRR via strategy hook.
-                        # Each strategy decides which transactions to include — market-based
-                        # strategies include all non-excluded txns; valuation-based strategies
-                        # return outflows only to avoid double-counting embedded interest.
-                        all_cashflows.extend(strategy.get_portfolio_cashflows(asset, uow))
-
                         for key in ("st_unrealised_gain", "lt_unrealised_gain"):
                             v = getattr(response, key, None)
                             if v is not None:
@@ -318,6 +350,12 @@ class PortfolioReturnsService:
                             has_interest = True
                         if response.potential_tax_30pct is not None:
                             gain_totals["total_potential_tax"] += response.potential_tax_30pct
+
+                    # Collect cashflows for portfolio XIRR for ALL assets (active + inactive).
+                    # Market-based strategies return BUY+SELL for both active and inactive assets.
+                    # ValuationBasedStrategy.get_portfolio_cashflows returns [] for inactive
+                    # assets to avoid orphaned outflows without a matching terminal inflow.
+                    all_cashflows.extend(strategy.get_portfolio_cashflows(asset, uow))
 
                     # Realised gains: accumulate from all assets (active partial-sells + inactive closed positions)
                     for key in ("st_realised_gain", "lt_realised_gain"):

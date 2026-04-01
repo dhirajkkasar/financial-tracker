@@ -30,7 +30,7 @@ def compute_xirr(cashflows: list[tuple[date, float]]) -> float | None:
     if len(cashflows) < 2:
         return None
     amounts = [cf[1] for cf in cashflows]
-    if all(a < 0 for a in amounts) or all(a >= 0 for a in amounts):
+    if not any(a < 0 for a in amounts) or not any(a > 0 for a in amounts):
         return None
 
     # Sort by date to ensure t0 is earliest
@@ -53,6 +53,7 @@ def compute_xirr(cashflows: list[tuple[date, float]]) -> float | None:
             return round(result, 6)
     except Exception as e:
         logger.error(f"Brentq - Error occurred while computing XIRR: {e}")
+        logger.debug(f"Brentq failed cashflows (first={cashflows[0]}, last={cashflows[-1]}, n={len(cashflows)}, sum={sum(amounts):.2f}, npv_lo={npv(-0.9999):.4e}, npv_hi={npv(100.0):.4e})")
         pass
 
     # Fallback: Newton-Raphson from multiple starting points including deeply negative

@@ -271,7 +271,7 @@ export PORTFOLIO_API=http://localhost:8000
 
 **Backend** (`backend/.env`):
 ```
-DATABASE_URL=sqlite:///./portfolio.db   # SQLite (default)
+DATABASE_URL=sqlite:///./<name_of_the_database_as_set_in_env>.db   # SQLite (default)
 # DATABASE_URL=postgresql://user:pass@host/db   # PostgreSQL (cloud)
 ```
 

@@ -329,6 +329,8 @@ class PortfolioReturnsService:
                         total_invested += invested
                         total_current += current
 
+                        print(f"Asset {asset.id} ({asset.name}): invested={invested}, current={current}, pnl={response.current_pnl}, xirr={response.xirr}")
+
                         if asset_type not in results_by_type:
                             results_by_type[asset_type] = {
                                 "invested": 0.0,
@@ -376,13 +378,15 @@ class PortfolioReturnsService:
                     logger.warning("Error computing overview for asset %d: %s", asset.id, str(e))
 
             # Add total current value as terminal inflow for portfolio XIRR
-            all_cashflows.append((date.today(), total_current))
+            if total_current and total_current > 0:
+                all_cashflows.append((date.today(), total_current))
 
             portfolio_xirr = compute_xirr(all_cashflows) if len(all_cashflows) >= 2 else None
-            total_pnl = total_current - total_invested
-            total_pnl_pct = (total_pnl / total_invested * 100) if total_invested > 0 else None
-            abs_return = compute_absolute_return(total_invested, total_current) if total_invested > 0 else 0.0
+            total_pnl = total_current - total_invested if (total_current and total_current > 0 and total_invested and total_invested > 0) else None
+            total_pnl_pct = (total_pnl / total_invested * 100) if (total_pnl and total_invested and total_invested > 0) else None
+            abs_return = compute_absolute_return(total_invested, total_current) if (total_invested and total_invested > 0 and total_current and total_current > 0) else None
 
+            print(f"Portfolio overview: invested={total_invested}, current={total_current}, pnl={total_pnl}, pnl_pct={total_pnl_pct}, xirr={portfolio_xirr}")
             # Compute P&L % for each asset type
             for asset_type in results_by_type:
                 type_data = results_by_type[asset_type]
@@ -391,6 +395,8 @@ class PortfolioReturnsService:
                 if type_invested > 0:
                     type_data["pnl_pct"] = (type_pnl / type_invested * 100)
                 type_data["pnl"] = type_pnl
+            
+            print(results_by_type)
 
             return {
                 "total_invested": total_invested,

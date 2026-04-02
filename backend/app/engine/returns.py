@@ -1,7 +1,10 @@
 from datetime import date
 import logging
+from typing import Optional
 
 from scipy.optimize import brentq
+
+from app.models.asset import Asset
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +24,7 @@ UNIT_ADD_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST", "BONUS", "SWITCH_IN"}
 UNIT_SUB_TYPES = {"SELL", "REDEMPTION", "SWITCH_OUT", "BILLING"}
 
 
-def compute_xirr(cashflows: list[tuple[date, float]]) -> float | None:
+def compute_xirr(cashflows: list[tuple[date, float]], asset_name="unknown") -> float | None:
     """
     Compute XIRR for irregular cashflows.
     cashflows: list of (date, amount) — negative=outflow, positive=inflow
@@ -52,7 +55,7 @@ def compute_xirr(cashflows: list[tuple[date, float]]) -> float | None:
         if -1 < result < 100:
             return round(result, 6)
     except Exception as e:
-        logger.error(f"Brentq - Error occurred while computing XIRR: {e}")
+        logger.error(f"Brentq - Error occurred while computing XIRR for {asset_name}: {e}")
         logger.debug(f"Brentq failed cashflows (first={cashflows[0]}, last={cashflows[-1]}, n={len(cashflows)}, sum={sum(amounts):.2f}, npv_lo={npv(-0.9999):.4e}, npv_hi={npv(100.0):.4e})")
         pass
 

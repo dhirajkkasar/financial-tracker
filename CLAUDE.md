@@ -76,7 +76,7 @@ npm run lint      # ESLint
 ```
 
 ### Environment Variables
-- **Backend** (`backend/.env`): `DATABASE_URL=sqlite:///./portfolio.db`
+- **Backend** (`backend/.env`): Always check database url in .env file before querying database directly
 - **Frontend** (`frontend/.env.local`): `NEXT_PUBLIC_API_URL=http://localhost:8000`
 - **CLI**: `PORTFOLIO_API=http://localhost:8000` (override default)
 

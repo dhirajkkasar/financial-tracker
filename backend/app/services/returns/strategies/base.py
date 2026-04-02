@@ -41,13 +41,15 @@ class AssetReturnsStrategy(ABC):
 
     def compute(self, asset, uow: UnitOfWork) -> AssetReturnsResponse:
         invested = self.get_invested_value(asset, uow)
+        print(f"DEBUG: get_invested_value for {asset.name} ({asset.asset_type.value}) = {invested}")
         current = self.get_current_value(asset, uow)
+        print(f"DEBUG: get_current_value for {asset.name} ({asset.asset_type.value}) = {current}")
         cashflows = self.build_cashflows(asset, uow)
         if current is not None and current > 0:
             cashflows = cashflows + [(date.today(), -current)]
-        xirr = compute_xirr(cashflows) if len(cashflows) >= 2 else None
-        pnl = (current - invested) if (current is not None and invested is not None) else None
-        pnl_pct = (pnl / invested * 100) if (pnl is not None and invested and invested > 0) else None
+        xirr = compute_xirr(cashflows, asset_name=asset.name) if len(cashflows) >= 2 else None
+        pnl = (current - invested) if (current is not None and current > 0 and invested is not None and invested > 0) else None
+        pnl_pct = (pnl / invested * 100) if (pnl is not None and invested is not None and invested > 0) else None
         return AssetReturnsResponse(
             asset_id=asset.id,
             asset_name=asset.name,

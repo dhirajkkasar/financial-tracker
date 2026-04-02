@@ -54,7 +54,7 @@ class MarketBasedStrategy(AssetReturnsStrategy):
     def get_current_value(self, asset, uow: UnitOfWork) -> Optional[float]:
         """units × latest price_cache NAV, converted from paise to INR."""
         price_entry = uow.price_cache.get_by_asset_id(asset.id)
-        if price_entry is None or price_entry.price_inr is None:
+        if price_entry is None or price_entry.price_inr is None or price_entry.price_inr <= 0:
             return None
 
         txns = uow.transactions.list_by_asset(asset.id)
@@ -67,6 +67,9 @@ class MarketBasedStrategy(AssetReturnsStrategy):
             elif ttype in UNIT_SUB_TYPES:
                 total_units -= units
 
+        if total_units <= 0:
+            return None
+        
         price_inr = price_entry.price_inr / 100  # paise → INR
         return round(total_units * price_inr, 2)
 
@@ -112,8 +115,8 @@ class MarketBasedStrategy(AssetReturnsStrategy):
             if units_remaining > 0:
                 scale = units_remaining / lot.units if lot.units else 0.0
                 total_cost += lot.buy_amount_inr * scale
-            else:
-                total_cost += lot.buy_amount_inr
+            # else:
+            #     total_cost += lot.buy_amount_inr
         
         return total_cost if total_cost > 0 else 0.0
 
@@ -178,10 +181,8 @@ class MarketBasedStrategy(AssetReturnsStrategy):
 
         # all-time P&L = current unrealised P&L + realised
         current_pnl = base.current_pnl
-        if current_pnl is not None or st_realised is not None or lt_realised is not None:
-            alltime_pnl = (current_pnl or 0.0) + (st_realised or 0.0) + (lt_realised or 0.0)
-        else:
-            alltime_pnl = None
+
+        alltime_pnl = (current_pnl or 0.0) + (st_realised or 0.0) + (lt_realised or 0.0)
 
         # CAGR
         cagr = None

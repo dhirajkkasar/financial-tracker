@@ -47,9 +47,14 @@ def test_sign_convention_inflow_types():
 
 
 def test_sign_convention_excluded_types():
-    assert "SWITCH_IN" in EXCLUDED_TYPES
-    assert "SWITCH_OUT" in EXCLUDED_TYPES
     assert "SPLIT" in EXCLUDED_TYPES
+    assert "SWITCH_IN" not in EXCLUDED_TYPES
+    assert "SWITCH_OUT" not in EXCLUDED_TYPES
+
+
+def test_sign_convention_switch_types_in_flow_sets():
+    assert "SWITCH_IN" in OUTFLOW_TYPES
+    assert "SWITCH_OUT" in INFLOW_TYPES
 
 
 def test_compute_cagr_known_values():
@@ -96,40 +101,28 @@ def test_compute_absolute_return_zero_invested():
     assert compute_absolute_return(0, 100000.0) == 0.0
 
 
-def test_compute_xirr_falls_back_to_newton_raphson_when_brentq_fails():
-    """If brentq raises, Newton-Raphson fallback should converge for well-behaved cashflows."""
+def test_compute_xirr_pyxirr_raises_returns_none():
+    """If pyxirr raises an unexpected exception, compute_xirr returns None."""
     from unittest.mock import patch
     from app.engine.returns import compute_xirr
 
     cashflows = [(date(2020, 1, 1), -100000.0), (date(2023, 1, 1), 150000.0)]
 
-    with patch("scipy.optimize.brentq", side_effect=ValueError("no sign change")):
+    with patch("app.engine.returns._pyxirr", side_effect=RuntimeError("unexpected")):
         result = compute_xirr(cashflows)
 
-    # Newton-Raphson should converge and give a similar result to normal XIRR
-    assert result is not None
-    assert abs(result - 0.1447) < 0.01  # ~14.47% XIRR
+    assert result is None
 
 
-def test_compute_xirr_newton_raphson_returns_none_on_convergence_failure():
-    """When both brentq and Newton-Raphson fail, returns None."""
-    from unittest.mock import patch
-    from app.engine.returns import compute_xirr
-
-    # Degenerate cashflows: same date, zero sum — NR won't converge
+def test_compute_xirr_degenerate_same_date():
+    """Degenerate cashflows on same date — must not crash."""
     cashflows = [(date(2020, 1, 1), -1.0), (date(2020, 1, 1), 0.5)]
-
-    with patch("scipy.optimize.brentq", side_effect=ValueError("no sign change")):
-        result = compute_xirr(cashflows)
-
-    # Either None or some float — must not crash
+    result = compute_xirr(cashflows)
     assert result is None or isinstance(result, float)
 
 
-def test_compute_xirr_brentq_import_path():
-    """Ensure brentq is importable from the path used in compute_xirr."""
-    from app.engine.returns import compute_xirr
-    # If scipy available, this should work fine for normal cashflows
+def test_compute_xirr_pyxirr_used():
+    """pyxirr is the solver — normal cashflows converge correctly."""
     cashflows = [(date(2021, 1, 1), -50000.0), (date(2024, 1, 1), 75000.0)]
     result = compute_xirr(cashflows)
     assert result is not None

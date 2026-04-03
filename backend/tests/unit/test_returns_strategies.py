@@ -101,13 +101,12 @@ def test_base_strategy_build_cashflows_excludes_excluded_types():
     asset = _make_asset(asset_type="PPF")
     txns = [
         _make_txn("CONTRIBUTION", -500000, date(2023, 1, 1)),
-        _make_txn("SWITCH_IN", -100000, date(2023, 6, 1)),   # excluded
-        _make_txn("SWITCH_OUT", 100000, date(2023, 7, 1)),   # excluded
+        _make_txn("SPLIT", 0, date(2023, 6, 1)),              # excluded
         _make_txn("INTEREST", 50000, date(2024, 1, 1)),
     ]
     uow = _make_uow(transactions=txns)
     flows = strategy.build_cashflows(asset, uow)
-    # SWITCH_IN and SWITCH_OUT excluded — 2 flows remain
+    # SPLIT excluded — 2 flows remain
     assert len(flows) == 2
     # CONTRIBUTION: amount_inr=-500000 paise → INR=-5000, cashflow=+5000 (negated)
     assert flows[0] == (date(2023, 1, 1), 5000.0)
@@ -603,7 +602,7 @@ def test_epf_strategy_xirr_excludes_interest_in_cashflows():
 # ── get_portfolio_cashflows — base (MarketBasedStrategy) ──────────────────
 
 def test_base_get_portfolio_cashflows_includes_all_non_excluded():
-    """Market-based: inflows + outflows, raw DB sign, SWITCH_IN/OUT excluded."""
+    """Market-based: inflows + outflows, raw DB sign, SPLIT excluded."""
     from app.services.returns.strategies.asset_types.stock_in import StockINStrategy
     strategy = StockINStrategy()
     asset = _make_asset(asset_type="STOCK_IN")
@@ -611,8 +610,7 @@ def test_base_get_portfolio_cashflows_includes_all_non_excluded():
         _make_txn("BUY",       -10_000_000, date(2023, 1, 1)),   # outflow → negative
         _make_txn("SELL",       5_000_000,  date(2023, 6, 1)),   # inflow  → positive
         _make_txn("DIVIDEND",     100_000,  date(2023, 9, 1)),   # inflow  → positive
-        _make_txn("SWITCH_IN",  -200_000,   date(2023, 3, 1)),   # excluded
-        _make_txn("SWITCH_OUT",  200_000,   date(2023, 4, 1)),   # excluded
+        _make_txn("SPLIT",            0,    date(2023, 3, 1)),   # excluded
     ]
     uow = _make_uow(transactions=txns)
     flows = strategy.get_portfolio_cashflows(asset, uow)

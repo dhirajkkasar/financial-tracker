@@ -175,7 +175,10 @@ class MarketBasedStrategy(AssetReturnsStrategy):
         return open_lots, matched
 
     def get_invested_value(self, asset, uow: UnitOfWork) -> Optional[float]:
-        """Invested amount = cost basis of currently held lots (open lots only)."""
+        """
+        Active position: cost basis of currently held (open) lots after FIFO matching.
+        Fully redeemed: total cost of all lots ever bought (for historical invested/gains display).
+        """
         txns = uow.transactions.list_by_asset(asset.id)
         lots, sells = self._build_lots_sells(txns)
 
@@ -183,6 +186,10 @@ class MarketBasedStrategy(AssetReturnsStrategy):
             return 0.0
 
         open_lots, _ = self._match_and_get_open_lots(lots, sells, current_price=None)
+
+        if not open_lots:
+            # Fully redeemed — no remaining position; return total historical cost for gains display
+            return sum(lot.buy_amount_inr for lot in lots)
 
         total_cost = sum(ol.cost for ol in open_lots)
         return total_cost if total_cost > 0 else 0.0

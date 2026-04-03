@@ -19,7 +19,16 @@ class RDStrategy(ValuationBasedStrategy):
     def get_invested_value(self, asset, uow: UnitOfWork) -> Optional[float]:
         txns = uow.transactions.list_by_asset(asset.id)
         contributions = [abs(t.amount_inr / 100) for t in txns if t.type.value == "CONTRIBUTION"]
-        return sum(contributions) if contributions else 0.0
+        if contributions:
+            return sum(contributions)
+        # No CONTRIBUTION transactions: derive from fd_detail (elapsed months × monthly installment)
+        fd_detail = uow.fd.get_by_asset_id(asset.id)
+        if fd_detail is None:
+            return 0.0
+        total_months = round((fd_detail.maturity_date - fd_detail.start_date).days / 30.44)
+        elapsed = round((date_cls.today() - fd_detail.start_date).days / 30.44)
+        elapsed = max(0, min(elapsed, total_months))
+        return elapsed * (fd_detail.principal_amount / 100.0)
 
     def get_current_value(self, asset, uow: UnitOfWork) -> Optional[float]:
         fd_detail = uow.fd.get_by_asset_id(asset.id)

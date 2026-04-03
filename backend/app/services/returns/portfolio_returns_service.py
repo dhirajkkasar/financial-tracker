@@ -1,8 +1,5 @@
 """
 PortfolioReturnsService — Orchestrates portfolio-level aggregations using strategy registry.
-
-Implements portfolio methods (breakdown, allocation, gainers, overview, asset lots)
-by delegating individual asset returns to the strategy registry.
 """
 import logging
 from datetime import date
@@ -20,43 +17,29 @@ from app.services.returns.strategies.registry import IReturnsStrategyRegistry
 
 logger = logging.getLogger(__name__)
 
+# Maps strategy-layer field names to legacy API field names
+_STRATEGY_TO_API_FIELD_MAP = {
+    "invested": "total_invested",
+    "current_pnl": "absolute_return",
+}
+
+_API_FIELDS = [
+    "asset_id", "asset_type", "invested", "current_value", "xirr", "cagr",
+    "current_pnl", "message",
+    "maturity_amount", "accrued_value_today", "days_to_maturity",
+    "total_units", "avg_price", "current_price",
+    "st_unrealised_gain", "lt_unrealised_gain", "st_realised_gain", "lt_realised_gain",
+    "taxable_interest", "potential_tax_30pct",
+    "price_is_stale", "price_fetched_at",
+]
+
 
 def _transform_strategy_response_to_api(response: dict) -> dict:
-    """
-    Transform AssetReturnsResponse (service format) to ReturnResponse (API format).
-    
-    Maps strategy layer fields to legacy API field names for backward compatibility.
-    """
+    """Maps strategy-layer fields to legacy API field names for backward compatibility."""
     return {
-        "asset_id": response.get("asset_id"),
-        "asset_type": response.get("asset_type"),
-        "total_invested": response.get("invested"),
-        "current_value": response.get("current_value"),
-        "xirr": response.get("xirr"),
-        "cagr": response.get("cagr"),
-        "absolute_return": response.get("current_pnl"),
-        "message": response.get("message"),
-        # FD/RD specific
-        "maturity_amount": response.get("maturity_amount"),
-        "accrued_value_today": response.get("accrued_value_today"),
-        "days_to_maturity": response.get("days_to_maturity"),
-        # Market-based
-        "total_units": response.get("total_units"),
-        "avg_price": response.get("avg_price"),
-        "current_price": response.get("current_price"),
-        # Lot-based gains
-        "st_unrealised_gain": response.get("st_unrealised_gain"),
-        "lt_unrealised_gain": response.get("lt_unrealised_gain"),
-        "st_realised_gain": response.get("st_realised_gain"),
-        "lt_realised_gain": response.get("lt_realised_gain"),
-        # FD/RD tax
-        "taxable_interest": response.get("taxable_interest"),
-        "potential_tax_30pct": response.get("potential_tax_30pct"),
-        # Price cache metadata
-        "price_is_stale": response.get("price_is_stale"),
-        "price_fetched_at": response.get("price_fetched_at"),
+        _STRATEGY_TO_API_FIELD_MAP.get(key, key): response.get(key)
+        for key in _API_FIELDS
     }
-
 
 
 class PortfolioReturnsService:
@@ -69,11 +52,11 @@ class PortfolioReturnsService:
     ):
         self.db = db
         self.strategy_registry = strategy_registry
-        self.uow_factory = lambda: UnitOfWork(db)
+        self._uow_factory: IUnitOfWorkFactory = lambda: UnitOfWork(db)
 
     def get_asset_returns(self, asset_id: int) -> dict:
         """Compute returns for a single asset using its strategy."""
-        with self.uow_factory() as uow:
+        with self._uow_factory() as uow:
             asset = uow.assets.get_by_id(asset_id)
             if not asset:
                 raise NotFoundError(f"Asset {asset_id} not found")
@@ -87,7 +70,7 @@ class PortfolioReturnsService:
 
     def get_asset_lots(self, asset_id: int) -> dict:
         """Compute FIFO lots and matched sells for a single asset using its strategy."""
-        with self.uow_factory() as uow:
+        with self._uow_factory() as uow:
             asset = uow.assets.get_by_id(asset_id)
             if not asset:
                 raise NotFoundError(f"Asset {asset_id} not found")
@@ -96,19 +79,15 @@ class PortfolioReturnsService:
             strategy = self.strategy_registry.get(asset_type)
             lots = strategy.compute_lots(asset, uow)
 
-            # Convert LotComputedResponse objects to dicts and rename 'units' to 'units_remaining'
             lot_dicts = []
             for lot in lots:
-                lot_dict = lot.model_dump(exclude_none=True) if hasattr(lot, 'model_dump') else lot
-                # Map 'units' to 'units_remaining' for API compatibility
+                lot_dict = lot.model_dump(exclude_none=True)
                 if 'units' in lot_dict:
                     lot_dict['units_remaining'] = lot_dict.pop('units')
                 lot_dicts.append(lot_dict)
 
-            # For lot-based assets, compute matched sells
             matched_sells = []
             if hasattr(strategy, 'stcg_days'):
-                # This is a market-based strategy; compute matched sells
                 txns = uow.transactions.list_by_asset(asset_id)
                 lots_objs = []
                 sells_objs = []
@@ -135,18 +114,7 @@ class PortfolioReturnsService:
                         ))
                 
                 if lots_objs and sells_objs:
-                    matched = match_lots_fifo(lots_objs, sells_objs, stcg_days=strategy.stcg_days)
-                    for m in matched:
-                        matched_sells.append({
-                            "lot_id": m["lot_id"],
-                            "buy_date": m["buy_date"],
-                            "buy_price_per_unit": m["buy_price_per_unit"],
-                            "sell_date": m["sell_date"],
-                            "sell_price_per_unit": m["sell_price_per_unit"],
-                            "units_sold": m["units_sold"],
-                            "is_short_term": m["is_short_term"],
-                            "realised_gain_inr": m["realised_gain_inr"],
-                        })
+                    matched_sells = match_lots_fifo(lots_objs, sells_objs, stcg_days=strategy.stcg_days)
 
             return {
                 "open_lots": lot_dicts,
@@ -160,7 +128,7 @@ class PortfolioReturnsService:
         alltime_pnl reflects realized gains from closed positions.
         Returns one row per asset_type with aggregated invested/current/pnl/xirr.
         """
-        with self.uow_factory() as uow:
+        with self._uow_factory() as uow:
             assets = uow.assets.list(active=None)
 
             type_data: dict[str, dict] = {}
@@ -171,11 +139,20 @@ class PortfolioReturnsService:
                     strategy = self.strategy_registry.get(asset_type)
                     response = strategy.compute(asset, uow)
 
-                    total_invested = response.invested or 0.0
-                    current_value = response.current_value or 0.0
-
-                    if total_invested <= 0 and current_value <= 0:
-                        continue
+                    if asset.is_active:
+                        total_invested = response.invested or 0.0
+                        current_value = response.current_value or 0.0
+                        if total_invested <= 0 and current_value <= 0:
+                            continue
+                        alltime = response.alltime_pnl if response.alltime_pnl is not None else response.current_pnl
+                    else:
+                        total_invested = 0.0
+                        current_value = 0.0
+                        alltime = response.alltime_pnl
+                        if alltime is None and not hasattr(strategy, 'stcg_days'):
+                            alltime = strategy.get_inactive_realized_gain(asset, uow)
+                        if not alltime:
+                            alltime = None
 
                     if asset_type not in type_data:
                         type_data[asset_type] = {
@@ -189,14 +166,10 @@ class PortfolioReturnsService:
                     td = type_data[asset_type]
                     td["total_invested"] += total_invested
                     td["total_current_value"] += current_value
-                    td["current_pnl"] += response.current_pnl or 0.0
-                    alltime = response.alltime_pnl if response.alltime_pnl is not None else response.current_pnl
+                    if asset.is_active:
+                        td["current_pnl"] += response.current_pnl or 0.0
                     td["alltime_pnl"] += alltime or 0.0
 
-                    # Collect cashflows for per-type XIRR.
-                    # Inactive market-based assets (fully sold) still have real BUY+SELL
-                    # cashflows that belong in XIRR. ValuationBasedStrategy.get_portfolio_cashflows
-                    # returns [] for inactive assets to avoid orphaned outflows.
                     td["cashflows"].extend(strategy.get_portfolio_cashflows(asset, uow))
 
                 except Exception as e:
@@ -207,7 +180,7 @@ class PortfolioReturnsService:
                 total_invested = td["total_invested"]
                 total_current = td["total_current_value"]
 
-                if total_invested <= 0 and total_current <= 0:
+                if total_invested <= 0 and total_current <= 0 and td["alltime_pnl"] <= 0:
                     continue
 
                 cashflows = td["cashflows"] + [(date.today(), total_current)]
@@ -230,7 +203,7 @@ class PortfolioReturnsService:
 
         Only contains the 4 canonical classes: EQUITY, DEBT, GOLD, REAL_ESTATE.
         """
-        with self.uow_factory() as uow:
+        with self._uow_factory() as uow:
             assets = uow.assets.list(active=True)
             entries = []
 
@@ -254,7 +227,7 @@ class PortfolioReturnsService:
 
     def get_gainers(self, n: int = 5) -> dict:
         """Return top N gainers and top N losers by absolute return %."""
-        with self.uow_factory() as uow:
+        with self._uow_factory() as uow:
             assets = uow.assets.list(active=True)
             entries = []
 
@@ -264,19 +237,17 @@ class PortfolioReturnsService:
                     strategy = self.strategy_registry.get(asset_type)
                     response = strategy.compute(asset, uow)
 
-                    total_invested = response.invested or 0.0
-                    current_value = response.current_value or 0.0
-                    abs_return_pct = None
-                    if total_invested > 0 and current_value is not None:
-                        abs_return_pct = (current_value - total_invested) / total_invested * 100
+                    invested = response.invested or 0.0
+                    current = response.current_value or 0.0
+                    abs_pct = ((current - invested) / invested * 100) if invested > 0 else None
 
                     entries.append({
                         "asset_id": asset.id,
                         "name": asset.name,
                         "asset_type": asset_type,
-                        "total_invested": total_invested,
-                        "current_value": current_value,
-                        "absolute_return_pct": abs_return_pct,
+                        "total_invested": invested,
+                        "current_value": current,
+                        "absolute_return_pct": abs_pct,
                         "xirr": response.xirr,
                     })
                 except Exception as e:
@@ -292,7 +263,7 @@ class PortfolioReturnsService:
 
     def get_overview(self, asset_types: Optional[list[str]] = None) -> dict:
         """High-level portfolio metrics across optionally filtered asset types."""
-        with self.uow_factory() as uow:
+        with self._uow_factory() as uow:
             assets = uow.assets.list(active=None)
 
             if asset_types:
@@ -322,14 +293,11 @@ class PortfolioReturnsService:
                     response = strategy.compute(asset, uow)
 
                     if asset.is_active:
-                        # Active assets contribute to portfolio totals, cashflows, and unrealised gains
                         invested = response.invested or 0.0
                         current = response.current_value or 0.0
 
                         total_invested += invested
                         total_current += current
-
-                        print(f"Asset {asset.id} ({asset.name}): invested={invested}, current={current}, pnl={response.current_pnl}, xirr={response.xirr}")
 
                         if asset_type not in results_by_type:
                             results_by_type[asset_type] = {
@@ -353,21 +321,14 @@ class PortfolioReturnsService:
                         if response.potential_tax_30pct is not None:
                             gain_totals["total_potential_tax"] += response.potential_tax_30pct
 
-                    # Collect cashflows for portfolio XIRR for ALL assets (active + inactive).
-                    # Market-based strategies return BUY+SELL for both active and inactive assets.
-                    # ValuationBasedStrategy.get_portfolio_cashflows returns [] for inactive
-                    # assets to avoid orphaned outflows without a matching terminal inflow.
                     all_cashflows.extend(strategy.get_portfolio_cashflows(asset, uow))
 
-                    # Realised gains: accumulate from all assets (active partial-sells + inactive closed positions)
                     for key in ("st_realised_gain", "lt_realised_gain"):
                         v = getattr(response, key, None)
                         if v is not None:
                             gain_totals[key] += v
                             has_realised = True
 
-                    # Inactive valuation-based assets (FD, RD, PPF, etc.): compute() doesn't set
-                    # realised gains; use the hook which returns terminal_value − invested instead.
                     if not asset.is_active and not hasattr(strategy, 'stcg_days'):
                         gain = strategy.get_inactive_realized_gain(asset, uow)
                         if gain is not None:
@@ -377,17 +338,16 @@ class PortfolioReturnsService:
                 except Exception as e:
                     logger.warning("Error computing overview for asset %d: %s", asset.id, str(e))
 
-            # Add total current value as terminal inflow for portfolio XIRR
-            if total_current and total_current > 0:
+            if total_current > 0:
                 all_cashflows.append((date.today(), total_current))
 
             portfolio_xirr = compute_xirr(all_cashflows) if len(all_cashflows) >= 2 else None
-            total_pnl = total_current - total_invested if (total_current and total_current > 0 and total_invested and total_invested > 0) else None
-            total_pnl_pct = (total_pnl / total_invested * 100) if (total_pnl and total_invested and total_invested > 0) else None
-            abs_return = compute_absolute_return(total_invested, total_current) if (total_invested and total_invested > 0 and total_current and total_current > 0) else None
 
-            print(f"Portfolio overview: invested={total_invested}, current={total_current}, pnl={total_pnl}, pnl_pct={total_pnl_pct}, xirr={portfolio_xirr}")
-            # Compute P&L % for each asset type
+            has_values = total_invested > 0 and total_current > 0
+            total_pnl = (total_current - total_invested) if has_values else None
+            total_pnl_pct = (total_pnl / total_invested * 100) if total_pnl and total_invested > 0 else None
+            abs_return = compute_absolute_return(total_invested, total_current) if has_values else None
+
             for asset_type in results_by_type:
                 type_data = results_by_type[asset_type]
                 type_pnl = type_data["current_value"] - type_data["invested"]
@@ -395,8 +355,6 @@ class PortfolioReturnsService:
                 if type_invested > 0:
                     type_data["pnl_pct"] = (type_pnl / type_invested * 100)
                 type_data["pnl"] = type_pnl
-            
-            print(results_by_type)
 
             return {
                 "total_invested": total_invested,

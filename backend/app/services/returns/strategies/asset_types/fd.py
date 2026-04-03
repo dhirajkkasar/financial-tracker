@@ -15,6 +15,15 @@ from app.services.returns.strategies.valuation_based import ValuationBasedStrate
 @register_strategy("FD")
 class FDStrategy(ValuationBasedStrategy):
 
+    def get_invested_value(self, asset, uow: UnitOfWork) -> Optional[float]:
+        """Principal from fd_detail (authoritative); fall back to OUTFLOW transactions."""
+        fd = uow.fd.get_by_asset_id(asset.id)
+        if fd is not None:
+            return fd.principal_amount / 100.0
+        txns = uow.transactions.list_by_asset(asset.id)
+        outflows = [abs(t.amount_inr / 100) for t in txns if t.type.value in OUTFLOW_TYPES]
+        return sum(outflows) if outflows else 0.0
+
     def get_current_value(self, asset, uow: UnitOfWork) -> Optional[float]:
         fd_detail = uow.fd.get_by_asset_id(asset.id)
         if fd_detail is None:
@@ -86,16 +95,13 @@ class FDStrategy(ValuationBasedStrategy):
         )
         days_to_maturity = max(0, (fd.maturity_date - date_cls.today()).days)
 
-        txns = uow.transactions.list_by_asset(asset.id)
-        invested = sum(abs(t.amount_inr / 100) for t in txns if t.type.value in OUTFLOW_TYPES)
-        effective_invested = invested if invested > 0 else principal_inr
-
         # Formula-based taxable interest; fall back to summing INTEREST txns if already posted
+        txns = uow.transactions.list_by_asset(asset.id)
         interest_txns = [t for t in txns if t.type.value == "INTEREST"]
         if interest_txns:
             taxable_interest = sum(abs(t.amount_inr / 100) for t in interest_txns)
         else:
-            taxable_interest = max(0.0, accrued_today - effective_invested)
+            taxable_interest = max(0.0, accrued_today - principal_inr)
 
         return base.model_copy(update={
             "maturity_amount": maturity_amount,

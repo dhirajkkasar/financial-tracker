@@ -28,6 +28,8 @@ class FDStrategy(ValuationBasedStrategy):
         fd_detail = uow.fd.get_by_asset_id(asset.id)
         if fd_detail is None:
             return None
+        if fd_detail.is_matured and fd_detail.maturity_amount is not None:
+            return fd_detail.maturity_amount / 100.0
         principal_inr = fd_detail.principal_amount / 100.0
         return compute_fd_current_value(
             principal_inr,
@@ -36,6 +38,12 @@ class FDStrategy(ValuationBasedStrategy):
             fd_detail.start_date,
             fd_detail.maturity_date,
         )
+
+    def get_inactive_realized_gain(self, asset, uow: UnitOfWork) -> Optional[float]:
+        fd = uow.fd.get_by_asset_id(asset.id)
+        if fd is None or not fd.is_matured or fd.maturity_amount is None:
+            return super().get_inactive_realized_gain(asset, uow)
+        return (fd.maturity_amount - fd.principal_amount) / 100.0
 
     def build_cashflows(self, asset, uow: UnitOfWork):
         """XIRR uses maturity_amount at maturity_date (the contractual terminal cash flow)."""
@@ -86,10 +94,13 @@ class FDStrategy(ValuationBasedStrategy):
 
         principal_inr = fd.principal_amount / 100.0
         tenure_years = (fd.maturity_date - fd.start_date).days / 365.0
-        maturity_amount = compute_fd_maturity(
-            principal_inr, fd.interest_rate_pct, fd.compounding.value, tenure_years,
-        )
-        accrued_today = compute_fd_current_value(
+        if fd.maturity_amount is not None:
+            maturity_amount = fd.maturity_amount / 100.0
+        else:
+            maturity_amount = compute_fd_maturity(
+                principal_inr, fd.interest_rate_pct, fd.compounding.value, tenure_years,
+            )
+        accrued_today = current if fd.is_matured else compute_fd_current_value(
             principal_inr, fd.interest_rate_pct, fd.compounding.value,
             fd.start_date, fd.maturity_date,
         )

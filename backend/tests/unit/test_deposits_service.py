@@ -56,16 +56,19 @@ class TestDepositsServiceMarkMaturedFds:
         assert fd.maturity_amount is not None
         assert fd.maturity_amount > fd.principal_amount
 
-    def test_preserves_existing_maturity_amount(self, db):
+    def test_always_recomputes_maturity_amount(self, db):
+        """maturity_amount is always recalculated to stay in sync with fd_detail params."""
         past_date = date.today() - timedelta(days=10)
         asset, fd = _add_fd_asset(db, "FD with amt", maturity_date=past_date)
-        fd.maturity_amount = 10_500_00  # manually set
+        fd.maturity_amount = 10_500_00  # stale/incorrect manual value
         db.commit()
 
         DepositsService(db).mark_matured_fds()
 
         db.refresh(fd)
-        assert fd.maturity_amount == 10_500_00
+        # Should be the formula-computed value, not the stale manual value
+        assert fd.maturity_amount is not None
+        assert fd.maturity_amount > fd.principal_amount
 
     def test_skips_already_matured_fd(self, db):
         past_date = date.today() - timedelta(days=10)

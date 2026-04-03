@@ -2,11 +2,12 @@
 RDStrategy — invested = sum of monthly installments (CONTRIBUTION txns),
              current_value = rd formula for elapsed months.
 """
+import calendar
 from datetime import date as date_cls
 from typing import Optional
 
 from app.engine.fd_engine import compute_rd_maturity
-from app.engine.returns import OUTFLOW_TYPES, compute_xirr
+from app.engine.returns import compute_xirr
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas.responses.returns import AssetReturnsResponse
 from app.services.returns.strategies.base import register_strategy
@@ -17,14 +18,9 @@ from app.services.returns.strategies.valuation_based import ValuationBasedStrate
 class RDStrategy(ValuationBasedStrategy):
 
     def get_invested_value(self, asset, uow: UnitOfWork) -> Optional[float]:
-        txns = uow.transactions.list_by_asset(asset.id)
-        contributions = [abs(t.amount_inr / 100) for t in txns if t.type.value == "CONTRIBUTION"]
-        if contributions:
-            return sum(contributions)
-        # No CONTRIBUTION transactions: derive from fd_detail (elapsed months × monthly installment)
         fd_detail = uow.fd.get_by_asset_id(asset.id)
         if fd_detail is None:
-            return 0.0
+            return super().get_invested_value(asset, uow)
         total_months = round((fd_detail.maturity_date - fd_detail.start_date).days / 30.44)
         elapsed = round((date_cls.today() - fd_detail.start_date).days / 30.44)
         elapsed = max(0, min(elapsed, total_months))
@@ -34,29 +30,47 @@ class RDStrategy(ValuationBasedStrategy):
         fd_detail = uow.fd.get_by_asset_id(asset.id)
         if fd_detail is None:
             return None
+        if fd_detail.is_matured and fd_detail.maturity_amount is not None:
+            return fd_detail.maturity_amount / 100.0
         principal_inr = fd_detail.principal_amount / 100.0
         total_months = round((fd_detail.maturity_date - fd_detail.start_date).days / 30.44)
         elapsed = round((date_cls.today() - fd_detail.start_date).days / 30.44)
         elapsed = max(0, min(elapsed, total_months))
         return compute_rd_maturity(principal_inr, fd_detail.interest_rate_pct, elapsed)
 
-    def build_cashflows(self, asset, uow: UnitOfWork):
-        """XIRR: contributions as outflows + maturity_amount as terminal at maturity_date."""
+    def get_inactive_realized_gain(self, asset, uow: UnitOfWork) -> Optional[float]:
         fd = uow.fd.get_by_asset_id(asset.id)
-        txns = uow.transactions.list_by_asset(asset.id)
+        if fd is None or not fd.is_matured or fd.maturity_amount is None:
+            return super().get_inactive_realized_gain(asset, uow)
+        invested = self.get_invested_value(asset, uow)
+        if invested is None:
+            return None
+        return fd.maturity_amount / 100.0 - invested
 
-        cashflows = [
-            (t.date, -(t.amount_inr / 100))
-            for t in txns
-            if t.type.value in OUTFLOW_TYPES
-        ]
+    def build_cashflows(self, asset, uow: UnitOfWork):
+        """XIRR: monthly installments as outflows + maturity_amount as terminal inflow."""
+        fd = uow.fd.get_by_asset_id(asset.id)
+        cashflows = []
 
         if fd is not None:
             principal_inr = fd.principal_amount / 100.0
             total_months = round((fd.maturity_date - fd.start_date).days / 30.44)
-            maturity_amount = compute_rd_maturity(principal_inr, fd.interest_rate_pct, total_months)
-            effective_end = fd.maturity_date
-            cashflows.append((effective_end, -maturity_amount))
+
+            # One outflow per month on the same day-of-month as start_date
+            start = fd.start_date
+            for i in range(total_months):
+                raw_month = start.month + i
+                year = start.year + (raw_month - 1) // 12
+                month = ((raw_month - 1) % 12) + 1
+                day = min(start.day, calendar.monthrange(year, month)[1])
+                cashflows.append((date_cls(year, month, day), -principal_inr))
+
+            # Terminal inflow at maturity
+            if fd.is_matured and fd.maturity_amount is not None:
+                maturity_inr = fd.maturity_amount / 100.0
+            else:
+                maturity_inr = compute_rd_maturity(principal_inr, fd.interest_rate_pct, total_months)
+            cashflows.append((fd.maturity_date, maturity_inr))
 
         return cashflows
 

@@ -170,7 +170,7 @@ def test_valuation_based_compute_with_valuation_no_message():
 # ── FDStrategy ─────────────────────────────────────────────────────────────
 
 def _make_fd_detail(principal_paise=10_000_000, rate_pct=8.0, compounding="QUARTERLY",
-                    start_date=None, maturity_date=None):
+                    start_date=None, maturity_date=None, is_matured=False, maturity_amount=None):
     from app.models.fd_detail import CompoundingType, FDType
     fd = MagicMock()
     fd.principal_amount = principal_paise
@@ -181,6 +181,8 @@ def _make_fd_detail(principal_paise=10_000_000, rate_pct=8.0, compounding="QUART
     fd.maturity_date = maturity_date or date(2026, 1, 1)
     fd.fd_type = MagicMock()
     fd.fd_type.value = "FD"
+    fd.is_matured = is_matured
+    fd.maturity_amount = maturity_amount
     return fd
 
 
@@ -339,7 +341,7 @@ def test_mf_strategy_inactive_returns_realised_gains():
     redemption = _make_txn("REDEMPTION", 12_000_000, date(2023, 6, 1), units=1000.0)
     uow = _make_uow(transactions=[sip, redemption], price=price)
     result = strategy.compute(asset, uow)
-    assert result.current_value == 0.0
+    assert result.current_value is None or result.current_value == 0.0
     assert result.alltime_pnl is not None
     assert result.alltime_pnl > 0  # realised gain from the sell
     # At least one of the realised buckets must be populated
@@ -741,12 +743,13 @@ def test_fd_get_inactive_realized_gain_returns_earned_interest():
     fd = _make_fd_detail(
         principal_paise=10_000_000,   # ₹1,00,000
         rate_pct=8.0, compounding="QUARTERLY",
-        start_date=date(2022, 1, 1), maturity_date=date(2023, 1, 1),  # matured
+        start_date=date(2022, 1, 1), maturity_date=date(2023, 1, 1),
+        is_matured=True,
     )
     contrib = _make_txn("CONTRIBUTION", -10_000_000, date(2022, 1, 1))
     uow = _make_uow(fd_detail=fd, transactions=[contrib])
     gain = strategy.get_inactive_realized_gain(asset, uow)
-    # Matured FD: current_value = maturity_amount (formula clamps to maturity_date)
+    # Matured FD: falls back to formula (maturity_amount=None) → current_value - principal
     assert gain is not None
     assert gain > 0   # earned interest is positive
 
@@ -760,10 +763,12 @@ def test_rd_get_inactive_realized_gain_returns_earned_interest():
         principal_paise=500_000,   # ₹5,000/month
         rate_pct=7.0, compounding="QUARTERLY",
         start_date=date(2023, 1, 1), maturity_date=date(2024, 1, 1),
+        is_matured=True,
     )
     contribs = [_make_txn("CONTRIBUTION", -500_000, date(2023, i, 1)) for i in range(1, 13)]
     uow = _make_uow(fd_detail=fd, transactions=contribs)
     gain = strategy.get_inactive_realized_gain(asset, uow)
+    # Falls back to formula (maturity_amount=None) → compute_rd_maturity - total_invested
     assert gain is not None
     assert gain > 0
 

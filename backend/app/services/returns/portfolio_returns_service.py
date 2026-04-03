@@ -347,6 +347,8 @@ class PortfolioReturnsService:
             total_pnl = (total_current - total_invested) if has_values else None
             total_pnl_pct = (total_pnl / total_invested * 100) if total_pnl and total_invested > 0 else None
             abs_return = compute_absolute_return(total_invested, total_current) if has_values else None
+            alltime_pnl = (total_pnl or 0.0) + gain_totals["st_realised_gain"] + gain_totals["lt_realised_gain"]
+            alltime_pnl = alltime_pnl if (alltime_pnl != 0.0 or has_realised or has_values) else None
 
             for asset_type in results_by_type:
                 type_data = results_by_type[asset_type]
@@ -361,6 +363,7 @@ class PortfolioReturnsService:
                 "total_current_value": total_current,
                 "total_pnl": total_pnl,
                 "total_pnl_pct": total_pnl_pct,
+                "alltime_pnl": alltime_pnl,
                 "absolute_return": abs_return,
                 "xirr": portfolio_xirr,
                 "st_unrealised_gain": gain_totals["st_unrealised_gain"] if has_unrealised else None,

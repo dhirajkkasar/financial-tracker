@@ -1,6 +1,9 @@
+from app.engine.fd_engine import compute_maturity_paise
 from app.middleware.error_handler import NotFoundError, DuplicateError
 from app.repositories.unit_of_work import IUnitOfWorkFactory
 from app.schemas.fd_detail import FDDetailCreate, FDDetailUpdate, FDDetailResponse
+
+_MATURITY_FIELDS = {"principal_amount", "interest_rate_pct", "compounding", "start_date", "maturity_date"}
 
 
 class FDDetailService:
@@ -32,6 +35,9 @@ class FDDetailService:
 
             fd = uow.fd.create(**data)
 
+            if fd.maturity_amount is None:
+                fd.maturity_amount = compute_maturity_paise(fd)
+
             if body.is_matured:
                 asset.is_active = False
 
@@ -53,6 +59,9 @@ class FDDetailService:
                 update_data["maturity_amount"] = round(update_data["maturity_amount"] * 100)
 
             fd = uow.fd.update(fd, **update_data)
+
+            if _MATURITY_FIELDS & set(update_data) and "maturity_amount" not in update_data:
+                fd.maturity_amount = compute_maturity_paise(fd)
 
             if body.is_matured is not None:
                 asset.is_active = not body.is_matured

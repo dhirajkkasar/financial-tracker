@@ -41,9 +41,7 @@ class AssetReturnsStrategy(ABC):
 
     def compute(self, asset, uow: UnitOfWork) -> AssetReturnsResponse:
         invested = self.get_invested_value(asset, uow)
-        print(f"DEBUG: get_invested_value for {asset.name} ({asset.asset_type.value}) = {invested}")
         current = self.get_current_value(asset, uow)
-        print(f"DEBUG: get_current_value for {asset.name} ({asset.asset_type.value}) = {current}")
         cashflows = self.build_cashflows(asset, uow)
         if current is not None and current > 0:
             cashflows = cashflows + [(date.today(), -current)]

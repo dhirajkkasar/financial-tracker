@@ -90,6 +90,51 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 ---
 
+## Downloading Statements
+
+### Mutual Funds (CAS PDF)
+1. Go to [CAMS Consolidated Account Statement](https://www.camsonline.com/Investors/Statements/Consolidated-Account-Statement)
+2. Select statement type: **Detailed**
+3. Set folio listing to: **With zero balance folios**
+4. Download the PDF — **remove the password from the PDF** before importing (the importer does not support password-protected files)
+
+### Indian Stocks (Zerodha)
+1. Log in to Zerodha and download the **year-wise tradebook** CSV for each financial year
+2. Import files **sequentially from oldest to newest year** — order matters for correct FIFO lot computation
+
+### NPS
+1. Log in to [Protean CRA](https://cra.nps-proteantech.in/CRA/)
+2. Download **transaction statements** for both Tier 1 and Tier 2 accounts, for each year
+3. Import files **sequentially from oldest to newest year**
+
+### EPF
+1. Log in to [EPFO Member Passbook](https://passbook.epfindia.gov.in/MemberPassBook/login)
+2. Download **year-wise PDF statements**
+
+### PPF
+1. Download the account statement in **CSV format** (currently supports SBI PPF statements)
+
+### US Stocks / RSUs (Fidelity)
+1. Download your **holding statement in CSV format**
+2. Rename the file to `<MARKET>_<TICKER>.csv` — e.g. `NASDAQ_AMZN.csv`
+3. Ensure the currency column in the CSV is **USD**
+
+### Fixed Deposits (Manual via CLI)
+FDs are added manually using the CLI — no statement download required:
+
+```bash
+python cli.py add fd \
+  --name "HDFC FD" \
+  --bank HDFC \
+  --principal 500000 \
+  --rate 7.1 \
+  --start 2024-01-15 \
+  --maturity 2025-01-15 \
+  --compounding QUARTERLY
+```
+
+---
+
 ## CLI Commands
 
 All commands require the backend server to be running. Set `PORTFOLIO_API` to override the default URL.

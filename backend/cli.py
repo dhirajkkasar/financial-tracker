@@ -259,7 +259,7 @@ def cmd_import_fidelity_sale(file_path: str) -> None:
             "post",
             "/import/preview-file?source=fidelity_sale&format=pdf",
             files={"file": (os.path.basename(file_path), f, "application/pdf")},
-            data={"exchange_rates": json.dumps(exchange_rates)},
+            data={"user_inputs": json.dumps(exchange_rates)},
         )
 
     print(f"\nPreview: {preview['new_count']} new, {preview['duplicate_count']} duplicate")

@@ -26,13 +26,14 @@ class ImportPipeline:
         self._deduplicator = deduplicator
 
     def run(self, source: str, fmt: str, file_bytes: bytes, **importer_kwargs) -> ImportResult:
+        print("kwargs received by ImportPipeline.run:", importer_kwargs)
         # Extract filename if provided, otherwise use empty string
         filename = importer_kwargs.pop("filename", "")
         
         # Extract user_inputs (for validate) from constructor kwargs (for registry.get)
         # user_inputs are not passed to importer constructor, only to validate()
         user_inputs = importer_kwargs.pop("user_inputs", None)
-        
+        print("user_inputs extracted:", user_inputs)
         # Create importer without user_inputs
         importer = self._registry.get(source, fmt, **importer_kwargs)
         result = importer.parse(file_bytes, filename=filename)
@@ -42,6 +43,7 @@ class ImportPipeline:
         if user_inputs:
             validate_kwargs["user_inputs"] = user_inputs
         
+        print("kwargs passed to importer.validate:", validate_kwargs)
         validation_result = importer.validate(result, **validate_kwargs)
         if not validation_result.is_valid:
             # Raise ValidationError with first error message and structured details

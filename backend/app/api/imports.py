@@ -31,6 +31,8 @@ async def preview_file_import(
     if user_inputs:
         importer_kwargs["user_inputs"] = user_inputs
 
+    print("user_inputs:", user_inputs)
+    print("importer_kwargs:", importer_kwargs)
     try:
         response = orchestrator.preview(source, format, file_bytes, **importer_kwargs)
     except ValueError as exc:

@@ -321,7 +321,7 @@ class PortfolioReturnsService:
                         if response.potential_tax_30pct is not None:
                             gain_totals["total_potential_tax"] += response.potential_tax_30pct
 
-                    all_cashflows.extend(strategy.get_portfolio_cashflows(asset, uow))
+                        all_cashflows.extend(strategy.get_portfolio_cashflows(asset, uow))
 
                     for key in ("st_realised_gain", "lt_realised_gain"):
                         v = getattr(response, key, None)

@@ -108,7 +108,7 @@ class MarketBasedStrategy(AssetReturnsStrategy):
             if ttype in LOT_TYPES and t.units:
                 is_bonus = ttype == "BONUS"
                 price_pu = 0.0 if is_bonus else (
-                    t.price_per_unit or (abs(t.amount_inr / 100.0) / t.units if t.units else 0.0)
+                    (abs(t.amount_inr / 100.0) / t.units if t.units else 0.0)
                 )
                 lots.append(_Lot(
                     lot_id=t.lot_id or str(t.id),

@@ -1,11 +1,16 @@
 from datetime import date
 import logging
+from typing import Optional
+
+from scipy.optimize import brentq
+
+from app.models.asset import Asset
 
 logger = logging.getLogger(__name__)
 
-OUTFLOW_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST", "BILLING"}
-INFLOW_TYPES = {"SELL", "REDEMPTION", "DIVIDEND", "INTEREST", "WITHDRAWAL", "BONUS"}
-EXCLUDED_TYPES = {"SWITCH_IN", "SWITCH_OUT", "SPLIT"}
+OUTFLOW_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST", "BILLING", "SWITCH_IN"}
+INFLOW_TYPES = {"SELL", "REDEMPTION", "DIVIDEND", "INTEREST", "WITHDRAWAL", "BONUS", "SWITCH_OUT"}
+EXCLUDED_TYPES = {"SPLIT"}
 
 # Types that ADD units to a holding. BONUS is in INFLOW_TYPES for cashflow purposes
 # (amount_inr=0 so numerically neutral for XIRR), but must also ADD to unit count.
@@ -19,7 +24,7 @@ UNIT_ADD_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST", "BONUS", "SWITCH_IN"}
 UNIT_SUB_TYPES = {"SELL", "REDEMPTION", "SWITCH_OUT", "BILLING"}
 
 
-def compute_xirr(cashflows: list[tuple[date, float]]) -> float | None:
+def compute_xirr(cashflows: list[tuple[date, float]], asset_name="unknown") -> float | None:
     """
     Compute XIRR for irregular cashflows.
     cashflows: list of (date, amount) — negative=outflow, positive=inflow
@@ -28,7 +33,7 @@ def compute_xirr(cashflows: list[tuple[date, float]]) -> float | None:
     if len(cashflows) < 2:
         return None
     amounts = [cf[1] for cf in cashflows]
-    if all(a < 0 for a in amounts) or all(a >= 0 for a in amounts):
+    if not any(a < 0 for a in amounts) or not any(a > 0 for a in amounts):
         return None
 
     # Sort by date to ensure t0 is earliest
@@ -46,11 +51,12 @@ def compute_xirr(cashflows: list[tuple[date, float]]) -> float | None:
 
     # Try scipy brentq first — robust bracketed solver
     try:
-        from scipy.optimize import brentq
         result = brentq(npv, -0.9999, 100.0, xtol=1e-8, maxiter=500)
         if -1 < result < 100:
             return round(result, 6)
-    except Exception:
+    except Exception as e:
+        logger.error(f"Brentq - Error occurred while computing XIRR for {asset_name}: {e}")
+        logger.debug(f"Brentq failed cashflows (first={cashflows[0]}, last={cashflows[-1]}, n={len(cashflows)}, sum={sum(amounts):.2f}, npv_lo={npv(-0.9999):.4e}, npv_hi={npv(100.0):.4e})")
         pass
 
     # Fallback: Newton-Raphson from multiple starting points including deeply negative
@@ -68,10 +74,12 @@ def compute_xirr(cashflows: list[tuple[date, float]]) -> float | None:
                     break
                 rate = new_rate
             if isinstance(rate, complex):
+                logger.warning(f"Complex XIRR result {rate} for guess {guess}")
                 continue
             if -1 < rate < 100 and abs(npv(rate)) < 1.0:
                 return round(rate, 6)
-        except (ZeroDivisionError, OverflowError, TypeError, ValueError):
+        except (ZeroDivisionError, OverflowError, TypeError, ValueError) as e:
+            logger.error(f"Error occurred while computing XIRR for guess {guess}: {e}")
             continue
     logger.warning("XIRR convergence failed")
     return None
@@ -79,6 +87,8 @@ def compute_xirr(cashflows: list[tuple[date, float]]) -> float | None:
 
 def compute_cagr(start_value: float, end_value: float, years: float) -> float | None:
     if years <= 0 or start_value <= 0:
+        logger.warning("Invalid input for CAGR: start_value=%s, end_value=%s, years=%s",
+                       start_value, end_value, years)
         return None
     return (end_value / start_value) ** (1 / years) - 1
 

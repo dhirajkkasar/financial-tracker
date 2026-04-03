@@ -202,11 +202,9 @@ def compute_gains_summary(open_lots: list[dict], matched_sells: list[dict], asse
         sell_date = m["sell_date"]
         # buy_date and sell_date may be date objects or strings
         if isinstance(buy_date, str):
-            from datetime import date as _date
-            buy_date = _date.fromisoformat(buy_date)
+            buy_date = date.fromisoformat(buy_date)
         if isinstance(sell_date, str):
-            from datetime import date as _date
-            sell_date = _date.fromisoformat(sell_date)
+            sell_date = date.fromisoformat(sell_date)
         holding = (sell_date - buy_date).days
         if holding < threshold:
             st_real += m["realised_gain_inr"]

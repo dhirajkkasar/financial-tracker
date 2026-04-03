@@ -10,8 +10,8 @@ from app.database import Base
 from app.models.asset import Asset, AssetType, AssetClass
 from app.models.cas_snapshot import CasSnapshot
 from app.importers.base import ParsedFundSnapshot, ParsedTransaction
-from app.services.import_service import ImportService
 from app.repositories.cas_snapshot_repo import CasSnapshotRepository
+from app.services.imports.post_processors.mf import MFPostProcessor
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 
@@ -37,7 +37,7 @@ def active_asset(db):
         name="Parag Parikh Flexi Cap Fund",
         identifier="INF879O01027",
         asset_type=AssetType.MF,
-        asset_class=AssetClass.MIXED,
+        asset_class=AssetClass.EQUITY,
         currency="INR",
         is_active=True,
     )
@@ -53,7 +53,7 @@ def redeemed_asset(db):
         name="Aditya Birla Sun Life Large Cap Fund",
         identifier="INF209K01BR9",
         asset_type=AssetType.MF,
-        asset_class=AssetClass.MIXED,
+        asset_class=AssetClass.DEBT,
         currency="INR",
         is_active=True,  # starts active; import should flip to False
     )
@@ -77,111 +77,156 @@ def _make_snapshot(isin, asset_name, closing_units, nav=89.3756,
 
 
 class TestCasSnapshotCommit:
-    def test_commit_creates_cas_snapshot(self, db, active_asset):
-        svc = ImportService(db)
-        snap = _make_snapshot(
-            isin="INF879O01027",
-            asset_name="Parag Parikh Flexi Cap Fund",
-            closing_units=26580.939,
+    def test_commit_persists_snapshot_for_existing_asset(self, db, active_asset):
+        from app.importers.base import ImportResult
+        from app.repositories.cas_snapshot_repo import CasSnapshotRepository
+        from app.repositories.unit_of_work import UnitOfWork
+        from app.services.imports.post_processors.mf import MFPostProcessor
+
+        processor = MFPostProcessor()
+        result = ImportResult(
+            source="cas",
+            snapshots=[
+                _make_snapshot(
+                    isin="INF879O01027",
+                    asset_name="Parag Parikh Flexi Cap Fund",
+                    closing_units=26580.939,
+                )
+            ],
         )
-        preview = svc.preview(transactions=[], preview_snapshots=[snap])
-        svc.commit(preview["preview_id"])
+
+        processor.process(active_asset, result, UnitOfWork(db))
 
         repo = CasSnapshotRepository(db)
         saved = repo.get_latest_by_asset_id(active_asset.id)
         assert saved is not None
         assert abs(saved.closing_units - 26580.939) < 0.001
         assert saved.date == date(2026, 3, 18)
-        # values stored in paise
         assert saved.market_value_inr == round(2375687.37 * 100)
         assert saved.total_cost_inr == round(1655390.87 * 100)
 
     def test_commit_marks_redeemed_fund_inactive(self, db, redeemed_asset):
-        svc = ImportService(db)
-        snap = _make_snapshot(
-            isin="INF209K01BR9",
-            asset_name="Aditya Birla Sun Life Large Cap Fund",
-            closing_units=0.0,
-            nav=495.46,
-            market_value=0.0,
-            total_cost=0.0,
-        )
-        preview = svc.preview(transactions=[], preview_snapshots=[snap])
-        svc.commit(preview["preview_id"])
+        from app.importers.base import ImportResult
+        from app.repositories.unit_of_work import UnitOfWork
+        from app.services.imports.post_processors.mf import MFPostProcessor
 
+        processor = MFPostProcessor()
+        result = ImportResult(
+            source="cas",
+            snapshots=[
+                _make_snapshot(
+                    isin="INF209K01BR9",
+                    asset_name="Aditya Birla Sun Life Large Cap Fund",
+                    closing_units=0.0,
+                    nav=495.46,
+                    market_value=0.0,
+                    total_cost=0.0,
+                )
+            ],
+        )
+
+        redeemed_asset.is_active = True
+        db.commit()
+
+        processor.process(redeemed_asset, result, UnitOfWork(db))
         db.refresh(redeemed_asset)
         assert redeemed_asset.is_active is False
 
     def test_commit_marks_active_fund_active(self, db, active_asset):
-        # Asset starts active; re-importing with units > 0 keeps/sets it active
-        active_asset.is_active = False  # simulate it was previously marked inactive
+        from app.importers.base import ImportResult
+        from app.repositories.unit_of_work import UnitOfWork
+        from app.services.imports.post_processors.mf import MFPostProcessor
+
+        active_asset.is_active = False
         db.commit()
 
-        svc = ImportService(db)
-        snap = _make_snapshot(
-            isin="INF879O01027",
-            asset_name="Parag Parikh Flexi Cap Fund",
-            closing_units=26580.939,
+        processor = MFPostProcessor()
+        result = ImportResult(
+            source="cas",
+            snapshots=[
+                _make_snapshot(
+                    isin="INF879O01027",
+                    asset_name="Parag Parikh Flexi Cap Fund",
+                    closing_units=26580.939,
+                )
+            ],
         )
-        preview = svc.preview(transactions=[], preview_snapshots=[snap])
-        svc.commit(preview["preview_id"])
 
+        processor.process(active_asset, result, UnitOfWork(db))
         db.refresh(active_asset)
         assert active_asset.is_active is True
 
     def test_commit_creates_new_snapshot_on_reimport(self, db, active_asset):
-        """Each CAS import creates a new row; latest is used."""
-        svc = ImportService(db)
+        from app.importers.base import ImportResult
+        from app.repositories.unit_of_work import UnitOfWork
 
-        # First import
+        processor = MFPostProcessor()
+
         snap1 = _make_snapshot(
             isin="INF879O01027",
             asset_name="Parag Parikh Flexi Cap Fund",
             closing_units=25000.0,
         )
         snap1.date = date(2026, 1, 31)
-        p1 = svc.preview(transactions=[], preview_snapshots=[snap1])
-        svc.commit(p1["preview_id"])
 
-        # Second import (newer)
         snap2 = _make_snapshot(
             isin="INF879O01027",
             asset_name="Parag Parikh Flexi Cap Fund",
             closing_units=26580.939,
         )
-        p2 = svc.preview(transactions=[], preview_snapshots=[snap2])
-        svc.commit(p2["preview_id"])
 
-        repo = CasSnapshotRepository(db)
+        processor.process(active_asset, ImportResult(source="cas", snapshots=[snap1]), UnitOfWork(db))
+        processor.process(active_asset, ImportResult(source="cas", snapshots=[snap2]), UnitOfWork(db))
+
         all_snaps = db.query(CasSnapshot).filter(CasSnapshot.asset_id == active_asset.id).all()
-        assert len(all_snaps) == 2  # both stored
+        assert len(all_snaps) == 2
 
-        latest = repo.get_latest_by_asset_id(active_asset.id)
-        assert abs(latest.closing_units - 26580.939) < 0.001  # newest used
+        latest = CasSnapshotRepository(db).get_latest_by_asset_id(active_asset.id)
+        assert abs(latest.closing_units - 26580.939) < 0.001
 
     def test_commit_skips_snapshot_for_unknown_isin(self, db):
-        """Snapshots for ISINs not in DB are silently skipped."""
-        svc = ImportService(db)
-        snap = _make_snapshot(
-            isin="INF999Z99ZZ9",  # not in DB
-            asset_name="Unknown Fund",
-            closing_units=1000.0,
+        from app.importers.base import ImportResult
+        from app.repositories.unit_of_work import UnitOfWork
+
+        processor = MFPostProcessor()
+        unknown_asset = Asset(name="Unknown", identifier="INF999Z99ZZ9", asset_type=AssetType.MF, asset_class=AssetClass.EQUITY, currency="INR")
+        db.add(unknown_asset)
+        db.commit()
+
+        result = ImportResult(
+            source="cas",
+            snapshots=[
+                _make_snapshot(
+                    isin="INF111AAA1111",
+                    asset_name="Unknown Fund",
+                    closing_units=1000.0,
+                )
+            ],
         )
-        preview = svc.preview(transactions=[], preview_snapshots=[snap])
-        result = svc.commit(preview["preview_id"])
-        # Should not raise; snapshot_count may be 0
-        assert result is not None
+
+        processor.process(unknown_asset, result, UnitOfWork(db))
+        snaps = db.query(CasSnapshot).filter(CasSnapshot.asset_id == unknown_asset.id).all()
+        assert len(snaps) == 0
 
     def test_preview_stores_snapshots_for_commit(self, db, active_asset):
-        """Snapshots stored in preview_store survive until commit."""
-        svc = ImportService(db)
-        snap = _make_snapshot(
-            isin="INF879O01027",
-            asset_name="Parag Parikh Flexi Cap Fund",
-            closing_units=26580.939,
-        )
-        preview = svc.preview(transactions=[], preview_snapshots=[snap])
-        assert "preview_id" in preview
+        from app.importers.base import ImportResult
+        from app.services.imports.preview_store import PreviewStore
 
-        result = svc.commit(preview["preview_id"])
-        assert result["snapshot_count"] == 1
+        result = ImportResult(
+            source="cas",
+            snapshots=[
+                _make_snapshot(
+                    isin="INF879O01027",
+                    asset_name="Parag Parikh Flexi Cap Fund",
+                    closing_units=26580.939,
+                )
+            ],
+        )
+
+        store = PreviewStore()
+        preview_id = store.put(result)
+        assert preview_id is not None
+
+        loaded = store.get(preview_id)
+        assert loaded is not None
+        assert loaded.snapshots[0].isin == "INF879O01027"

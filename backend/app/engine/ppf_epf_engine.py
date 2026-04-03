@@ -2,11 +2,12 @@ from datetime import date
 from typing import Optional
 import logging
 
+from app.middleware.error_handler import NotFoundError
+
 logger = logging.getLogger(__name__)
 
 
 def get_applicable_rate(instrument: str, on_date: date, rates: list) -> float:
-    from app.middleware.error_handler import NotFoundError
     applicable = [
         r for r in rates
         if r.instrument == instrument

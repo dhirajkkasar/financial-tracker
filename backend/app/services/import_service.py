@@ -10,6 +10,7 @@ from app.models.transaction import TransactionType
 from app.repositories.asset_repo import AssetRepository
 from app.repositories.cas_snapshot_repo import CasSnapshotRepository
 from app.repositories.transaction_repo import TransactionRepository
+from app.services.corp_actions_service import CorpActionsService
 
 logger = logging.getLogger(__name__)
 
@@ -185,7 +186,6 @@ class ImportService:
         # NSE rate-limiting or network failures must not roll back a completed import.
         if touched_stock_assets:
             try:
-                from app.services.corp_actions_service import CorpActionsService
                 corp_svc = CorpActionsService(self.db)
                 for asset_id, stock_asset in touched_stock_assets.items():
                     try:

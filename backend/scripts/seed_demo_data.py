@@ -223,7 +223,7 @@ def seed_nps(db):
     asset = _find_or_create_asset_by_name(
         db, name="NPS Tier-I (HDFC Pension)",
         identifier="NPS-001",
-        asset_type=AssetType.NPS, asset_class=AssetClass.MIXED, currency="INR",
+        asset_type=AssetType.NPS, asset_class=AssetClass.DEBT, currency="INR",
     )
     # Monthly voluntary contributions
     monthly = -5000.0

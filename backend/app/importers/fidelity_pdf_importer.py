@@ -6,7 +6,8 @@ from datetime import datetime
 
 import pdfplumber
 
-from app.importers.base import ParsedTransaction, ImportResult, BaseImporter
+from app.importers.base import ParsedTransaction, ImportResult, BaseImporter, ValidationResult
+from app.importers.helpers import ExchangeRateValidationHelper
 from app.importers.registry import register_importer
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,18 @@ class FidelityPDFImporter(BaseImporter):
 
     def __init__(self, exchange_rates: dict[str, float] | None = None):
         self.exchange_rates = exchange_rates or {}
+
+    def validate(self, result: ImportResult, **kwargs) -> ValidationResult:
+        """Post-parse validation: verify exchange_rates completeness.
+        
+        Args:
+            result: ImportResult from parse()
+            **kwargs: Should contain 'user_inputs' as JSON string of exchange_rates
+        
+        Returns:
+            ValidationResult with errors if exchange_rates are missing for required months
+        """
+        return ExchangeRateValidationHelper.validate_exchange_rates(result, **kwargs)
 
     @staticmethod
     def extract_required_month_years(file_bytes: bytes) -> list[str]:
@@ -105,12 +118,19 @@ class FidelityPDFImporter(BaseImporter):
         quantity = float(quantity_str.replace(",", ""))
         proceeds_usd = float(proceeds_str.replace(",", ""))
 
+        # For backward compatibility: if exchange_rates were provided to constructor, use them
+        # Otherwise, leave amount_inr as placeholder (will be calculated during commit with validated exchange_rates)
         month_year = date_sold.strftime("%Y-%m")
         forex_rate = self.exchange_rates.get(month_year)
-        if forex_rate is None:
+        if forex_rate is None and self.exchange_rates:
+            # Exchange_rates provided but missing this month
             raise ValueError(f"No exchange rate provided for {month_year}")
 
-        amount_inr = proceeds_usd * forex_rate  # SELL = inflow (positive)
+        if forex_rate:
+            amount_inr = proceeds_usd * forex_rate  # SELL = inflow (positive)
+        else:
+            amount_inr = 0.0  # Placeholder
+        
         price_per_unit_usd = proceeds_usd / quantity if quantity else None
         txn_id = self._make_txn_id(ticker, date_sold.isoformat(), date_acquired.isoformat(), quantity)
 

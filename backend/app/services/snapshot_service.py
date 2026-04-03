@@ -5,7 +5,8 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 
 from app.repositories.snapshot_repo import SnapshotRepository
-from app.services.returns_service import ReturnsService
+from app.services.returns.portfolio_returns_service import PortfolioReturnsService
+from app.services.returns.strategies.registry import DefaultReturnsStrategyRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +24,13 @@ class SnapshotService:
         today_ist = datetime.now(tz=IST).date()
 
         try:
-            overview = ReturnsService(self.db).get_overview()
+            strategy_registry = DefaultReturnsStrategyRegistry()
+            svc = PortfolioReturnsService(self.db, strategy_registry)
+            overview = svc.get_overview()
             total_value_inr = overview.get("total_current_value", 0.0)
             total_value_paise = round(total_value_inr * 100)
 
-            breakdown = ReturnsService(self.db).get_breakdown()
+            breakdown = svc.get_breakdown()
             breakdown_dict = {
                 entry["asset_type"]: round(entry["total_current_value"] * 100)
                 for entry in breakdown.get("breakdown", [])

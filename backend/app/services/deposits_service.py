@@ -1,7 +1,7 @@
 import logging
 from sqlalchemy.orm import Session
 
-from app.engine.fd_engine import compute_fd_maturity, compute_rd_maturity
+from app.engine.fd_engine import compute_maturity_paise
 from app.repositories.asset_repo import AssetRepository
 from app.repositories.fd_repo import FDRepository
 
@@ -17,6 +17,7 @@ class DepositsService:
     def mark_matured_fds(self) -> int:
         """Mark FDs/RDs whose maturity date has passed as matured and inactive.
 
+        Always recomputes maturity_amount to keep it in sync with current fd_detail params.
         Returns the number of assets updated.
         """
         assets = self.asset_repo.list_unmatured_past_maturity()
@@ -26,18 +27,7 @@ class DepositsService:
             if fd is None:
                 continue
 
-            if fd.maturity_amount is None:
-                principal_inr = fd.principal_amount / 100.0
-                if fd.fd_type.value == "FD":
-                    tenure_years = (fd.maturity_date - fd.start_date).days / 365.0
-                    maturity_inr = compute_fd_maturity(
-                        principal_inr, fd.interest_rate_pct, fd.compounding.value, tenure_years
-                    )
-                else:  # RD
-                    months = round((fd.maturity_date - fd.start_date).days / 30.44)
-                    maturity_inr = compute_rd_maturity(principal_inr, fd.interest_rate_pct, months)
-                fd.maturity_amount = round(maturity_inr * 100)
-
+            fd.maturity_amount = compute_maturity_paise(fd)
             fd.is_matured = True
             asset.is_active = False
             logger.info(
@@ -50,3 +40,4 @@ class DepositsService:
             self.db.commit()
 
         return count
+

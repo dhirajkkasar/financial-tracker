@@ -6,7 +6,17 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 
+from app.database import SessionLocal
 from app.middleware.error_handler import AppError, app_error_handler, validation_error_handler
+from app.services.deposits_service import DepositsService
+from app.services.epf_auto_contrib_service import EPFAutoContribService
+from app.services.price_service import PriceService
+from app.services.snapshot_service import SnapshotService
+from scripts.seed_interest_rates import seed
+
+# Import all importer classes to trigger @register_importer decorators
+# This must happen before any ImporterRegistry() is instantiated
+import app.importers  # noqa: F401
 
 logging.basicConfig(
     level=logging.INFO,
@@ -19,9 +29,6 @@ logger = logging.getLogger(__name__)
 async def _background_price_refresh():
     """Non-blocking price refresh + snapshot triggered on startup."""
     try:
-        from app.database import SessionLocal
-        from app.services.price_service import PriceService
-        from app.services.snapshot_service import SnapshotService
         db = SessionLocal()
         try:
             result = PriceService(db).refresh_all()
@@ -37,8 +44,6 @@ async def _background_price_refresh():
 async def lifespan(app: FastAPI):
     # Seed interest rates (idempotent)
     try:
-        from app.database import SessionLocal
-        from scripts.seed_interest_rates import seed
         db = SessionLocal()
         try:
             seed(db)
@@ -49,8 +54,6 @@ async def lifespan(app: FastAPI):
 
     # Auto-mature FDs/RDs whose maturity date has passed
     try:
-        from app.database import SessionLocal
-        from app.services.deposits_service import DepositsService
         db = SessionLocal()
         try:
             matured = DepositsService(db).mark_matured_fds()
@@ -63,8 +66,6 @@ async def lifespan(app: FastAPI):
 
     # Auto-fill missing EPF monthly contributions using the last known amounts
     try:
-        from app.database import SessionLocal
-        from app.services.epf_auto_contrib_service import EPFAutoContribService
         db = SessionLocal()
         try:
             result = EPFAutoContribService(db).backfill_missing_contributions()

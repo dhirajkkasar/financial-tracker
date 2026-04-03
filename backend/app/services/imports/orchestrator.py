@@ -14,6 +14,8 @@ from typing import Optional
 
 from app.importers.base import ImportResult, ParsedTransaction
 from app.importers.pipeline import ImportPipeline
+from app.engine.mf_classifier import classify_mf
+from app.engine.mf_scheme_lookup import lookup_by_isin
 from app.models.asset import Asset, AssetType, AssetClass
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas.responses.imports import (
@@ -21,8 +23,6 @@ from app.schemas.responses.imports import (
     ImportCommitResponse,
     ParsedTransactionPreview,
 )
-from app.engine.mf_classifier import classify_mf
-from app.engine.mf_scheme_lookup import lookup_by_isin
 from app.services.event_bus import ImportCompletedEvent, IEventBus
 from app.services.imports.post_processors.base import IPostProcessor
 from app.services.imports.preview_store import PreviewStore
@@ -70,8 +70,10 @@ class ImportOrchestrator:
         source: str,
         fmt: str,
         file_bytes: bytes,
+        **importer_kwargs,
     ) -> ImportPreviewResponse:
-        result = self._pipeline.run(source, fmt, file_bytes)
+        result = self._pipeline.run(source, fmt, file_bytes, **importer_kwargs)
+        logger.info("ImportOrchestrator.preview: result.transactions=%d, duplicate_count=%s", len(result.transactions), getattr(result, 'duplicate_count', None))
         preview_id = self._store.put(result)
 
         txn_previews = [
@@ -106,8 +108,9 @@ class ImportOrchestrator:
             return None  # expired or not found
 
         inserted = 0
-        skipped = 0
+        skipped = getattr(result, "duplicate_count", 0)
         errors: list[str] = []
+        assets_created: dict[int, Asset] = {}
 
         with self._uow_factory() as uow:
             for parsed_txn in result.transactions:
@@ -115,13 +118,16 @@ class ImportOrchestrator:
                     # Find or create the asset
                     asset = self._find_or_create_asset(parsed_txn, uow)
 
+                    # Track created asssetsfor post-commit processing
+                    assets_created[asset.id] = asset
+
                     # Check for duplicate (second-pass safety)
                     if uow.transactions.get_by_txn_id(parsed_txn.txn_id):
                         skipped += 1
                         continue
 
                     # Persist transaction
-                    txn = uow.transactions.create(
+                    uow.transactions.create(
                         asset_id=asset.id,
                         txn_id=parsed_txn.txn_id,
                         type=parsed_txn.txn_type,
@@ -135,22 +141,15 @@ class ImportOrchestrator:
                         notes=parsed_txn.notes,
                     )
                     inserted += 1
-
-                    # Run post-processor for this asset type
-                    processor = self._processors.get(parsed_txn.asset_type)
-                    if processor:
-                        processor.process(asset, [txn], uow)
-
                 except Exception as exc:
                     logger.warning("Failed to import txn %s: %s", parsed_txn.txn_id, exc)
                     errors.append(str(exc))
-
-            # Persist CAS snapshots if present (placeholder — full impl in future)
-            for snap in result.snapshots:
-                try:
-                    pass
-                except Exception as exc:
-                    errors.append(f"Snapshot error: {exc}")
+            
+            # Run post-processor for each asset type
+            for _, asset in assets_created.items():
+                processor = self._processors.get(asset.asset_type.value)
+                if processor:
+                    processor.process(asset, result, uow)
 
         # Publish event for each unique asset_type inserted
         if inserted > 0:
@@ -175,6 +174,9 @@ class ImportOrchestrator:
         For MF assets the scheme_code and scheme_category are resolved from the
         bundled CSV only when the asset is new or its mfapi_scheme_code is empty.
         """
+        if parsed_txn is None:
+            return None
+            
         assets = uow.assets.list(active=None)
 
         # Match by identifier (ISIN / scheme code)

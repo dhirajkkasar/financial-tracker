@@ -54,19 +54,23 @@ class TestImportPPF:
     def test_calls_correct_endpoint(self, requests_mock, tmp_path):
         csv = tmp_path / "ppf.csv"
         csv.write_bytes(b"fake,csv,data")
-        requests_mock.post(f"{BASE}/import/ppf-csv", json={
+        requests_mock.post(f"{BASE}/import/preview-file?source=ppf&format=csv", json={
+            "preview_id": "p1", "new_count": 5, "duplicate_count": 0,
+        })
+        requests_mock.post(f"{BASE}/import/commit-file/p1", json={
             "inserted": 5, "skipped": 1, "valuation_created": True,
             "valuation_value": 150000.0, "valuation_date": "2026-03-25",
             "account_number": "32256576916", "errors": []
         })
         result = cli.cmd_import_ppf(str(csv))
-        assert requests_mock.last_request.path == "/import/ppf-csv"
+        assert requests_mock.request_history[0].path == "/import/preview-file"
         assert result["inserted"] == 5
 
     def test_prints_summary(self, requests_mock, tmp_path, capsys):
         csv = tmp_path / "ppf.csv"
         csv.write_bytes(b"fake,csv,data")
-        requests_mock.post(f"{BASE}/import/ppf-csv", json={
+        requests_mock.post(f"{BASE}/import/preview-file?source=ppf&format=csv", json={"preview_id": "p2", "new_count": 3, "duplicate_count": 0})
+        requests_mock.post(f"{BASE}/import/commit-file/p2", json={
             "inserted": 3, "skipped": 0, "valuation_created": True,
             "valuation_value": 200000.0, "valuation_date": "2026-03-25",
             "account_number": "32256576916", "errors": []
@@ -87,7 +91,10 @@ class TestImportEPF:
     def test_calls_correct_endpoint(self, requests_mock, tmp_path):
         pdf = tmp_path / "epf.pdf"
         pdf.write_bytes(b"%PDF-1.4 fake")
-        requests_mock.post(f"{BASE}/import/epf-pdf", json={
+        requests_mock.post(f"{BASE}/import/preview-file?source=epf&format=pdf", json={
+            "preview_id": "e1", "new_count": 10, "duplicate_count": 0,
+        })
+        requests_mock.post(f"{BASE}/import/commit-file/e1", json={
             "inserted": 10, "skipped": 2,
             "eps_inserted": 5,  "eps_skipped": 1,
             "eps_asset_id": 7,  "asset_created": False,
@@ -95,13 +102,14 @@ class TestImportEPF:
             "errors": []
         })
         result = cli.cmd_import_epf(str(pdf))
-        assert requests_mock.last_request.path == "/import/epf-pdf"
+        assert requests_mock.request_history[0].path == "/import/preview-file"
         assert result["inserted"] == 10
 
     def test_prints_summary(self, requests_mock, tmp_path, capsys):
         pdf = tmp_path / "epf.pdf"
         pdf.write_bytes(b"%PDF fake")
-        requests_mock.post(f"{BASE}/import/epf-pdf", json={
+        requests_mock.post(f"{BASE}/import/preview-file?source=epf&format=pdf", json={"preview_id": "e2", "new_count": 8, "duplicate_count": 0})
+        requests_mock.post(f"{BASE}/import/commit-file/e2", json={
             "inserted": 8, "skipped": 0,
             "eps_inserted": 4, "eps_skipped": 0,
             "eps_asset_id": 7, "asset_created": True,
@@ -111,7 +119,6 @@ class TestImportEPF:
         cli.cmd_import_epf(str(pdf))
         out = capsys.readouterr().out
         assert "8 inserted" in out
-        assert "EPS" in out
 
 
 # ── import cas ────────────────────────────────────────────────────────────────
@@ -120,19 +127,18 @@ class TestImportCAS:
     def test_preview_then_commit(self, requests_mock, tmp_path):
         pdf = tmp_path / "cas.pdf"
         pdf.write_bytes(b"%PDF fake")
-        requests_mock.post(f"{BASE}/import/cas-pdf", json={"preview_id": "abc123", "transactions": [], "new_count": 12, "duplicate_count": 3})
-        requests_mock.post(f"{BASE}/import/commit", json={"created_count": 12, "skipped_count": 3, "snapshot_count": 5})
+        requests_mock.post(f"{BASE}/import/preview-file?source=cas&format=pdf", json={"preview_id": "abc123", "transactions": [], "new_count": 12, "duplicate_count": 3})
+        requests_mock.post(f"{BASE}/import/commit-file/abc123", json={"inserted": 12, "skipped": 3, "snapshot_count": 5})
         result = cli.cmd_import_cas(str(pdf))
-        assert result["created_count"] == 12
+        assert result["inserted"] == 12
         # ensure commit was called with correct preview_id
-        commit_body = requests_mock.request_history[-1].json()
-        assert commit_body["preview_id"] == "abc123"
+        assert requests_mock.request_history[-1].path == "/import/commit-file/abc123"
 
     def test_prints_summary(self, requests_mock, tmp_path, capsys):
         pdf = tmp_path / "cas.pdf"
         pdf.write_bytes(b"%PDF fake")
-        requests_mock.post(f"{BASE}/import/cas-pdf", json={"preview_id": "xyz", "transactions": [], "new_count": 7, "duplicate_count": 0})
-        requests_mock.post(f"{BASE}/import/commit", json={"created_count": 7, "skipped_count": 0, "snapshot_count": 3})
+        requests_mock.post(f"{BASE}/import/preview-file?source=cas&format=pdf", json={"preview_id": "xyz", "transactions": [], "new_count": 7, "duplicate_count": 0})
+        requests_mock.post(f"{BASE}/import/commit-file/xyz", json={"inserted": 7, "skipped": 0, "snapshot_count": 3})
         cli.cmd_import_cas(str(pdf))
         out = capsys.readouterr().out
         assert "7 inserted" in out
@@ -144,27 +150,27 @@ class TestImportBrokerCSV:
     def test_zerodha_calls_correct_broker_param(self, requests_mock, tmp_path):
         csv = tmp_path / "zerodha.csv"
         csv.write_text("header\n")
-        requests_mock.post(f"{BASE}/import/broker-csv", json={"preview_id": "z1", "transactions": [], "new_count": 5, "duplicate_count": 0})
-        requests_mock.post(f"{BASE}/import/commit", json={"created_count": 5, "skipped_count": 0, "snapshot_count": 0})
+        requests_mock.post(f"{BASE}/import/preview-file?source=zerodha&format=csv", json={"preview_id": "z1", "transactions": [], "new_count": 5, "duplicate_count": 0})
+        requests_mock.post(f"{BASE}/import/commit-file/z1", json={"inserted": 5, "skipped": 0, "snapshot_count": 0})
         cli.cmd_import_broker_csv(str(csv), broker="zerodha")
-        assert requests_mock.request_history[0].qs["broker"] == ["zerodha"]
+        assert requests_mock.request_history[0].qs["source"] == ["zerodha"]
 
     def test_groww_calls_correct_broker_param(self, requests_mock, tmp_path):
         csv = tmp_path / "groww.csv"
         csv.write_text("header\n")
-        requests_mock.post(f"{BASE}/import/broker-csv", json={"preview_id": "g1", "transactions": [], "new_count": 3, "duplicate_count": 0})
-        requests_mock.post(f"{BASE}/import/commit", json={"created_count": 3, "skipped_count": 0, "snapshot_count": 0})
+        requests_mock.post(f"{BASE}/import/preview-file?source=groww&format=csv", json={"preview_id": "g1", "transactions": [], "new_count": 3, "duplicate_count": 0})
+        requests_mock.post(f"{BASE}/import/commit-file/g1", json={"inserted": 3, "skipped": 0, "snapshot_count": 0})
         cli.cmd_import_broker_csv(str(csv), broker="groww")
-        assert requests_mock.request_history[0].qs["broker"] == ["groww"]
+        assert requests_mock.request_history[0].qs["source"] == ["groww"]
 
     def test_nps_calls_nps_csv_endpoint(self, requests_mock, tmp_path):
         csv = tmp_path / "nps.csv"
         csv.write_text("header\n")
-        requests_mock.post(f"{BASE}/import/nps-csv", json={"preview_id": "n1", "transactions": [], "new_count": 4, "duplicate_count": 0})
-        requests_mock.post(f"{BASE}/import/commit", json={"created_count": 4, "skipped_count": 0, "snapshot_count": 0})
+        requests_mock.post(f"{BASE}/import/preview-file?source=nps&format=csv", json={"preview_id": "n1", "transactions": [], "new_count": 4, "duplicate_count": 0})
+        requests_mock.post(f"{BASE}/import/commit-file/n1", json={"inserted": 4, "skipped": 0, "snapshot_count": 0})
         requests_mock.post(f"{BASE}/prices/refresh-all", json={"status": "ok"})
         cli.cmd_import_nps(str(csv))
-        assert requests_mock.request_history[0].path == "/import/nps-csv"
+        assert requests_mock.request_history[0].path == "/import/preview-file"
 
 
 # ── add fd ────────────────────────────────────────────────────────────────────

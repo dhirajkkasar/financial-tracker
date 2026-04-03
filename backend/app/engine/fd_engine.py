@@ -30,6 +30,20 @@ def compute_rd_maturity(monthly_installment: float, rate_pct: float, months: int
     return total
 
 
+def compute_maturity_paise(fd) -> int:
+    """Compute maturity amount in paise from an FDDetail model instance."""
+    principal_inr = fd.principal_amount / 100.0
+    if fd.fd_type.value == "FD":
+        tenure_years = (fd.maturity_date - fd.start_date).days / 365.0
+        maturity_inr = compute_fd_maturity(
+            principal_inr, fd.interest_rate_pct, fd.compounding.value, tenure_years
+        )
+    else:  # RD
+        months = round((fd.maturity_date - fd.start_date).days / 30.44)
+        maturity_inr = compute_rd_maturity(principal_inr, fd.interest_rate_pct, months)
+    return round(maturity_inr * 100)
+
+
 def compute_fd_current_value(
     principal: float, rate_pct: float, compounding: str,
     start_date: date, maturity_date: date, as_of: date = None

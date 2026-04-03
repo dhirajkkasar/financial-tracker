@@ -87,3 +87,88 @@ class TestFidelityRSUImporter:
         data = _load_fixture("fidelity_rsu_sample.csv")
         txn = FidelityRSUImporter(exchange_rates=self.RATES).parse(data, "NASDAQ_AMZN.csv").transactions[0]
         assert "NASDAQ" in (txn.notes or "")
+
+
+class TestFidelityRSUImporterValidation:
+    """Test post-parse validation of Fidelity RSU importer."""
+
+    def test_validate_with_valid_exchange_rates(self):
+        """Validation passes when exchange_rates JSON is valid and complete."""
+        from app.importers.fidelity_rsu_csv_importer import FidelityRSUImporter
+        data = _load_fixture("fidelity_rsu_sample.csv")
+        result = FidelityRSUImporter().parse(data, "NASDAQ_AMZN.csv")
+        
+        # Valid exchange_rates JSON string
+        user_inputs = '{"2025-03": 86.5, "2024-09": 83.8}'
+        validation_result = FidelityRSUImporter().validate(result, user_inputs=user_inputs)
+        
+        assert validation_result.is_valid is True
+        assert validation_result.errors == []
+
+    def test_validate_with_invalid_json(self):
+        """Validation fails when exchange_rates is not valid JSON."""
+        from app.importers.fidelity_rsu_csv_importer import FidelityRSUImporter
+        data = _load_fixture("fidelity_rsu_sample.csv")
+        result = FidelityRSUImporter().parse(data, "NASDAQ_AMZN.csv")
+        
+        # Invalid JSON
+        user_inputs = '{invalid json}'
+        validation_result = FidelityRSUImporter().validate(result, user_inputs=user_inputs)
+        
+        assert validation_result.is_valid is False
+        assert len(validation_result.errors) > 0
+        assert "valid JSON" in validation_result.errors[0]
+
+    def test_validate_with_non_numeric_values(self):
+        """Validation fails when exchange_rates values are not numeric."""
+        from app.importers.fidelity_rsu_csv_importer import FidelityRSUImporter
+        data = _load_fixture("fidelity_rsu_sample.csv")
+        result = FidelityRSUImporter().parse(data, "NASDAQ_AMZN.csv")
+        
+        # Non-numeric values
+        user_inputs = '{"2025-03": "abc"}'
+        validation_result = FidelityRSUImporter().validate(result, user_inputs=user_inputs)
+        
+        assert validation_result.is_valid is False
+        assert len(validation_result.errors) > 0
+        assert "numbers" in validation_result.errors[0]
+
+    def test_validate_with_missing_months(self):
+        """Validation fails when required months are missing from exchange_rates."""
+        from app.importers.fidelity_rsu_csv_importer import FidelityRSUImporter
+        data = _load_fixture("fidelity_rsu_sample.csv")
+        result = FidelityRSUImporter().parse(data, "NASDAQ_AMZN.csv")
+        
+        # Missing 2024-09
+        user_inputs = '{"2025-03": 86.5}'
+        validation_result = FidelityRSUImporter().validate(result, user_inputs=user_inputs)
+        
+        assert validation_result.is_valid is False
+        assert len(validation_result.errors) > 0
+        assert "Missing exchange_rates" in validation_result.errors[0]
+        assert "2024-09" in validation_result.errors[0]
+        assert validation_result.required_inputs["required_months"] == ["2024-09", "2025-03"]
+
+    def test_validate_with_no_transactions(self):
+        """Validation passes when there are no transactions and no exchange_rates."""
+        from app.importers.fidelity_rsu_csv_importer import FidelityRSUImporter
+        from app.importers.base import ImportResult
+        result = ImportResult(source="fidelity_rsu", transactions=[])
+        
+        validation_result = FidelityRSUImporter().validate(result, user_inputs=None)
+        
+        assert validation_result.is_valid is True
+        assert validation_result.errors == []
+
+    def test_validate_with_no_user_inputs_but_transactions(self):
+        """Validation fails when there are transactions but no exchange_rates provided."""
+        from app.importers.fidelity_rsu_csv_importer import FidelityRSUImporter
+        data = _load_fixture("fidelity_rsu_sample.csv")
+        result = FidelityRSUImporter().parse(data, "NASDAQ_AMZN.csv")
+        
+        # No user_inputs provided
+        validation_result = FidelityRSUImporter().validate(result, user_inputs=None)
+        
+        assert validation_result.is_valid is False
+        assert len(validation_result.errors) > 0
+        assert "exchange_rates is required" in validation_result.errors[0]

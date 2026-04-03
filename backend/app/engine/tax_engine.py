@@ -15,6 +15,8 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
+from app.engine.lot_engine import _STCG_DAYS, EQUITY_STCG_DAYS
+
 # ₹1.25L LTCG exemption — Section 112A (equity and equity MF only)
 LTCG_EXEMPTION_LIMIT = 125_000.0
 
@@ -131,7 +133,6 @@ def compute_fy_realised_gains(
         if not (fy_start <= sell_date <= fy_end):
             continue
 
-        from app.engine.lot_engine import _STCG_DAYS, EQUITY_STCG_DAYS
         stcg_days = _STCG_DAYS.get(asset_type, EQUITY_STCG_DAYS)
         classification = classify_holding(buy_date=buy_date, sell_date=sell_date, stcg_days=stcg_days)
         gain = m["realised_gain_inr"]

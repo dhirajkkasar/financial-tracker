@@ -21,6 +21,8 @@ def test_stock_post_processor_marks_asset_inactive_when_zero_units():
     from app.services.imports.post_processors.stock import StockPostProcessor
 
     class FakeAsset:
+        id = 1
+        name = "Test Stock"
         asset_type_value = "STOCK_IN"
         is_active = True
         updates = {}
@@ -38,7 +40,11 @@ def test_stock_post_processor_marks_asset_inactive_when_zero_units():
     txns_sell = [_make_txn("s1", units=10.0, txn_type="SELL")]
 
     processor = StockPostProcessor()
-    processor.process(asset, txns_buy + txns_sell, FakeUoW())
+    processor.process(
+        asset,
+        ImportResult(source="zerodha", transactions=txns_buy + txns_sell),
+        FakeUoW(),
+    )
 
     assert asset.updates.get("is_active") is False
 
@@ -47,6 +53,8 @@ def test_stock_post_processor_keeps_active_when_units_remain():
     from app.services.imports.post_processors.stock import StockPostProcessor
 
     class FakeAsset:
+        id = 1
+        name = "Test Stock"
         asset_type_value = "STOCK_IN"
         is_active = True
         updates = {}
@@ -63,9 +71,106 @@ def test_stock_post_processor_keeps_active_when_units_remain():
     txns = [_make_txn("b1", units=10.0, txn_type="BUY")]
 
     processor = StockPostProcessor()
-    processor.process(asset, txns, FakeUoW())
+    processor.process(
+        asset,
+        ImportResult(source="zerodha", transactions=txns),
+        FakeUoW(),
+    )
 
     assert "is_active" not in asset.updates
+
+
+def test_mf_post_processor_persists_relevant_snapshots():
+    from types import SimpleNamespace
+    from app.services.imports.post_processors.mf import MFPostProcessor
+    from app.importers.base import ParsedFundSnapshot
+
+    class FakeCasSnapshotRepo:
+        def __init__(self):
+            self.created = []
+
+        def create(self, **kwargs):
+            self.created.append(kwargs)
+            return SimpleNamespace(**kwargs)
+
+    class FakeUoW:
+        def __init__(self):
+            self.cas_snapshots = FakeCasSnapshotRepo()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    asset = SimpleNamespace(id=1, identifier="INFAAA", name="MF A", is_active=False)
+    result = ImportResult(
+        source="cas",
+        snapshots=[
+            ParsedFundSnapshot(
+                isin="INFAAA",
+                asset_name="MF A",
+                date=date(2026, 3, 18),
+                closing_units=10.0,
+                nav_price_inr=100.0,
+                market_value_inr=1000.0,
+                total_cost_inr=900.0,
+            ),
+            ParsedFundSnapshot(
+                isin="INFBBB",
+                asset_name="MF B",
+                date=date(2026, 3, 18),
+                closing_units=5.0,
+                nav_price_inr=200.0,
+                market_value_inr=1000.0,
+                total_cost_inr=900.0,
+            ),
+        ],
+    )
+
+    processor = MFPostProcessor()
+    uow = FakeUoW()
+    processor.process(asset, result, uow)
+
+    assert len(uow.cas_snapshots.created) == 1
+    assert uow.cas_snapshots.created[0]["asset_id"] == asset.id
+    assert asset.is_active is True
+
+
+def test_ppf_post_processor_creates_valuation_for_asset():
+    from types import SimpleNamespace
+    from app.services.imports.post_processors.ppf import PPFPostProcessor
+
+    class FakeValuationRepo:
+        def __init__(self):
+            self.created = []
+
+        def create(self, **kwargs):
+            self.created.append(kwargs)
+
+    class FakeUoW:
+        def __init__(self):
+            self.valuations = FakeValuationRepo()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    asset = SimpleNamespace(id=1, identifier="PPF1", name="PPF Asset")
+    result = ImportResult(
+        source="ppf_csv",
+        closing_valuation_inr=20000.0,
+        closing_valuation_date=date(2026, 3, 31),
+    )
+
+    processor = PPFPostProcessor()
+    uow = FakeUoW()
+    processor.process(asset, result, uow)
+
+    assert len(uow.valuations.created) == 1
+    assert uow.valuations.created[0]["asset_id"] == asset.id
 
 
 def test_orchestrator_preview_returns_preview_id():
@@ -83,7 +188,7 @@ def test_orchestrator_preview_returns_preview_id():
         asset_type = "STOCK_IN"
         format = "csv"
 
-        def parse(self, file_bytes: bytes) -> ImportResult:
+        def parse(self, file_bytes: bytes, filename: str = "") -> ImportResult:
             return ImportResult(
                 source=self.source,
                 transactions=[_make_txn("orch_txn_1")],

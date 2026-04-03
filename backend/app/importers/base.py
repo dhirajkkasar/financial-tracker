@@ -1,7 +1,15 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import date
-from typing import ClassVar, Protocol, Optional
+from typing import ClassVar, Protocol, Optional, Any
+
+
+@dataclass
+class ValidationResult:
+    """Result of importer validation."""
+    is_valid: bool
+    errors: list[str] = field(default_factory=list)  # User-facing error messages
+    required_inputs: dict[str, Any] = field(default_factory=dict)  # Hints for user, e.g., {"required_months": ["2025-03"]}
 
 
 @dataclass
@@ -50,6 +58,10 @@ class ImportResult:
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     duplicate_count: int = 0
+    closing_valuation_inr: Optional[float] = None
+    closing_valuation_date: Optional[date] = None
+    closing_valuation_source: Optional[str] = None
+    closing_valuation_notes: Optional[str] = None
 
 
 class LegacyBaseImporter(Protocol):
@@ -75,6 +87,14 @@ class BaseImporter(ABC):
     @abstractmethod
     def parse(self, file_bytes: bytes) -> "ImportResult": ...
 
-    def validate(self, result: "ImportResult") -> list[str]:
-        """Optional validation hook. Default: no-op. Override to add checks."""
-        return []
+    def validate(self, result: "ImportResult", **kwargs) -> ValidationResult:
+        """Post-parse validation hook. Default: pass. Override for custom checks.
+        
+        Args:
+            result: ImportResult from parse()
+            **kwargs: Importer-specific inputs (e.g., exchange_rates string)
+        
+        Returns:
+            ValidationResult with is_valid, errors, required_inputs
+        """
+        return ValidationResult(is_valid=True, errors=[], required_inputs={})

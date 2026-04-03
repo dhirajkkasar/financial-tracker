@@ -43,9 +43,11 @@ class AssetReturnsStrategy(ABC):
         invested = self.get_invested_value(asset, uow)
         current = self.get_current_value(asset, uow)
         cashflows = self.build_cashflows(asset, uow)
-        xirr = compute_xirr(cashflows) if len(cashflows) >= 2 else None
-        pnl = (current - invested) if (current is not None and invested is not None) else None
-        pnl_pct = (pnl / invested * 100) if (pnl is not None and invested and invested > 0) else None
+        if current is not None and current > 0:
+            cashflows = cashflows + [(date.today(), -current)]
+        xirr = compute_xirr(cashflows, asset_name=asset.name) if len(cashflows) >= 2 else None
+        pnl = (current - invested) if (current is not None and current > 0 and invested is not None and invested > 0) else None
+        pnl_pct = (pnl / invested * 100) if (pnl is not None and invested is not None and invested > 0) else None
         return AssetReturnsResponse(
             asset_id=asset.id,
             asset_name=asset.name,
@@ -55,6 +57,7 @@ class AssetReturnsStrategy(ABC):
             current_value=current,
             current_pnl=pnl,
             current_pnl_pct=pnl_pct,
+            alltime_pnl=pnl,
             xirr=xirr,
         )
 
@@ -70,16 +73,52 @@ class AssetReturnsStrategy(ABC):
         ...
 
     def build_cashflows(self, asset, uow: UnitOfWork) -> list[tuple[date, float]]:
-        """Default: standard signed cashflows for XIRR computation."""
+        """
+        Default: iterate all non-excluded transactions, negate DB sign.
+
+        DB stores outflows as negative paise (BUY, SIP, CONTRIBUTION, VEST).
+        Negating gives a positive cashflow for outflows — consistent with the
+        convention used throughout the strategy layer. compute() appends the
+        terminal inflow (current_value, negated) so compute_xirr sees mixed signs.
+        """
         txns = uow.transactions.list_by_asset(asset.id)
-        cashflows = []
-        for t in txns:
-            if t.type.value in EXCLUDED_TYPES:
-                continue
-            amount_inr = t.amount_inr / 100  # paise → INR
-            cashflows.append((t.date, -amount_inr))  # negative = outflow for XIRR
-        return cashflows
+        return [
+            (t.date, -(t.amount_inr / 100))
+            for t in txns
+            if t.type.value not in EXCLUDED_TYPES
+        ]
 
     def compute_lots(self, asset, uow: UnitOfWork) -> list:
         """Default: lots not supported. Override in MarketBasedStrategy."""
         return []
+
+    def get_portfolio_cashflows(self, asset, uow: UnitOfWork) -> list[tuple[date, float]]:
+        """
+        Cashflows for portfolio-level XIRR aggregation (no terminal value included).
+
+        Uses raw DB sign: outflows are negative (BUY, SIP, CONTRIBUTION, VEST),
+        inflows are positive (SELL, INTEREST, DIVIDEND, etc.). The caller appends
+        the portfolio terminal inflow (+total_current_value) once all assets are
+        aggregated.
+
+        Default: all non-excluded transactions — correct for market-based assets
+        where partial sells/dividends are real cash events. ValuationBasedStrategy
+        overrides this to outflow-only to avoid double-counting embedded interest.
+        """
+        txns = uow.transactions.list_by_asset(asset.id)
+        return [
+            (t.date, t.amount_inr / 100.0)
+            for t in txns
+            if t.type.value not in EXCLUDED_TYPES
+        ]
+
+    def get_inactive_realized_gain(self, asset, uow: UnitOfWork) -> Optional[float]:
+        """
+        Realized gain from a closed/inactive position for portfolio all-time P&L.
+
+        Returns None by default — market-based assets track realized gains through
+        the lot engine (st_realised_gain / lt_realised_gain) and need no extra pass.
+        ValuationBasedStrategy overrides this for fixed-income assets where the
+        terminal gain = final_value − invested.
+        """
+        return None

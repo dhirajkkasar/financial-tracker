@@ -31,7 +31,7 @@ def test_price_refresh_does_not_change_asset_class(client, db):
 def test_price_refresh_does_not_set_scheme_category(client, db):
     """scheme_category is resolved at import time; price refresh leaves it None."""
     asset = client.post("/assets", json=make_asset(
-        asset_type="MF", asset_class="MIXED", name="HDFC Balanced Fund",
+        asset_type="MF", asset_class="EQUITY", name="HDFC Balanced Fund",
         identifier="INF179H", mfapi_scheme_code="119552"
     )).json()
 
@@ -41,14 +41,14 @@ def test_price_refresh_does_not_set_scheme_category(client, db):
         client.post(f"/assets/{asset['id']}/price/refresh")
 
     refreshed = client.get(f"/assets/{asset['id']}").json()
-    assert refreshed["asset_class"] == "MIXED"  # price refresh does not reclassify
+    assert refreshed["asset_class"] == "EQUITY"  # price refresh does not reclassify
     assert refreshed["scheme_category"] is None
 
 
 def test_scheme_category_in_asset_response(client, db):
     """scheme_category field is present in GET /assets/{id} response."""
     asset = client.post("/assets", json=make_asset(
-        asset_type="MF", asset_class="MIXED", name="Test MF",
+        asset_type="MF", asset_class="EQUITY", name="Test MF",
         identifier="INF999X", mfapi_scheme_code="999999"
     )).json()
     assert "scheme_category" in asset
@@ -61,7 +61,7 @@ def test_scheme_category_not_writable_via_create(client):
     Guard test: scheme_category is not in AssetCreate, so it is never
     written via the API. This test never produces a RED signal.
     """
-    payload = make_asset(asset_type="MF", asset_class="MIXED", name="Test MF2", identifier="INF999Y")
+    payload = make_asset(asset_type="MF", asset_class="EQUITY", name="Test MF2", identifier="INF999Y")
     payload["scheme_category"] = "Equity Scheme - Injected"
     asset = client.post("/assets", json=payload).json()
     assert asset.get("scheme_category") is None

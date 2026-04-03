@@ -3,9 +3,8 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
-from app.repositories.asset_repo import AssetRepository
-from app.repositories.transaction_repo import TransactionRepository
-from app.repositories.price_cache_repo import PriceCacheRepository
+from app.engine.lot_engine import match_lots_fifo, compute_lot_unrealised, _STCG_DAYS, EQUITY_STCG_DAYS
+from app.engine.returns import EXCLUDED_TYPES
 from app.engine.tax_engine import (
     parse_fy,
     compute_fy_realised_gains,
@@ -14,7 +13,11 @@ from app.engine.tax_engine import (
     find_harvest_opportunities,
     get_tax_rate,
 )
-from app.engine.returns import EXCLUDED_TYPES
+from app.repositories.asset_repo import AssetRepository
+from app.repositories.transaction_repo import TransactionRepository
+from app.repositories.price_cache_repo import PriceCacheRepository
+from app.repositories.unit_of_work import UnitOfWork
+from app.services.returns.strategies.market_based import LOT_TYPES, SELL_TYPES, _Lot, _Sell
 
 logger = logging.getLogger(__name__)
 
@@ -36,11 +39,82 @@ class TaxService:
     # ── Private helpers ───────────────────────────────────────────────────────
 
     def _build_lots_for_asset(self, asset_id: int, asset_type: str):
-        """Delegate lot building to ReturnsService to avoid duplication."""
-        from app.services.returns_service import ReturnsService
-        svc = ReturnsService(self.db)
-        transactions = self.txn_repo.list_by_asset(asset_id)
-        return svc._build_lots_and_sells(asset_id, asset_type, transactions)
+        """Build open_lots and matched_sells using the strategy registry."""
+        
+        with UnitOfWork(self.db) as uow:
+            # Get transactions
+            transactions = uow.transactions.list_by_asset(asset_id)
+            
+            # Build lots and sells
+            lots = []
+            sells = []
+            for txn in sorted(transactions, key=lambda t: t.date):
+                txn_type = txn.type.value
+                if txn_type in LOT_TYPES and txn.units:
+                    is_bonus = txn_type == "BONUS"
+                    price = 0.0 if is_bonus else (abs(txn.amount_inr / 100.0) / txn.units if txn.units else 0)
+                    lots.append(_Lot(
+                        lot_id=txn.lot_id or str(txn.id),
+                        buy_date=txn.date,
+                        units=txn.units,
+                        buy_price_per_unit=0.0 if is_bonus else (txn.price_per_unit or price),
+                        buy_amount_inr=0.0 if is_bonus else abs(txn.amount_inr / 100.0),
+                    ))
+                elif txn_type in SELL_TYPES and txn.units:
+                    sells.append(_Sell(
+                        date=txn.date,
+                        units=txn.units,
+                        amount_inr=abs(txn.amount_inr / 100.0),
+                    ))
+            
+            # Match using FIFO
+            stcg_days = _STCG_DAYS.get(asset_type, EQUITY_STCG_DAYS)
+            matched = match_lots_fifo(lots, sells, stcg_days=stcg_days)
+            
+            # Build open lots
+            sold_units = {}
+            for m in matched:
+                sold_units[m["lot_id"]] = sold_units.get(m["lot_id"], 0.0) + m["units_sold"]
+            
+            # Get price cache for unrealised gain computation
+            price_cache = self.price_repo.get_by_asset_id(asset_id)
+            current_price = (price_cache.price_inr / 100.0) if price_cache else None
+            
+            open_lots = []
+            for lot in lots:
+                units_remaining = lot.units - sold_units.get(lot.lot_id, 0.0)
+                if units_remaining <= 0:
+                    continue
+                
+                entry = {
+                    "lot_id": lot.lot_id,
+                    "buy_date": lot.buy_date,
+                    "units": units_remaining,
+                    "buy_price_per_unit": lot.buy_price_per_unit,
+                    "buy_amount_inr": lot.buy_amount_inr,
+                }
+                
+                # Compute unrealised gain if price cache exists
+                if current_price is not None:
+                    unrealised = compute_lot_unrealised(lot, current_price, stcg_days=stcg_days)
+                    scale = units_remaining / lot.units if lot.units else 0
+                    entry.update({
+                        "current_value": current_price * units_remaining,
+                        "unrealised_gain": unrealised["unrealised_gain"] * scale,
+                        "holding_days": unrealised["holding_days"],
+                        "is_short_term": unrealised["is_short_term"],
+                    })
+                else:
+                    holding_days = (date.today() - lot.buy_date).days
+                    entry.update({
+                        "current_value": None,
+                        "unrealised_gain": None,
+                        "holding_days": holding_days,
+                        "is_short_term": holding_days < stcg_days,
+                    })
+                open_lots.append(entry)
+            
+            return (open_lots, matched)
 
     def _get_all_open_lots(self) -> list[dict]:
         """Return enriched open lots for all active lot-based assets."""

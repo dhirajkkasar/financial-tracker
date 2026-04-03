@@ -32,7 +32,7 @@ def mf_asset(db):
         name="Parag Parikh Flexi Cap Fund",
         identifier="INF879O01027",
         asset_type=AssetType.MF,
-        asset_class=AssetClass.MIXED,
+        asset_class=AssetClass.EQUITY,
         currency="INR",
     )
     db.add(asset)
@@ -94,7 +94,7 @@ class TestCasSnapshotRepository:
             name="Other Fund",
             identifier="INF999Z01ZZ9",
             asset_type=AssetType.MF,
-            asset_class=AssetClass.MIXED,
+            asset_class=AssetClass.DEBT,
             currency="INR",
         )
         db.add(other)

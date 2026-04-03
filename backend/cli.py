@@ -113,48 +113,47 @@ def _find_or_create_asset(name: str, asset_type: str, asset_class: str,
 def cmd_import_ppf(file_path: str) -> dict:
     _check_file(file_path)
     with open(file_path, "rb") as f:
-        result = _api("post", "/import/ppf-csv", files={"file": f})
-    _print_import_summary("PPF", inserted=result["inserted"], skipped=result["skipped"], errors=result.get("errors", []))
-    if result.get("valuation_created"):
-        print(f"  → Valuation created: ₹{result['valuation_value']:,.2f} on {result['valuation_date']}")
+        preview = _api("post", "/import/preview-file?source=ppf&format=csv", files={"file": f})
+    result = _api("post", f"/import/commit-file/{preview['preview_id']}")
+    _print_import_summary("PPF", inserted=result["inserted"], skipped=result["skipped"])
     return result
 
 
 def cmd_import_epf(file_path: str) -> dict:
     _check_file(file_path)
     with open(file_path, "rb") as f:
-        result = _api("post", "/import/epf-pdf", files={"file": f})
-    _print_import_summary("EPF", inserted=result["inserted"], skipped=result["skipped"], errors=result.get("errors", []))
-    print(f"  EPS: {result['inserted']} inserted, {result['skipped']} skipped"
-          + (" (asset created)" if result.get("asset_created") else ""))
+        preview = _api("post", "/import/preview-file?source=epf&format=pdf", files={"file": f})
+    result = _api("post", f"/import/commit-file/{preview['preview_id']}")
+    _print_import_summary("EPF", inserted=result["inserted"], skipped=result["skipped"])
     return result
 
 
 def cmd_import_cas(file_path: str) -> dict:
     _check_file(file_path)
     with open(file_path, "rb") as f:
-        preview = _api("post", "/import/cas-pdf", files={"file": f})
-    result = _api("post", "/import/commit", json={"preview_id": preview["preview_id"]})
-    _print_import_summary("CAS", inserted=result["created_count"], skipped=result["skipped_count"])
+        preview = _api("post", "/import/preview-file?source=cas&format=pdf", files={"file": f})
+    result = _api("post", f"/import/commit-file/{preview['preview_id']}")
+    _print_import_summary("CAS", inserted=result["inserted"], skipped=result["skipped"])
+    return result
     return result
 
 
 def cmd_import_nps(file_path: str) -> dict:
     _check_file(file_path)
     with open(file_path, "rb") as f:
-        preview = _api("post", "/import/nps-csv", files={"file": f})
-    result = _api("post", "/import/commit", json={"preview_id": preview["preview_id"]})
+        preview = _api("post", "/import/preview-file?source=nps&format=csv", files={"file": f})
+    result = _api("post", f"/import/commit-file/{preview['preview_id']}")
     cmd_refresh_prices()
-    _print_import_summary("NPS", inserted=result["created_count"], skipped=result["skipped_count"])
+    _print_import_summary("NPS", inserted=result["inserted"], skipped=result["skipped"])
     return result
 
 
 def cmd_import_broker_csv(file_path: str, broker: str) -> dict:
     _check_file(file_path)
     with open(file_path, "rb") as f:
-        preview = _api("post", f"/import/broker-csv?broker={broker}", files={"file": f})
-    result = _api("post", "/import/commit", json={"preview_id": preview["preview_id"]})
-    _print_import_summary(broker.title(), inserted=result["created_count"], skipped=result["skipped_count"])
+        preview = _api("post", f"/import/preview-file?source={broker}&format=csv", files={"file": f})
+    result = _api("post", f"/import/commit-file/{preview['preview_id']}")
+    _print_import_summary(broker.title(), inserted=result["inserted"], skipped=result["skipped"])
     return result
 
 
@@ -195,9 +194,9 @@ def cmd_import_fidelity_rsu(file_path: str) -> None:
     with open(file_path, "rb") as f:
         preview = _api(
             "post",
-            "/import/fidelity-rsu-csv",
+            "/import/preview-file?source=fidelity_rsu&format=csv",
             files={"file": (os.path.basename(file_path), f, "text/csv")},
-            data={"exchange_rates": json.dumps(exchange_rates)},
+            data={"user_inputs": json.dumps(exchange_rates)},
         )
 
     print(f"\nPreview: {preview['new_count']} new, {preview['duplicate_count']} duplicate")
@@ -210,11 +209,12 @@ def cmd_import_fidelity_rsu(file_path: str) -> None:
         print("Aborted.")
         return
 
-    result = _api("post", "/import/commit", json={"preview_id": preview["preview_id"]})
+    result = _api("post", f"/import/commit-file/{preview['preview_id']}")
+    cmd_refresh_prices()
     _print_import_summary(
         "Fidelity RSU",
-        inserted=result["created_count"],
-        skipped=result["skipped_count"],
+        inserted=result.get("inserted", 0),
+        skipped=result.get("skipped", 0),
         errors=[],
     )
 
@@ -257,9 +257,9 @@ def cmd_import_fidelity_sale(file_path: str) -> None:
     with open(file_path, "rb") as f:
         preview = _api(
             "post",
-            "/import/fidelity-sale-pdf",
+            "/import/preview-file?source=fidelity_sale&format=pdf",
             files={"file": (os.path.basename(file_path), f, "application/pdf")},
-            data={"exchange_rates": json.dumps(exchange_rates)},
+            data={"user_inputs": json.dumps(exchange_rates)},
         )
 
     print(f"\nPreview: {preview['new_count']} new, {preview['duplicate_count']} duplicate")
@@ -272,11 +272,11 @@ def cmd_import_fidelity_sale(file_path: str) -> None:
         print("Aborted.")
         return
 
-    result = _api("post", "/import/commit", json={"preview_id": preview["preview_id"]})
+    result = _api("post", f"/import/commit-file/{preview['preview_id']}")
     _print_import_summary(
         "Fidelity Sale PDF",
-        inserted=result["created_count"],
-        skipped=result["skipped_count"],
+        inserted=result.get("inserted", 0),
+        skipped=result.get("skipped", 0),
         errors=[],
     )
 

@@ -18,6 +18,9 @@ from app.services.event_bus import SyncEventBus
 from app.services.imports.deduplicator import DBDeduplicator
 from app.services.imports.orchestrator import ImportOrchestrator
 from app.services.imports.post_processors.stock import StockPostProcessor
+from app.services.imports.post_processors.mf import MFPostProcessor
+from app.services.imports.post_processors.ppf import PPFPostProcessor
+from app.services.imports.post_processors.epf import EPFPostProcessor
 from app.services.imports.preview_store import PreviewStore
 
 # ---------------------------------------------------------------------------
@@ -53,7 +56,7 @@ def get_import_orchestrator(db: Session = Depends(get_db)) -> ImportOrchestrator
         uow_factory=uow_factory,
         pipeline=pipeline,
         preview_store=_preview_store,
-        post_processors=[StockPostProcessor(), MFPostProcessor()],
+        post_processors=[StockPostProcessor(), MFPostProcessor(), PPFPostProcessor(), EPFPostProcessor()],
         event_bus=_event_bus,
     )
 
@@ -66,6 +69,16 @@ from app.services.asset_service import AssetService
 from app.services.transaction_service import TransactionService
 from app.services.returns.returns_service import ReturnsService as StrategyReturnsService
 from app.services.returns.strategies.registry import DefaultReturnsStrategyRegistry
+from app.services.returns.portfolio_returns_service import PortfolioReturnsService
+from app.services.goal_service import GoalService
+from app.services.valuation_service import ValuationService
+from app.services.fd_detail_service import FDDetailService
+from app.services.interest_rate_service import InterestRateService
+from app.services.important_data_service import ImportantDataService
+from app.services.price_service import PriceService
+from app.services.snapshot_service import SnapshotService
+from app.services.tax_service import TaxService
+from app.services.corp_actions_service import CorpActionsService
 
 
 def get_asset_service(db: Session = Depends(get_db)) -> AssetService:
@@ -81,3 +94,44 @@ def get_strategy_returns_service(db: Session = Depends(get_db)) -> StrategyRetur
         uow_factory=lambda: UnitOfWork(db),
         strategy_registry=DefaultReturnsStrategyRegistry(),
     )
+
+
+def get_portfolio_returns_service(db: Session = Depends(get_db)) -> PortfolioReturnsService:
+    return PortfolioReturnsService(db, DefaultReturnsStrategyRegistry())
+
+
+def get_goal_service(db: Session = Depends(get_db)) -> GoalService:
+    returns_svc = PortfolioReturnsService(db, DefaultReturnsStrategyRegistry())
+    return GoalService(uow_factory=lambda: UnitOfWork(db), returns_service=returns_svc)
+
+
+def get_valuation_service(db: Session = Depends(get_db)) -> ValuationService:
+    return ValuationService(uow_factory=lambda: UnitOfWork(db))
+
+
+def get_fd_detail_service(db: Session = Depends(get_db)) -> FDDetailService:
+    return FDDetailService(uow_factory=lambda: UnitOfWork(db))
+
+
+def get_interest_rate_service(db: Session = Depends(get_db)) -> InterestRateService:
+    return InterestRateService(uow_factory=lambda: UnitOfWork(db))
+
+
+def get_important_data_service(db: Session = Depends(get_db)) -> ImportantDataService:
+    return ImportantDataService(uow_factory=lambda: UnitOfWork(db))
+
+
+def get_price_service(db: Session = Depends(get_db)) -> PriceService:
+    return PriceService(db)
+
+
+def get_snapshot_service(db: Session = Depends(get_db)) -> SnapshotService:
+    return SnapshotService(db)
+
+
+def get_tax_service(db: Session = Depends(get_db)) -> TaxService:
+    return TaxService(db)
+
+
+def get_corp_actions_service(db: Session = Depends(get_db)) -> CorpActionsService:
+    return CorpActionsService(db)

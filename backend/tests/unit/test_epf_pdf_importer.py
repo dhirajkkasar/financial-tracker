@@ -7,14 +7,19 @@ class TestEPFPDFImporter:
         assert PARSED_EPF.source == "epf_pdf"
 
     def test_parse_extracts_member_id(self):
-        assert PARSED_EPF.member_id == "BGBNG00268580000306940"
+        # Member ID is now in asset_identifier of transactions
+        assert PARSED_EPF.transactions
+        assert PARSED_EPF.transactions[0].asset_identifier == "BGBNG00268580000306940"
 
     def test_parse_extracts_establishment_name(self):
-        assert PARSED_EPF.establishment_name == "AMAZON DEVELOPMENT CENTRE (INDIA) PRIVATE LIMITED"
+        # Establishment name is now in asset_name of transactions
+        assert PARSED_EPF.transactions
+        assert "AMAZON DEVELOPMENT CENTRE" in PARSED_EPF.transactions[0].asset_name
 
     def test_parse_extracts_print_date(self):
         from datetime import date
-        assert PARSED_EPF.print_date == date(2026, 3, 24)
+        # Print date is stored as closing_valuation_date
+        assert PARSED_EPF.closing_valuation_date == date(2026, 3, 24)
 
     def test_parse_has_no_errors(self):
         assert len(PARSED_EPF.errors) == 0
@@ -92,7 +97,6 @@ class TestEPFPDFImporter:
         assert len(ids) == len(set(ids))
 
     # --- net balance ---
-
     def test_parse_net_balance_is_zero(self):
-        """EPF returns are computed from transactions, not a stored balance."""
-        assert PARSED_EPF.net_balance_inr == 0.0
+        """EPF closing valuation is stored and transactions are parsed independently."""
+        assert PARSED_EPF.closing_valuation_inr == 0.0

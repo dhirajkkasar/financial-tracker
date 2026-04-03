@@ -22,7 +22,7 @@ def test_get_returns_stock_asset(client):
 
 
 def test_get_returns_fully_exited_stock(client):
-    # BUY 10 + SELL 10 = fully exited: total_invested=0, absolute_return=None, XIRR from closed trades
+    # BUY 10 + SELL 10 = fully exited: total_invested = historical cost basis, XIRR from closed trades
     asset_resp = client.post("/assets", json=make_asset(asset_type="STOCK_IN", asset_class="EQUITY"))
     asset_id = asset_resp.json()["id"]
     client.post(f"/assets/{asset_id}/transactions", json=make_transaction(
@@ -34,9 +34,9 @@ def test_get_returns_fully_exited_stock(client):
     resp = client.get(f"/assets/{asset_id}/returns")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["xirr"] is not None          # XIRR computable from closed trades
-    assert data["total_invested"] == 0.0     # no open lots
-    assert data["absolute_return"] is None   # no position to compute return on
+    assert data["xirr"] is not None              # XIRR computable from closed trades
+    assert data["total_invested"] == 10000.0     # historical cost basis of all lots
+    assert data["absolute_return"] is None       # no open position to compute return on
 
 
 def test_get_returns_ppf_no_valuation_returns_null_xirr(client):

@@ -85,3 +85,94 @@ class TestFidelityPDFImporter:
         result = FidelityPDFImporter(exchange_rates={"2025-03": 86.0}).parse(data, "f.pdf")
         # 2025-09 row should error
         assert any("2025-09" in e for e in result.errors)
+
+class TestFidelityPDFImporterValidation:
+    """Test post-parse validation of Fidelity PDF importer."""
+
+    def _load_data(self):
+        path = FIXTURES / "fidelity_sale_sample.pdf"
+        if path.exists():
+            return path.read_bytes()
+        pytest.skip("fidelity_sale_sample.pdf fixture not available")
+
+    def test_validate_with_valid_exchange_rates(self):
+        """Validation passes when exchange_rates JSON is valid and complete."""
+        from app.importers.fidelity_pdf_importer import FidelityPDFImporter
+        data = self._load_data()
+        result = FidelityPDFImporter().parse(data, "fidelity_sale.pdf")
+        
+        # Valid exchange_rates JSON string
+        user_inputs = '{"2025-03": 86.0, "2025-09": 84.5}'
+        validation_result = FidelityPDFImporter().validate(result, user_inputs=user_inputs)
+        
+        assert validation_result.is_valid is True
+        assert validation_result.errors == []
+
+    def test_validate_with_invalid_json(self):
+        """Validation fails when exchange_rates is not valid JSON."""
+        from app.importers.fidelity_pdf_importer import FidelityPDFImporter
+        data = self._load_data()
+        result = FidelityPDFImporter().parse(data, "fidelity_sale.pdf")
+        
+        # Invalid JSON
+        user_inputs = '{invalid json}'
+        validation_result = FidelityPDFImporter().validate(result, user_inputs=user_inputs)
+        
+        assert validation_result.is_valid is False
+        assert len(validation_result.errors) > 0
+        assert "valid JSON" in validation_result.errors[0]
+
+    def test_validate_with_non_numeric_values(self):
+        """Validation fails when exchange_rates values are not numeric."""
+        from app.importers.fidelity_pdf_importer import FidelityPDFImporter
+        data = self._load_data()
+        result = FidelityPDFImporter().parse(data, "fidelity_sale.pdf")
+        
+        # Non-numeric values
+        user_inputs = '{"2025-03": "not_a_number"}'
+        validation_result = FidelityPDFImporter().validate(result, user_inputs=user_inputs)
+        
+        assert validation_result.is_valid is False
+        assert len(validation_result.errors) > 0
+        assert "numbers" in validation_result.errors[0]
+
+    def test_validate_with_missing_months(self):
+        """Validation fails when required months are missing from exchange_rates."""
+        from app.importers.fidelity_pdf_importer import FidelityPDFImporter
+        data = self._load_data()
+        result = FidelityPDFImporter().parse(data, "fidelity_sale.pdf")
+        
+        # Missing 2025-09
+        user_inputs = '{"2025-03": 86.0}'
+        validation_result = FidelityPDFImporter().validate(result, user_inputs=user_inputs)
+        
+        assert validation_result.is_valid is False
+        assert len(validation_result.errors) > 0
+        assert "Missing exchange_rates" in validation_result.errors[0]
+        assert "2025-09" in validation_result.errors[0]
+        assert "2025-03" in validation_result.required_inputs.get("required_months", [])
+        assert "2025-09" in validation_result.required_inputs.get("required_months", [])
+
+    def test_validate_with_no_transactions(self):
+        """Validation passes when there are no transactions and no exchange_rates."""
+        from app.importers.fidelity_pdf_importer import FidelityPDFImporter
+        from app.importers.base import ImportResult
+        result = ImportResult(source="fidelity_sale", transactions=[])
+        
+        validation_result = FidelityPDFImporter().validate(result, user_inputs=None)
+        
+        assert validation_result.is_valid is True
+        assert validation_result.errors == []
+
+    def test_validate_with_no_user_inputs_but_transactions(self):
+        """Validation fails when there are transactions but no exchange_rates provided."""
+        from app.importers.fidelity_pdf_importer import FidelityPDFImporter
+        data = self._load_data()
+        result = FidelityPDFImporter().parse(data, "fidelity_sale.pdf")
+        
+        # No user_inputs provided
+        validation_result = FidelityPDFImporter().validate(result, user_inputs=None)
+        
+        assert validation_result.is_valid is False
+        assert len(validation_result.errors) > 0
+        assert "exchange_rates is required" in validation_result.errors[0]

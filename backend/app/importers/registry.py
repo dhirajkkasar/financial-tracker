@@ -14,6 +14,7 @@ No changes to ImporterRegistry or any other file.
 """
 from __future__ import annotations
 
+import importlib
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -40,7 +41,7 @@ class ImporterRegistry:
     Returns a fresh instance for each call (importers are stateless).
     """
 
-    def get(self, source: str, fmt: str) -> "BaseImporter":
+    def get(self, source: str, fmt: str, **init_kwargs) -> "BaseImporter":
         cls = _REGISTRY.get((source, fmt))
         if cls is None:
             available = sorted(_REGISTRY.keys())
@@ -48,7 +49,16 @@ class ImporterRegistry:
                 f"No importer for source={source!r} format={fmt!r}. "
                 f"Registered: {available}"
             )
-        return cls()
+        # Resolve the class symbol from its module at runtime. This allows
+        # tests to patch the importer class on the module (unittest.mock.patch)
+        # and have the registry pick up the patched symbol.
+        try:
+            mod = importlib.import_module(cls.__module__)
+            current = getattr(mod, cls.__name__, cls)
+            cls_to_instantiate = current
+        except Exception:
+            cls_to_instantiate = cls
+        return cls_to_instantiate(**init_kwargs)
 
     def list_registered(self) -> list[tuple[str, str]]:
         """Return all registered (source, format) keys."""

@@ -228,9 +228,11 @@ class CASImporter(BaseImporter):
         self, line: str, isin: Optional[str], scheme_name: Optional[str]
     ) -> Optional[ParsedFundSnapshot]:
         if not isin:
+            print(f"Cannot parse closing balance without ISIN for line: {line}")
             return None
         m = self.CLOSING_BALANCE_PATTERN.search(line)
         if not m:
+            print(f"Closing balance pattern not matched for line: {line}")
             return None
         try:
             closing_units = float(m.group(1).replace(",", ""))
@@ -238,7 +240,8 @@ class CASImporter(BaseImporter):
             nav_price = float(m.group(3).replace(",", ""))
             total_cost = float(m.group(4).replace(",", ""))
             market_value = float(m.group(5).replace(",", ""))
-        except (ValueError, IndexError):
+        except (ValueError, IndexError) as e:
+            print(f"Error parsing closing balance: {e}")
             return None
         return ParsedFundSnapshot(
             isin=isin,

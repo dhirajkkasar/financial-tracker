@@ -93,7 +93,7 @@ def test_import_pipeline_run():
         asset_type = "STOCK_IN"
         format = "csv"
 
-        def parse(self, file_bytes: bytes) -> ImportResult:
+        def parse(self, file_bytes: bytes, filename: str = "") -> ImportResult:
             return ImportResult(
                 source=self.source,
                 transactions=[_make_txn("pipeline_txn_1")],
@@ -120,7 +120,7 @@ def test_import_pipeline_deduplicates():
         asset_type = "STOCK_IN"
         format = "csv"
 
-        def parse(self, file_bytes: bytes) -> ImportResult:
+        def parse(self, file_bytes: bytes, filename: str = "") -> ImportResult:
             return ImportResult(
                 source=self.source,
                 transactions=[

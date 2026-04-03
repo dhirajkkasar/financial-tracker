@@ -57,6 +57,7 @@ class AssetReturnsStrategy(ABC):
             current_value=current,
             current_pnl=pnl,
             current_pnl_pct=pnl_pct,
+            alltime_pnl=pnl,
             xirr=xirr,
         )
 

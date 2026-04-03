@@ -25,7 +25,7 @@ _STRATEGY_TO_API_FIELD_MAP = {
 
 _API_FIELDS = [
     "asset_id", "asset_type", "invested", "current_value", "xirr", "cagr",
-    "current_pnl", "message",
+    "current_pnl", "alltime_pnl", "message",
     "maturity_amount", "accrued_value_today", "days_to_maturity",
     "total_units", "avg_price", "current_price",
     "st_unrealised_gain", "lt_unrealised_gain", "st_realised_gain", "lt_realised_gain",

@@ -8,9 +8,9 @@ from app.models.asset import Asset
 
 logger = logging.getLogger(__name__)
 
-OUTFLOW_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST", "BILLING"}
-INFLOW_TYPES = {"SELL", "REDEMPTION", "DIVIDEND", "INTEREST", "WITHDRAWAL", "BONUS"}
-EXCLUDED_TYPES = {"SWITCH_IN", "SWITCH_OUT", "SPLIT"}
+OUTFLOW_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST", "BILLING", "SWITCH_IN"}
+INFLOW_TYPES = {"SELL", "REDEMPTION", "DIVIDEND", "INTEREST", "WITHDRAWAL", "BONUS", "SWITCH_OUT"}
+EXCLUDED_TYPES = {"SPLIT"}
 
 # Types that ADD units to a holding. BONUS is in INFLOW_TYPES for cashflow purposes
 # (amount_inr=0 so numerically neutral for XIRR), but must also ADD to unit count.

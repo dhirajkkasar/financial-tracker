@@ -105,7 +105,8 @@ export interface ReturnResult {
   asset_type: string
   xirr: number | null
   cagr: number | null
-  absolute_return: number | null
+  absolute_return: number | null  // current P&L (unrealised only)
+  alltime_pnl?: number | null     // current P&L + realised gains; null when not computable
   total_invested: number | null
   current_value: number | null
   message: string | null

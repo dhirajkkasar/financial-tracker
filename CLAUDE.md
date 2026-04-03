@@ -9,7 +9,6 @@ Personal, local-first, single-user investment portfolio tracker.
 - **Backend:** Python 3.11+ FastAPI + SQLAlchemy + Alembic (`backend/`)
 - **Frontend:** Next.js App Router + Recharts + axios (`frontend/`)
 - **DB:** SQLite locally → PostgreSQL in cloud (one `DATABASE_URL` env var switches)
-- **Execution plan:** `execution_plan.md`
 
 ---
 
@@ -40,29 +39,6 @@ uv run pytest --cov=app --cov-report=term-missing
 # Run only unit or integration tests
 uv run pytest tests/unit/
 uv run pytest tests/integration/
-
-# Create a new Alembic migration
-alembic revision --autogenerate -m "description"
-alembic upgrade head
-alembic downgrade -1
-
-# CLI helper (server must be running)
-python cli.py import ppf <file>
-python cli.py import epf <file>
-python cli.py import cas <file>
-python cli.py import nps <file>
-python cli.py import zerodha <file>
-python cli.py import fidelity-rsu <file>   # Fidelity RSU holding CSV (MARKET_TICKER.csv)
-python cli.py import fidelity-sale <file>  # Fidelity tax-cover sale PDF (NetBenefits)
-python cli.py list assets
-python cli.py refresh-prices
-python cli.py snapshot
-python cli.py backup                     # Backup SQLite DB to Google Drive (gzip-compressed)
-python cli.py backup --folder my-folder  # Override Drive folder name
-python cli.py add goal --name "Retirement" --target 10000000 --date 2040-01-01 --asset "HDFC MF:50" --asset "PPF SBI:50" --assumed-return 12.0
-python cli.py update goal-allocation --goal "Retirement" --asset "HDFC MF" --pct 30
-python cli.py remove goal-allocation --goal "Retirement" --asset "HDFC MF"
-python cli.py delete goal --name "Retirement"
 ```
 
 ### Frontend
@@ -78,7 +54,6 @@ npm run lint      # ESLint
 ### Environment Variables
 - **Backend** (`backend/.env`): Always check database url in .env file before querying database directly
 - **Frontend** (`frontend/.env.local`): `NEXT_PUBLIC_API_URL=http://localhost:8000`
-- **CLI**: `PORTFOLIO_API=http://localhost:8000` (override default)
 
 ## Authoritative Docs (in repo root)
 | File | Authority |
@@ -94,10 +69,16 @@ npm run lint      # ESLint
 
 ## Critical Architecture Decisions
 
+### CLI (`cli.py`)
+- Thin HTTP client over the REST API — all logic lives in services, not the CLI
+- Server must be running (`uvicorn app.main:app --reload`) before any CLI command
+- Covers: imports (PPF/EPF/CAS/NPS/Zerodha/Fidelity), price refresh, snapshot, backup, goal management
+- Never add business logic to `cli.py`; add an API endpoint and call it from the CLI
+
 ### Monetary Amounts
 - **DB:** Signed integers in **paise** (1 INR = 100 paise)
-  - Negative = outflow: `BUY`, `SIP`, `CONTRIBUTION`, `VEST`
-  - Positive = inflow: `SELL`, `REDEMPTION`, `DIVIDEND`, `INTEREST`, `WITHDRAWAL`, `BONUS`
+  - Negative = outflow: `BUY`, `SIP`, `CONTRIBUTION`, `VEST`, `SWITCH_IN`, `BILLING`
+  - Positive = inflow: `SELL`, `REDEMPTION`, `DIVIDEND`, `INTEREST`, `WITHDRAWAL`, `BONUS`, `SWITCH_OUT`
 - **API:** Decimal INR (schema layer converts to/from paise — never expose raw paise to frontend)
 
 ### Transaction Deduplication (`txn_id`)
@@ -118,7 +99,7 @@ Hash must be **stable across re-imports** — never include internal DB IDs in t
 ### Transaction Types
 `BUY`, `SELL`, `SIP`, `REDEMPTION`, `DIVIDEND`, `INTEREST`, `CONTRIBUTION`, `WITHDRAWAL`, `SWITCH_IN`, `SWITCH_OUT`, `BONUS`, `SPLIT`, `VEST`, `TRANSFER`
 
-- `SWITCH_IN` / `SWITCH_OUT` / `SPLIT` → excluded from XIRR calculations
+- `SPLIT` → excluded from XIRR calculations
 - `VEST` → RSU vesting event (treated as `STOCK_US`); perquisite tax noted in `notes` field
 - `TRANSFER` → EPF withdrawal/transfer out (Claim: Against PARA 57(1)); positive amount (inflow)
 
@@ -145,6 +126,12 @@ VALUATION_BASED = PPF, REAL_ESTATE
 ```
 - NPS: MARKET_BASED — units via CONTRIBUTION, NAV auto-fetched from npsnav.in
 - VALUATION_BASED with no Valuation entry: `total_invested` shows; `current_value`/XIRR/P&L are null
+
+**Strategy extra hooks (used by portfolio aggregations):**
+- `get_portfolio_cashflows()` on `ValuationBasedStrategy`: inactive asset → `[]`; active → outflows only (avoids double-counting INTEREST embedded in terminal `current_value`)
+- `get_inactive_realized_gain()` on `ValuationBasedStrategy`: `current_value − invested`; FD/RD override to use `fd_detail.maturity_amount` directly
+- `FDStrategy` and `RDStrategy` override `compute()` directly — XIRR terminal cashflow is contractual maturity amount, not today's accrued value
+- `EPFStrategy.build_cashflows()`: INTEREST txns excluded — they're internal accumulation; base `compute()` appends `current_value` (= invested + interest) as the terminal inflow
 
 **Strategy hierarchy:**
 ```
@@ -299,6 +286,11 @@ config/
 - All writes in the block commit atomically on exit; any exception triggers full rollback
 - Repositories have **no `db.commit()` calls** — commit is solely the UoW's responsibility
 
+### API Layer — No Direct DB Access
+- API routes (`api/*.py`) call services only — never import repos, `UnitOfWork`, or `Session`
+- Business logic belongs in services; API layer is HTTP parsing + response serialization only
+- Violations break DI contract and make routes untestable in isolation
+
 ---
 
 ## Frontend — Key Decisions
@@ -315,8 +307,3 @@ constants/index.ts  → Asset type labels, colors, thresholds, NAV_TABS — no m
 ```
 ---
 
-### CLI Usage
-```bash
-python cli.py import fidelity-rsu NASDAQ_AMZN.csv --exchange-rates '{"2025-03": 86.5, "2025-04": 85.2}'
-python cli.py import fidelity-sale sale.pdf --exchange-rates '{"2025-02": 84.0}'
-```

@@ -246,8 +246,6 @@ export interface ImportantData {
 
 // ── Tax types ──────────────────────────────────────────────────────────────
 
-export type AssetClass = 'EQUITY' | 'DEBT' | 'GOLD' | 'REAL_ESTATE'
-
 export interface AssetGainBreakdown {
   asset_id: number
   asset_name: string

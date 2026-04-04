@@ -313,3 +313,60 @@ def test_compute_gains_summary_lt_string_dates():
     result = compute_gains_summary([], matched_sells, asset_type="STOCK_IN")
     assert result["st_realised_gain"] == pytest.approx(0.0)
     assert result["lt_realised_gain"] == pytest.approx(1000.0)
+
+
+# ── LotHelper tests ───────────────────────────────────────────────────────────
+
+def _make_buy(date_val, units, amount_inr, lot_id=None, txn_id=1):
+    from unittest.mock import MagicMock
+    t = MagicMock()
+    t.type.value = "BUY"
+    t.date = date_val
+    t.units = units
+    t.amount_inr = amount_inr
+    t.lot_id = lot_id
+    t.id = txn_id
+    return t
+
+
+def _make_sell(date_val, units, amount_inr, txn_id=2):
+    from unittest.mock import MagicMock
+    t = MagicMock()
+    t.type.value = "SELL"
+    t.date = date_val
+    t.units = units
+    t.amount_inr = amount_inr
+    t.lot_id = None
+    t.id = txn_id
+    return t
+
+
+def test_lot_helper_build_lots_sells():
+    import pytest
+    from datetime import date
+    from app.engine.lot_helper import LotHelper
+    helper = LotHelper(stcg_days=365)
+    txns = [
+        _make_buy(date(2023, 1, 1), 10, -10000, lot_id="lot1"),
+        _make_sell(date(2024, 6, 1), 10, 15000),
+    ]
+    lots, sells = helper.build_lots_sells(txns)
+    assert len(lots) == 1
+    assert lots[0].buy_amount_inr == pytest.approx(100.0)   # 10000 paise / 100 = 100 INR
+    assert len(sells) == 1
+
+
+def test_lot_helper_match_produces_gain():
+    import pytest
+    from datetime import date
+    from app.engine.lot_helper import LotHelper
+    helper = LotHelper(stcg_days=365)
+    txns = [
+        _make_buy(date(2023, 1, 1), 10, -10000, lot_id="lot1"),
+        _make_sell(date(2024, 6, 1), 10, 15000),
+    ]
+    lots, sells = helper.build_lots_sells(txns)
+    matched = helper.match(lots, sells)
+    assert len(matched) == 1
+    assert matched[0]["realised_gain_inr"] == pytest.approx(50.0)  # (150-100) INR
+    assert matched[0]["is_short_term"] is False   # 517 days >= 365

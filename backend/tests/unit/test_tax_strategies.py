@@ -117,7 +117,6 @@ def test_fifo_strategy_sell_outside_fy_excluded():
     assert result.lt_gain == 0.0
 
 
-@pytest.mark.skip(reason="requires indian_equity — implemented in Task 3")
 def test_registry_wildcard_fallback():
     # After strategies are registered (Task 3+), wildcard lookup works.
     # This test imports a concrete strategy to trigger registration.

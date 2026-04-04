@@ -11,6 +11,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/tax", tags=["tax"])
 
 
+@router.get("/fiscal-years")
+def get_fiscal_years(svc: TaxService = Depends(get_tax_service)):
+    return {"fiscal_years": svc.get_available_fys()}
+
+
 @router.get("/summary")
 def get_tax_summary(
     fy: str = Query(..., description="Fiscal year label, e.g. '2024-25'"),

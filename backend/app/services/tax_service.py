@@ -1,5 +1,6 @@
 import logging
 from datetime import date
+from pathlib import Path
 
 import app.services.tax.strategies  # noqa: F401 — triggers @register_tax_strategy decorators
 from app.engine.lot_engine import _STCG_DAYS, EQUITY_STCG_DAYS
@@ -261,6 +262,17 @@ class TaxService:
                 "near_threshold_count": sum(1 for l in enriched if l["near_ltcg_threshold"]),
             },
         }
+
+    # ── Available fiscal years ────────────────────────────────────────────────
+
+    def get_available_fys(self) -> list[str]:
+        """Return sorted list of fiscal year labels from config/tax_rates/*.yaml filenames."""
+        config_dir = Path("app/config/tax_rates")
+        fys = sorted(
+            p.stem for p in config_dir.glob("*.yaml")
+            if p.stem != "__init__"
+        )
+        return fys
 
     def get_harvest_opportunities(self) -> dict:
         summary = self.get_unrealised_summary()

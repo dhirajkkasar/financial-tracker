@@ -181,3 +181,61 @@ def test_debt_mf_lt_is_also_slab():
     assert result.lt_tax_estimate == pytest.approx(600.0)   # 2000 × 30% slab
     assert result.ltcg_slab is True
     assert result.ltcg_exempt_eligible is False
+
+
+def _make_fd_detail(fd_type="FD", principal_paise=100000_00,  # 1L INR in paise
+                    rate_pct=7.0, compounding="QUARTERLY",
+                    start_date=None, maturity_date=None):
+    fd = MagicMock()
+    fd.fd_type.value = fd_type
+    fd.principal_amount = principal_paise
+    fd.interest_rate_pct = rate_pct
+    fd.compounding.value = compounding
+    fd.start_date = start_date or d(2023, 10, 1)
+    fd.maturity_date = maturity_date or d(2025, 9, 30)
+    return fd
+
+
+def test_accrued_interest_fd_partial_fy():
+    """FD started Oct 2023: interest from Oct 2023 → Mar 2025 in FY 2024-25 window."""
+    from app.services.tax.strategies.accrued_interest import AccruedInterestTaxGainsStrategy
+    strategy = AccruedInterestTaxGainsStrategy()
+    asset = _make_asset(asset_type="FD", asset_class="DEBT")
+    fd = _make_fd_detail(
+        start_date=d(2023, 10, 1),
+        maturity_date=d(2025, 9, 30),
+        principal_paise=100_000 * 100,  # 1L INR
+        rate_pct=7.0, compounding="QUARTERLY",
+    )
+    uow = _make_uow(fd_detail=fd)
+    result = strategy.compute(asset, uow, d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    # Interest for Apr 2024 – Mar 2025 on a 1L FD at 7% quarterly
+    assert result.st_gain > 0
+    assert result.lt_gain == 0.0
+    assert result.has_slab is True
+    assert result.st_tax_estimate == pytest.approx(result.st_gain * 0.30, rel=1e-3)
+
+
+def test_accrued_interest_fd_before_fy_zero():
+    """FD matured before FY starts → zero interest in this FY."""
+    from app.services.tax.strategies.accrued_interest import AccruedInterestTaxGainsStrategy
+    strategy = AccruedInterestTaxGainsStrategy()
+    asset = _make_asset(asset_type="FD", asset_class="DEBT")
+    fd = _make_fd_detail(
+        start_date=d(2022, 1, 1),
+        maturity_date=d(2023, 12, 31),   # matured before FY 2024-25
+    )
+    uow = _make_uow(fd_detail=fd)
+    result = strategy.compute(asset, uow, d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    assert result.st_gain == 0.0
+
+
+def test_accrued_interest_no_fd_detail_returns_zero():
+    """FD with no fd_detail record → return zero gains."""
+    from app.services.tax.strategies.accrued_interest import AccruedInterestTaxGainsStrategy
+    strategy = AccruedInterestTaxGainsStrategy()
+    asset = _make_asset(asset_type="FD", asset_class="DEBT")
+    uow = _make_uow(fd_detail=None)
+    result = strategy.compute(asset, uow, d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    assert result.st_gain == 0.0
+    assert result.st_tax_estimate == 0.0

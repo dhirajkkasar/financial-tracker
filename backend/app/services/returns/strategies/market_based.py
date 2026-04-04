@@ -15,27 +15,11 @@ from app.engine.lot_engine import (
     compute_lot_unrealised,
     GRANDFATHERING_CUTOFF,
 )
+from app.engine.lot_helper import LotHelper, LOT_TYPES, SELL_TYPES, _Lot, _Sell
 from app.engine.returns import UNIT_ADD_TYPES, UNIT_SUB_TYPES, EXCLUDED_TYPES, compute_cagr
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas.responses.returns import AssetReturnsResponse, LotComputedResponse
 from app.services.returns.strategies.base import AssetReturnsStrategy
-
-
-@dataclass
-class _Lot:
-    lot_id: str
-    buy_date: date
-    units: float
-    buy_price_per_unit: float
-    buy_amount_inr: float
-    jan31_2018_price: Optional[float] = None
-
-
-@dataclass
-class _Sell:
-    date: date
-    units: float
-    amount_inr: float
 
 
 @dataclass
@@ -48,10 +32,6 @@ class _OpenLot:
     holding_days: int
     is_short_term: bool
     unrealised_gain: Optional[float]
-
-
-LOT_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST", "BONUS", "SWITCH_IN", "BILLING"}
-SELL_TYPES = {"SELL", "REDEMPTION", "WITHDRAWAL", "SWITCH_OUT"}
 
 
 def _compute_total_units(txns) -> float:
@@ -101,25 +81,7 @@ class MarketBasedStrategy(AssetReturnsStrategy):
 
     def _build_lots_sells(self, txns) -> tuple[list[_Lot], list[_Sell]]:
         """Build _Lot and _Sell lists from transactions (sorted by date)."""
-        lots: list[_Lot] = []
-        sells: list[_Sell] = []
-        for t in sorted(txns, key=lambda x: x.date):
-            ttype = t.type.value if hasattr(t.type, "value") else str(t.type)
-            if ttype in LOT_TYPES and t.units:
-                is_bonus = ttype == "BONUS"
-                price_pu = 0.0 if is_bonus else (
-                    (abs(t.amount_inr / 100.0) / t.units if t.units else 0.0)
-                )
-                lots.append(_Lot(
-                    lot_id=t.lot_id or str(t.id),
-                    buy_date=t.date,
-                    units=t.units,
-                    buy_price_per_unit=price_pu,
-                    buy_amount_inr=0.0 if is_bonus else abs(t.amount_inr / 100.0),
-                ))
-            elif ttype in SELL_TYPES and t.units:
-                sells.append(_Sell(date=t.date, units=t.units, amount_inr=abs(t.amount_inr / 100.0)))
-        return lots, sells
+        return LotHelper(stcg_days=self.stcg_days).build_lots_sells(txns)
 
     def _match_and_get_open_lots(
         self,

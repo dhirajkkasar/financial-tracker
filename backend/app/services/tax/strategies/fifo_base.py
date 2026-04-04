@@ -5,8 +5,8 @@ from datetime import date
 from typing import ClassVar
 
 from app.engine.lot_engine import match_lots_fifo
+from app.engine.lot_helper import LotHelper
 from app.repositories.unit_of_work import UnitOfWork
-from app.services.returns.strategies.market_based import LOT_TYPES, SELL_TYPES, _Lot, _Sell
 from app.services.tax.strategies.base import AssetTaxGainsResult, TaxGainsStrategy
 
 
@@ -28,32 +28,10 @@ class FifoTaxGainsStrategy(TaxGainsStrategy):
     ltcg_exempt_eligible: ClassVar[bool] = False
     ltcg_slab: ClassVar[bool] = False
 
-    # ── Lot building (duplicated from MarketBasedStrategy — refactored in Task 13) ──
+    # ── Lot building ──────────────────────────────────────────────────────────
 
-    def _build_lots_sells(self, txns) -> tuple[list[_Lot], list[_Sell]]:
-        lots: list[_Lot] = []
-        sells: list[_Sell] = []
-        for t in sorted(txns, key=lambda x: x.date):
-            ttype = t.type.value if hasattr(t.type, "value") else str(t.type)
-            if ttype in LOT_TYPES and t.units:
-                is_bonus = ttype == "BONUS"
-                price_pu = 0.0 if is_bonus else (
-                    abs(t.amount_inr / 100.0) / t.units if t.units else 0.0
-                )
-                lots.append(_Lot(
-                    lot_id=t.lot_id or str(t.id),
-                    buy_date=t.date,
-                    units=t.units,
-                    buy_price_per_unit=price_pu,
-                    buy_amount_inr=0.0 if is_bonus else abs(t.amount_inr / 100.0),
-                ))
-            elif ttype in SELL_TYPES and t.units:
-                sells.append(_Sell(
-                    date=t.date,
-                    units=t.units,
-                    amount_inr=abs(t.amount_inr / 100.0),
-                ))
-        return lots, sells
+    def _build_lots_sells(self, txns) -> tuple[list, list]:
+        return LotHelper(stcg_days=self.stcg_days).build_lots_sells(txns)
 
     # ── FY gain extraction ──────────────────────────────────────────────────────
 

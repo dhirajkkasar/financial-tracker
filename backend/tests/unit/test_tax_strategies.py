@@ -60,7 +60,7 @@ def test_fifo_strategy_no_sells_returns_zero():
     from app.services.tax.strategies.indian_equity import StockINTaxGainsStrategy
     strategy = StockINTaxGainsStrategy()
     asset = _make_asset()
-    txns = [_make_txn("BUY", d(2023, 1, 1), 10, -10000)]
+    txns = [_make_txn("BUY", d(2023, 1, 1), 10, -1000000)]
     uow = _make_uow(transactions=txns)
     result = strategy.compute(asset, uow, d(2024, 4, 1), d(2025, 3, 31), 30.0)
     assert result.st_gain == 0.0
@@ -74,8 +74,8 @@ def test_fifo_strategy_st_gain_stock_in():
     asset = _make_asset()
     # BUY Jun 2024, SELL Sep 2024 → 92 days < 365 → ST at 20%
     txns = [
-        _make_txn("BUY",  d(2024, 6, 1), 10, -10000, lot_id="lot1", txn_id=1),
-        _make_txn("SELL", d(2024, 9, 1), 10,  12000, txn_id=2),
+        _make_txn("BUY",  d(2024, 6, 1), 10, -1000000, lot_id="lot1", txn_id=1),
+        _make_txn("SELL", d(2024, 9, 1), 10,  1200000, txn_id=2),
     ]
     uow = _make_uow(transactions=txns)
     result = strategy.compute(asset, uow, d(2024, 4, 1), d(2025, 3, 31), 30.0)
@@ -92,8 +92,8 @@ def test_fifo_strategy_lt_gain_stock_in():
     asset = _make_asset()
     # BUY Jan 2023, SELL Jun 2024 → 517 days ≥ 365 → LT at 12.5%
     txns = [
-        _make_txn("BUY",  d(2023, 1, 1), 10, -10000, lot_id="lot1", txn_id=1),
-        _make_txn("SELL", d(2024, 6, 1), 10,  15000, txn_id=2),
+        _make_txn("BUY",  d(2023, 1, 1), 10, -1000000, lot_id="lot1", txn_id=1),
+        _make_txn("SELL", d(2024, 6, 1), 10,  1500000, txn_id=2),
     ]
     uow = _make_uow(transactions=txns)
     result = strategy.compute(asset, uow, d(2024, 4, 1), d(2025, 3, 31), 30.0)
@@ -108,8 +108,8 @@ def test_fifo_strategy_sell_outside_fy_excluded():
     asset = _make_asset()
     # SELL in FY 2023-24 — must NOT appear in FY 2024-25
     txns = [
-        _make_txn("BUY",  d(2022, 1, 1), 10, -10000, lot_id="lot1", txn_id=1),
-        _make_txn("SELL", d(2024, 3, 1), 10,  15000, txn_id=2),
+        _make_txn("BUY",  d(2022, 1, 1), 10, -1000000, lot_id="lot1", txn_id=1),
+        _make_txn("SELL", d(2024, 3, 1), 10,  1500000, txn_id=2),
     ]
     uow = _make_uow(transactions=txns)
     result = strategy.compute(asset, uow, d(2024, 4, 1), d(2025, 3, 31), 30.0)

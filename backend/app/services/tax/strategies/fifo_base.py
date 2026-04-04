@@ -38,20 +38,20 @@ class FifoTaxGainsStrategy(TaxGainsStrategy):
             if ttype in LOT_TYPES and t.units:
                 is_bonus = ttype == "BONUS"
                 price_pu = 0.0 if is_bonus else (
-                    abs(t.amount_inr) / t.units if t.units else 0.0
+                    abs(t.amount_inr / 100.0) / t.units if t.units else 0.0
                 )
                 lots.append(_Lot(
                     lot_id=t.lot_id or str(t.id),
                     buy_date=t.date,
                     units=t.units,
                     buy_price_per_unit=price_pu,
-                    buy_amount_inr=0.0 if is_bonus else abs(t.amount_inr),
+                    buy_amount_inr=0.0 if is_bonus else abs(t.amount_inr / 100.0),
                 ))
             elif ttype in SELL_TYPES and t.units:
                 sells.append(_Sell(
                     date=t.date,
                     units=t.units,
-                    amount_inr=abs(t.amount_inr),
+                    amount_inr=abs(t.amount_inr / 100.0),
                 ))
         return lots, sells
 

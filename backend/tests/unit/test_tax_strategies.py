@@ -239,3 +239,48 @@ def test_accrued_interest_no_fd_detail_returns_zero():
     result = strategy.compute(asset, uow, d(2024, 4, 1), d(2025, 3, 31), 30.0)
     assert result.st_gain == 0.0
     assert result.st_tax_estimate == 0.0
+
+
+def test_real_estate_no_sell_in_fy_zero():
+    from app.services.tax.strategies.real_estate import RealEstateTaxGainsStrategy
+    strategy = RealEstateTaxGainsStrategy()
+    asset = _make_asset(asset_type="REAL_ESTATE", asset_class="REAL_ESTATE")
+    txns = [_make_txn("CONTRIBUTION", d(2020, 1, 1), None, -500000000, txn_id=1)]
+    uow = _make_uow(transactions=txns)
+    result = strategy.compute(asset, uow, d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    assert result.st_gain == 0.0
+    assert result.lt_gain == 0.0
+
+
+def test_real_estate_lt_gain_over_2_years():
+    """Property bought Jan 2020, sold Jun 2024 → 1612 days ≥ 730 → LT at 12.5%."""
+    from app.services.tax.strategies.real_estate import RealEstateTaxGainsStrategy
+    strategy = RealEstateTaxGainsStrategy()
+    asset = _make_asset(asset_type="REAL_ESTATE", asset_class="REAL_ESTATE")
+    txns = [
+        _make_txn("CONTRIBUTION", d(2020, 1, 1), None, -500000000, txn_id=1),
+        _make_txn("SELL",         d(2024, 6, 1), None,  700000000, txn_id=2),
+    ]
+    uow = _make_uow(transactions=txns)
+    result = strategy.compute(asset, uow, d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    assert result.lt_gain == pytest.approx(2_000_000.0)
+    assert result.st_gain == pytest.approx(0.0)
+    assert result.lt_tax_estimate == pytest.approx(250_000.0)   # 2M × 12.5%
+    assert result.has_slab is False
+
+
+def test_real_estate_st_gain_under_2_years():
+    """Property bought Jun 2023, sold Sep 2024 → 457 days < 730 → ST at slab."""
+    from app.services.tax.strategies.real_estate import RealEstateTaxGainsStrategy
+    strategy = RealEstateTaxGainsStrategy()
+    asset = _make_asset(asset_type="REAL_ESTATE", asset_class="REAL_ESTATE")
+    txns = [
+        _make_txn("CONTRIBUTION", d(2023, 6, 1), None, -300000000, txn_id=1),
+        _make_txn("SELL",         d(2024, 9, 1), None,  350000000, txn_id=2),
+    ]
+    uow = _make_uow(transactions=txns)
+    result = strategy.compute(asset, uow, d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    assert result.st_gain == pytest.approx(500_000.0)
+    assert result.lt_gain == pytest.approx(0.0)
+    assert result.st_tax_estimate == pytest.approx(150_000.0)   # 500K × 30% slab
+    assert result.has_slab is True

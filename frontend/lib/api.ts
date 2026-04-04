@@ -77,6 +77,8 @@ export const api = {
       client.get<ImportantData[]>('/important-data', { params: category ? { category } : {} }).then((r) => r.data),
   },
   tax: {
+    fiscalYears: () =>
+      client.get<{ fiscal_years: string[] }>('/tax/fiscal-years').then((r) => r.data),
     summary: (fy: string) =>
       client.get<TaxSummaryResponse>('/tax/summary', { params: { fy } }).then((r) => r.data),
     unrealised: () =>

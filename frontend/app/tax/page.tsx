@@ -11,8 +11,18 @@ import {
 import { Skeleton } from '@/components/ui/Skeleton'
 import { Pagination } from '@/components/ui/Pagination'
 
-const CURRENT_FY = '2024-25'
-const FY_OPTIONS = ['2024-25', '2023-24', '2022-23']
+function inferCurrentFy(): string {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1 // 1-based
+  const startYear = month >= 4 ? year : year - 1
+  return `${startYear}-${String(startYear + 1).slice(-2)}`
+}
+
+function pickDefaultFy(fys: string[]): string {
+  const current = inferCurrentFy()
+  return fys.includes(current) ? current : fys[fys.length - 1] ?? current
+}
 
 const ASSET_CLASS_LABELS: Record<string, string> = {
   EQUITY: 'Equity',
@@ -83,7 +93,8 @@ function ToggleBtn({ expanded, onClick }: { expanded: boolean; onClick: () => vo
 
 export default function TaxPage() {
   const { formatINR } = usePrivateMoney()
-  const [fy, setFy] = useState(CURRENT_FY)
+  const [fyOptions, setFyOptions] = useState<string[]>([])
+  const [fy, setFy] = useState('')
   const [summary, setSummary] = useState<TaxSummaryResponse | null>(null)
   const [unrealised, setUnrealised] = useState<UnrealisedResponse | null>(null)
   const [harvest, setHarvest] = useState<HarvestResponse | null>(null)
@@ -96,6 +107,16 @@ export default function TaxPage() {
   const [harvestPageSize, setHarvestPageSize] = useState(10)
 
   useEffect(() => {
+    api.tax.fiscalYears().then(({ fiscal_years }) => {
+      setFyOptions(fiscal_years)
+      setFy(pickDefaultFy(fiscal_years))
+    })
+    api.tax.unrealised().then(setUnrealised).finally(() => setLoadingUnrealised(false))
+    api.tax.harvestOpportunities().then(setHarvest).finally(() => setLoadingHarvest(false))
+  }, [])
+
+  useEffect(() => {
+    if (!fy) return
     void (async () => {
       setLoadingSummary(true)
       setSummary(null)
@@ -108,10 +129,6 @@ export default function TaxPage() {
     })()
   }, [fy])
 
-  useEffect(() => {
-    api.tax.unrealised().then(setUnrealised).finally(() => setLoadingUnrealised(false))
-    api.tax.harvestOpportunities().then(setHarvest).finally(() => setLoadingHarvest(false))
-  }, [])
 
   const unrealisedRows = useMemo(() => rollupUnrealised(unrealised?.lots ?? []), [unrealised])
   const harvestRows = useMemo(() => rollupHarvest(harvest?.opportunities ?? []), [harvest])
@@ -140,7 +157,7 @@ export default function TaxPage() {
           onChange={(e) => { setFy(e.target.value); setExpandedClasses(new Set()) }}
           className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-accent"
         >
-          {FY_OPTIONS.map((f) => <option key={f} value={f}>FY {f}</option>)}
+          {fyOptions.map((f) => <option key={f} value={f}>FY {f}</option>)}
         </select>
       </div>
 

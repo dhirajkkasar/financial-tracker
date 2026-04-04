@@ -1,5 +1,18 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Environment Variables
+
+### Backend (`backend/.env`)
+| Variable | Default | Description |
+|---|---|---|
+| `DATABASE_URL` | `sqlite:///./app.db` | DB connection string |
+| `SLAB_RATE` | `30` | Income tax slab rate % used to estimate tax on slab-rated gains (FD/RD, Debt MF, STOCK_US ST) |
+
+### Frontend (`frontend/.env.local`)
+| Variable | Description |
+|---|---|
+| `NEXT_PUBLIC_API_URL` | Backend URL, e.g. `http://localhost:8000` |
+
 ## Getting Started
 
 First, run the development server:

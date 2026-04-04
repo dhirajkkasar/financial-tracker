@@ -166,6 +166,12 @@ Adding a new asset type: create a 3-line leaf class in `services/returns/strateg
 ### Tax Module
 - **Rates are config-driven:** `config/tax_rates/2024-25.yaml`, `config/tax_rates/2025-26.yaml`
 - **API endpoints:** `GET /tax/summary?fy=2024-25`, `GET /tax/unrealised`, `GET /tax/harvest-opportunities`
+- **Slab rate:** injected via `SLAB_RATE` env var (default 30%); read in `dependencies.py` → `TaxService`
+- **Response shape:** `GET /tax/summary` returns `entries` grouped by `asset_class` (EQUITY/DEBT/GOLD/REAL_ESTATE), each with `asset_breakdown[]` per asset and `slab_rate_pct` label
+- **Strategy hierarchy** (`services/tax/strategies/`): mirrors returns strategies — `TaxGainsStrategy` ABC, `FifoTaxGainsStrategy` base, leaf classes registered via `@register_tax_strategy`
+  - Adding a new asset type: create a 3-line leaf in `services/tax/strategies/` with `@register_tax_strategy(("TYPE", "*"))`
+  - Auto-import in `services/tax/strategies/__init__.py` populates registry on startup
+  - Skipped types (no capital gains): `EPF`, `PPF`, `NPS`, `SGB`, `RSU`
 
 ### Price Fetchers (`services/price_feed.py`)
 Self-registering via `@register_fetcher` decorator. `staleness_threshold` is a `ClassVar` on each fetcher — no per-type hardcoding in the service.
@@ -214,9 +220,15 @@ services/
       mf.py            → persists CAS snapshots
       ppf.py           → creates valuation from PPF CSV import
       epf.py           → ensures EPF asset always is_active=True
+  tax/
+    strategies/
+      base.py         → AssetTaxGainsResult dataclass, TaxGainsStrategy ABC, TaxStrategyRegistry
+      fifo_base.py    → FifoTaxGainsStrategy (FIFO lot matching, ST/LT classification, tax computation)
+      __init__.py     → auto-imports all strategy modules to trigger @register_tax_strategy
+      indian_equity.py, foreign_equity.py, gold.py, debt_mf.py, accrued_interest.py, real_estate.py
   event_bus.py              → SyncEventBus + IEventBus protocol + ImportCompletedEvent
   price_feed.py             → BasePriceFetcher ABC + @register_fetcher; staleness on class
-  tax_service.py            → receives TaxRatePolicy via DI
+  tax_service.py            → uses IUnitOfWorkFactory + TaxStrategyRegistry; dispatches by (asset_type, asset_class)
   corp_actions_service.py   → fetches NSE corp actions (bonus, split, dividend) and applies transactions
   important_data_service.py → key-value store for bank accounts, MF folios, identity docs, insurance
   epf_auto_contrib_service.py → backfills missing EPF monthly CONTRIBUTION rows on startup
@@ -243,6 +255,8 @@ importers/
 
 engine/
   lot_engine.py       → stcg_days accepted as parameter (not hardcoded per asset type)
+  lot_helper.py       → LotHelper class + _Lot/_Sell dataclasses + LOT_TYPES/SELL_TYPES constants
+                        Import _Lot/_Sell/LOT_TYPES/SELL_TYPES from here (NOT from market_based.py) — circular import otherwise
   tax_engine.py       → TaxRatePolicy + TaxRate dataclass; reads config/tax_rates/{FY}.yaml
   mf_classifier.py    → ISchemeClassifier protocol + DefaultSchemeClassifier
   mf_scheme_lookup.py → lazy-loaded ISIN → (scheme_code, category) lookup from config/mf_scheme_codes/mf_schemes.csv

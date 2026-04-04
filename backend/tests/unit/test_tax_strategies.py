@@ -165,12 +165,32 @@ def test_gold_st_threshold_is_1095_days():
     assert result.has_slab is True
 
 
-def test_debt_mf_lt_is_also_slab():
-    """Debt MF: both ST and LT at slab rate (post-2023 budget)."""
+def test_debt_mf_pre2023_under2y_is_stcg_slab():
+    """Debt MF: pre-Apr-2023 buy held < 2 years → STCG at slab (516 days)."""
     from app.services.tax.strategies.debt_mf import DebtMFTaxGainsStrategy
     strategy = DebtMFTaxGainsStrategy()
     asset = _make_asset(asset_type="MF", asset_class="DEBT")
-    # BUY Jan 2022, SELL Jun 2024 → LT but still slab
+    # BUY Jan 2022 (pre-cutoff), SELL Jun 2023 → 516 days < 730 → STCG at slab
+    txns = [
+        _make_txn("BUY",  d(2022, 1, 1), 100, -1000000, lot_id="lot1", txn_id=1),
+        _make_txn("SELL", d(2023, 6, 1), 100,  1200000, txn_id=2),
+    ]
+    uow = _make_uow(transactions=txns)
+    result = strategy.compute(asset, uow, d(2023, 4, 1), d(2024, 3, 31), 30.0)
+    assert result.st_gain == pytest.approx(2000.0)
+    assert result.lt_gain == pytest.approx(0.0)
+    assert result.st_tax_estimate == pytest.approx(600.0)   # 2000 × 30% slab
+    assert result.has_slab is True
+    assert result.ltcg_slab is False
+    assert result.ltcg_exempt_eligible is False
+
+
+def test_debt_mf_pre2023_over2y_is_ltcg_12pct():
+    """Debt MF: pre-Apr-2023 buy held > 2 years → LTCG at 12.5%."""
+    from app.services.tax.strategies.debt_mf import DebtMFTaxGainsStrategy
+    strategy = DebtMFTaxGainsStrategy()
+    asset = _make_asset(asset_type="MF", asset_class="DEBT")
+    # BUY Jan 2022 (pre-cutoff), SELL Jun 2024 → 882 days > 730 → LTCG at 12.5%
     txns = [
         _make_txn("BUY",  d(2022, 1, 1), 100, -1000000, lot_id="lot1", txn_id=1),
         _make_txn("SELL", d(2024, 6, 1), 100,  1200000, txn_id=2),
@@ -178,9 +198,29 @@ def test_debt_mf_lt_is_also_slab():
     uow = _make_uow(transactions=txns)
     result = strategy.compute(asset, uow, d(2024, 4, 1), d(2025, 3, 31), 30.0)
     assert result.lt_gain == pytest.approx(2000.0)
-    assert result.lt_tax_estimate == pytest.approx(600.0)   # 2000 × 30% slab
-    assert result.ltcg_slab is True
+    assert result.st_gain == pytest.approx(0.0)
+    assert result.lt_tax_estimate == pytest.approx(250.0)   # 2000 × 12.5%
+    assert result.has_slab is False
+    assert result.ltcg_slab is False
     assert result.ltcg_exempt_eligible is False
+
+
+def test_debt_mf_post2023_buy_always_stcg():
+    """Debt MF: post-Apr-2023 buy is always STCG at slab even if held > 3 years."""
+    from app.services.tax.strategies.debt_mf import DebtMFTaxGainsStrategy
+    strategy = DebtMFTaxGainsStrategy()
+    asset = _make_asset(asset_type="MF", asset_class="DEBT")
+    # BUY Jun 2023 (post-cutoff), SELL Dec 2027 → 1644 days > 1095 but still STCG
+    txns = [
+        _make_txn("BUY",  d(2023, 6, 1), 100, -1000000, lot_id="lot1", txn_id=1),
+        _make_txn("SELL", d(2027, 12, 1), 100,  1200000, txn_id=2),
+    ]
+    uow = _make_uow(transactions=txns)
+    result = strategy.compute(asset, uow, d(2027, 4, 1), d(2028, 3, 31), 30.0)
+    assert result.st_gain == pytest.approx(2000.0)
+    assert result.lt_gain == pytest.approx(0.0)
+    assert result.st_tax_estimate == pytest.approx(600.0)   # 2000 × 30% slab
+    assert result.has_slab is True
 
 
 def _make_fd_detail(fd_type="FD", principal_paise=100000_00,  # 1L INR in paise

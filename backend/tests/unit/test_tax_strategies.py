@@ -25,6 +25,7 @@ def test_registry_returns_none_for_unknown():
     assert registry.get("UNKNOWN_TYPE", "EQUITY") is None
 
 
+@pytest.mark.skip(reason="requires indian_equity — implemented in Task 3")
 def test_registry_wildcard_fallback():
     # After strategies are registered (Task 3+), wildcard lookup works.
     # This test imports a concrete strategy to trigger registration.

@@ -1,208 +1,136 @@
 import logging
 from datetime import date
 
-from sqlalchemy.orm import Session
-
-from app.engine.lot_engine import match_lots_fifo, compute_lot_unrealised, _STCG_DAYS, EQUITY_STCG_DAYS
-from app.engine.returns import EXCLUDED_TYPES
+import app.services.tax.strategies  # noqa: F401 — triggers @register_tax_strategy decorators
+from app.engine.lot_engine import _STCG_DAYS, EQUITY_STCG_DAYS
+from app.engine.lot_engine import match_lots_fifo, compute_lot_unrealised
 from app.engine.tax_engine import (
     parse_fy,
-    compute_fy_realised_gains,
     apply_ltcg_exemption,
-    estimate_tax,
     find_harvest_opportunities,
-    get_tax_rate,
 )
-from app.repositories.asset_repo import AssetRepository
-from app.repositories.transaction_repo import TransactionRepository
-from app.repositories.price_cache_repo import PriceCacheRepository
-from app.repositories.unit_of_work import UnitOfWork
+from app.repositories.unit_of_work import IUnitOfWorkFactory
 from app.services.returns.strategies.market_based import LOT_TYPES, SELL_TYPES, _Lot, _Sell
+from app.services.tax.strategies.base import AssetTaxGainsResult, TaxStrategyRegistry
 
 logger = logging.getLogger(__name__)
 
-# Asset types that use FIFO lot matching (exclude SGB — tax-exempt at maturity)
-LOT_ASSET_TYPES = {"STOCK_IN", "STOCK_US", "MF", "GOLD", "RSU", "REAL_ESTATE"}
+SKIPPED_ASSET_TYPES = {"EPF", "PPF", "NPS", "SGB", "RSU"}
+LOT_ASSET_TYPES = {"STOCK_IN", "STOCK_US", "MF", "GOLD"}   # FIFO-tracked for unrealised
+ASSET_CLASS_ORDER = ["EQUITY", "DEBT", "GOLD", "REAL_ESTATE"]
 
-# How close to ₹1.25L before we flag "near threshold" (within 10%)
 LTCG_NEAR_THRESHOLD = 125_000.0
 LTCG_NEAR_PCT = 0.10
 
 
 class TaxService:
-    def __init__(self, db: Session):
-        self.db = db
-        self.asset_repo = AssetRepository(db)
-        self.txn_repo = TransactionRepository(db)
-        self.price_repo = PriceCacheRepository(db)
+    def __init__(self, uow_factory: IUnitOfWorkFactory, slab_rate_pct: float = 30.0):
+        self._uow_factory = uow_factory
+        self._slab_rate_pct = slab_rate_pct
+        self._registry = TaxStrategyRegistry()
 
-    # ── Private helpers ───────────────────────────────────────────────────────
+    # ── Realised gains ────────────────────────────────────────────────────────
 
-    def _build_lots_for_asset(self, asset_id: int, asset_type: str):
-        """Build open_lots and matched_sells using the strategy registry."""
-        
-        with UnitOfWork(self.db) as uow:
-            # Get transactions
-            transactions = uow.transactions.list_by_asset(asset_id)
-            
-            # Build lots and sells
-            lots = []
-            sells = []
-            for txn in sorted(transactions, key=lambda t: t.date):
-                txn_type = txn.type.value
-                if txn_type in LOT_TYPES and txn.units:
-                    is_bonus = txn_type == "BONUS"
-                    price = 0.0 if is_bonus else (abs(txn.amount_inr / 100.0) / txn.units if txn.units else 0)
-                    lots.append(_Lot(
-                        lot_id=txn.lot_id or str(txn.id),
-                        buy_date=txn.date,
-                        units=txn.units,
-                        buy_price_per_unit=0.0 if is_bonus else (txn.price_per_unit or price),
-                        buy_amount_inr=0.0 if is_bonus else abs(txn.amount_inr / 100.0),
-                    ))
-                elif txn_type in SELL_TYPES and txn.units:
-                    sells.append(_Sell(
-                        date=txn.date,
-                        units=txn.units,
-                        amount_inr=abs(txn.amount_inr / 100.0),
-                    ))
-            
-            # Match using FIFO
-            stcg_days = _STCG_DAYS.get(asset_type, EQUITY_STCG_DAYS)
-            matched = match_lots_fifo(lots, sells, stcg_days=stcg_days)
-            
-            # Build open lots
-            sold_units = {}
-            for m in matched:
-                sold_units[m["lot_id"]] = sold_units.get(m["lot_id"], 0.0) + m["units_sold"]
-            
-            # Get price cache for unrealised gain computation
-            price_cache = self.price_repo.get_by_asset_id(asset_id)
-            current_price = (price_cache.price_inr / 100.0) if price_cache else None
-            
-            open_lots = []
-            for lot in lots:
-                units_remaining = lot.units - sold_units.get(lot.lot_id, 0.0)
-                if units_remaining <= 0:
-                    continue
-                
-                entry = {
-                    "lot_id": lot.lot_id,
-                    "buy_date": lot.buy_date,
-                    "units": units_remaining,
-                    "buy_price_per_unit": lot.buy_price_per_unit,
-                    "buy_amount_inr": lot.buy_amount_inr,
-                }
-                
-                # Compute unrealised gain if price cache exists
-                if current_price is not None:
-                    unrealised = compute_lot_unrealised(lot, current_price, stcg_days=stcg_days)
-                    scale = units_remaining / lot.units if lot.units else 0
-                    entry.update({
-                        "current_value": current_price * units_remaining,
-                        "unrealised_gain": unrealised["unrealised_gain"] * scale,
-                        "holding_days": unrealised["holding_days"],
-                        "is_short_term": unrealised["is_short_term"],
-                    })
-                else:
-                    holding_days = (date.today() - lot.buy_date).days
-                    entry.update({
-                        "current_value": None,
-                        "unrealised_gain": None,
-                        "holding_days": holding_days,
-                        "is_short_term": holding_days < stcg_days,
-                    })
-                open_lots.append(entry)
-            
-            return (open_lots, matched)
+    def _compute_entry_lt_tax(
+        self, results: list[AssetTaxGainsResult]
+    ) -> tuple[float, float]:
+        """
+        Compute (total_lt_tax, ltcg_exemption_used) for an asset_class entry.
 
-    def _get_all_open_lots(self) -> list[dict]:
-        """Return enriched open lots for all active lot-based assets."""
-        all_lots: list[dict] = []
-        for asset in self.asset_repo.list(active=True):
-            atype = asset.asset_type.value
-            if atype not in LOT_ASSET_TYPES:
-                continue
-            try:
-                open_lots, _ = self._build_lots_for_asset(asset.id, atype)
-                for lot in open_lots:
-                    all_lots.append({
-                        **lot,
-                        "asset_id": asset.id,
-                        "asset_name": asset.name,
-                        "asset_type": atype,
-                    })
-            except Exception as e:
-                logger.warning("Error building lots for asset %d: %s", asset.id, str(e))
-        return all_lots
+        ₹1.25L Section-112A exemption is applied once against the combined
+        exempt-eligible (STOCK_IN + equity MF) LTCG — not per-asset.
+        All other LTCG at 12.5% flat; slab-rate LTCG at configured slab rate.
+        """
+        exempt_eligible_lt = sum(
+            max(0.0, r.lt_gain) for r in results if r.ltcg_exempt_eligible
+        )
+        exemption_result = apply_ltcg_exemption(exempt_eligible_lt, "STOCK_IN")
+        exemption_used = exemption_result["exemption_used"]
+        taxable_exempt_lt = exemption_result["taxable_lt_gain"]
 
-    def _get_matched_sells_by_type(self) -> dict[str, list[dict]]:
-        """Return all FIFO-matched sells grouped by asset type (active + inactive)."""
-        by_type: dict[str, list[dict]] = {}
-        for asset in self.asset_repo.list(active=None):
-            atype = asset.asset_type.value
-            if atype not in LOT_ASSET_TYPES:
-                continue
-            try:
-                _, matched_sells = self._build_lots_for_asset(asset.id, atype)
-                by_type.setdefault(atype, []).extend(matched_sells)
-            except Exception as e:
-                logger.warning("Error building sells for asset %d: %s", asset.id, str(e))
-        return by_type
+        lt_tax = taxable_exempt_lt * 12.5 / 100.0   # Indian equity after exemption
 
-    # ── Public API ────────────────────────────────────────────────────────────
+        for r in results:
+            if r.ltcg_exempt_eligible:
+                continue   # already handled above
+            if r.ltcg_slab:
+                lt_tax += max(0.0, r.lt_gain) * self._slab_rate_pct / 100.0
+            else:
+                lt_tax += max(0.0, r.lt_gain) * 12.5 / 100.0   # Gold, ForeignEquity, RealEstate
+
+        return lt_tax, exemption_used
 
     def get_tax_summary(self, fy_label: str) -> dict:
-        """Return realised gains, tax estimates, and exemptions per asset type."""
         fy_start, fy_end = parse_fy(fy_label)
-        matched_by_type = self._get_matched_sells_by_type()
+        buckets: dict[str, list[AssetTaxGainsResult]] = {}
 
-        entries: list[dict] = []
+        with self._uow_factory() as uow:
+            for asset in uow.assets.list(active=None):
+                atype = asset.asset_type.value
+                if atype in SKIPPED_ASSET_TYPES:
+                    continue
+                strategy = self._registry.get(atype, asset.asset_class.value)
+                if strategy is None:
+                    continue
+                try:
+                    result = strategy.compute(asset, uow, fy_start, fy_end, self._slab_rate_pct)
+                except Exception as e:
+                    logger.warning("Tax gains error for asset %d: %s", asset.id, str(e))
+                    continue
+                if result.st_gain == 0.0 and result.lt_gain == 0.0:
+                    continue
+                buckets.setdefault(asset.asset_class.value, []).append(result)
+
+        entries = []
         total_st_gain = 0.0
         total_lt_gain = 0.0
         total_st_tax = 0.0
         total_lt_tax = 0.0
         has_slab = False
 
-        for asset_type, matches in matched_by_type.items():
-            gains = compute_fy_realised_gains(matches, asset_type, fy_start, fy_end)
-            if gains["st_gain"] == 0.0 and gains["lt_gain"] == 0.0:
+        for asset_class_val in ASSET_CLASS_ORDER:
+            results = buckets.get(asset_class_val)
+            if not results:
                 continue
 
-            tax = estimate_tax(gains["st_gain"], gains["lt_gain"], asset_type)
-            exemption = apply_ltcg_exemption(gains["lt_gain"], asset_type)
-            st_rate = get_tax_rate(asset_type, is_short_term=True)
-            lt_rate = get_tax_rate(asset_type, is_short_term=False)
+            st_gain = sum(r.st_gain for r in results)
+            lt_gain = sum(r.lt_gain for r in results)
+            st_tax = sum(r.st_tax_estimate for r in results)
+            lt_tax, exemption_used = self._compute_entry_lt_tax(results)
+            entry_has_slab = any(r.has_slab for r in results)
+            slab_rate_for_entry = self._slab_rate_pct if entry_has_slab else None
 
             entries.append({
-                "asset_type": asset_type,
-                "st_gain": gains["st_gain"],
-                "lt_gain": gains["lt_gain"],
-                "total_gain": gains["total_gain"],
-                "st_tax_rate_pct": st_rate.get("rate_pct"),
-                "lt_tax_rate_pct": lt_rate.get("rate_pct"),
-                "is_st_slab": st_rate["is_slab"],
-                "is_lt_slab": lt_rate["is_slab"],
-                "is_lt_exempt": lt_rate["is_exempt"],
-                "ltcg_exemption_used": exemption["exemption_used"],
-                "taxable_lt_gain": exemption["taxable_lt_gain"],
-                "st_tax_estimate": tax["st_tax"],
-                "lt_tax_estimate": tax["lt_tax"],
-                "total_tax_estimate": tax["total_tax"],
+                "asset_class": asset_class_val,
+                "st_gain": st_gain,
+                "lt_gain": lt_gain,
+                "total_gain": st_gain + lt_gain,
+                "ltcg_exemption_used": exemption_used,
+                "st_tax_estimate": st_tax,
+                "lt_tax_estimate": lt_tax,
+                "total_tax_estimate": st_tax + lt_tax,
+                "slab_rate_pct": slab_rate_for_entry,
+                "asset_breakdown": [
+                    {
+                        "asset_id": r.asset_id,
+                        "asset_name": r.asset_name,
+                        "asset_type": r.asset_type,
+                        "st_gain": r.st_gain,
+                        "lt_gain": r.lt_gain,
+                        "st_tax_estimate": r.st_tax_estimate,
+                        "lt_tax_estimate": r.lt_tax_estimate,
+                        "ltcg_exemption_used": r.ltcg_exemption_used,
+                    }
+                    for r in sorted(results, key=lambda r: abs(r.st_gain + r.lt_gain), reverse=True)
+                ],
             })
 
-            total_st_gain += gains["st_gain"]
-            total_lt_gain += gains["lt_gain"]
-            if tax["st_tax"] is not None:
-                total_st_tax += tax["st_tax"]
-            if tax["is_st_slab"]:
+            total_st_gain += st_gain
+            total_lt_gain += lt_gain
+            total_st_tax += st_tax
+            total_lt_tax += lt_tax
+            if entry_has_slab:
                 has_slab = True
-            if tax["lt_tax"] is not None:
-                total_lt_tax += tax["lt_tax"]
-            if tax.get("is_lt_slab"):
-                has_slab = True
-
-        entries.sort(key=lambda e: abs(e["total_gain"]), reverse=True)
 
         return {
             "fy": fy_label,
@@ -218,32 +146,106 @@ class TaxService:
             },
         }
 
+    # ── Unrealised gains ──────────────────────────────────────────────────────
+
+    def _build_lots_for_asset(self, asset_id: int, asset_type: str, uow) -> tuple[list, list]:
+        """Build open lots and matched sells for a single FIFO-tracked asset."""
+        transactions = uow.transactions.list_by_asset(asset_id)
+        lots, sells = [], []
+        for t in sorted(transactions, key=lambda x: x.date):
+            ttype = t.type.value if hasattr(t.type, "value") else str(t.type)
+            if ttype in LOT_TYPES and t.units:
+                is_bonus = ttype == "BONUS"
+                price = 0.0 if is_bonus else (abs(t.amount_inr / 100.0) / t.units if t.units else 0)
+                lots.append(_Lot(
+                    lot_id=t.lot_id or str(t.id),
+                    buy_date=t.date,
+                    units=t.units,
+                    buy_price_per_unit=0.0 if is_bonus else (price or t.price_per_unit),
+                    buy_amount_inr=0.0 if is_bonus else abs(t.amount_inr / 100.0),
+                ))
+            elif ttype in SELL_TYPES and t.units:
+                sells.append(_Sell(date=t.date, units=t.units, amount_inr=abs(t.amount_inr / 100.0)))
+
+        stcg_days = _STCG_DAYS.get(asset_type, EQUITY_STCG_DAYS)
+        matched = match_lots_fifo(lots, sells, stcg_days=stcg_days)
+
+        sold_units: dict[str, float] = {}
+        for m in matched:
+            sold_units[m["lot_id"]] = sold_units.get(m["lot_id"], 0.0) + m["units_sold"]
+
+        price_cache = uow.price_cache.get_by_asset_id(asset_id)
+        current_price = (price_cache.price_inr / 100.0) if price_cache else None
+
+        open_lots = []
+        for lot in lots:
+            units_remaining = lot.units - sold_units.get(lot.lot_id, 0.0)
+            if units_remaining <= 0:
+                continue
+            entry = {
+                "lot_id": lot.lot_id,
+                "buy_date": lot.buy_date,
+                "units": units_remaining,
+                "buy_price_per_unit": lot.buy_price_per_unit,
+                "buy_amount_inr": lot.buy_amount_inr,
+            }
+            if current_price is not None:
+                unrealised = compute_lot_unrealised(lot, current_price, stcg_days=stcg_days)
+                scale = units_remaining / lot.units if lot.units else 0
+                entry.update({
+                    "current_value": current_price * units_remaining,
+                    "unrealised_gain": unrealised["unrealised_gain"] * scale,
+                    "holding_days": unrealised["holding_days"],
+                    "is_short_term": unrealised["is_short_term"],
+                })
+            else:
+                holding_days = (date.today() - lot.buy_date).days
+                entry.update({
+                    "current_value": None,
+                    "unrealised_gain": None,
+                    "holding_days": holding_days,
+                    "is_short_term": holding_days < stcg_days,
+                })
+            open_lots.append(entry)
+
+        return open_lots, matched
+
     def get_unrealised_summary(self) -> dict:
-        """Return all open lots with ST/LT classification and near-threshold flags."""
-        open_lots = self._get_all_open_lots()
+        all_lots: list[dict] = []
+        with self._uow_factory() as uow:
+            for asset in uow.assets.list(active=True):
+                atype = asset.asset_type.value
+                if atype not in LOT_ASSET_TYPES:
+                    continue
+                try:
+                    open_lots, _ = self._build_lots_for_asset(asset.id, atype, uow)
+                    for lot in open_lots:
+                        all_lots.append({
+                            **lot,
+                            "asset_id": asset.id,
+                            "asset_name": asset.name,
+                            "asset_type": atype,
+                            "asset_class": asset.asset_class.value,
+                        })
+                except Exception as e:
+                    logger.warning("Error building lots for asset %d: %s", asset.id, str(e))
+
         total_st = 0.0
         total_lt = 0.0
-        enriched: list[dict] = []
-
-        for lot in open_lots:
+        enriched = []
+        for lot in all_lots:
             gain = lot.get("unrealised_gain") or 0.0
             is_st = lot.get("is_short_term", True)
             atype = lot["asset_type"]
-
-            # Flag LT equity/MF lots approaching ₹1.25L threshold
             near_threshold = (
-                not is_st
-                and gain > 0
+                not is_st and gain > 0
                 and atype in {"STOCK_IN", "MF"}
                 and (LTCG_NEAR_THRESHOLD - gain) <= LTCG_NEAR_THRESHOLD * LTCG_NEAR_PCT
             )
-
             if is_st:
                 total_st += gain
             else:
                 total_lt += gain
-
-            # Ensure buy_date is a string for JSON serialisation
             entry = dict(lot)
             if not isinstance(entry.get("buy_date"), str):
                 entry["buy_date"] = str(entry["buy_date"])
@@ -261,11 +263,9 @@ class TaxService:
         }
 
     def get_harvest_opportunities(self) -> dict:
-        """Return open lots with unrealised losses, sorted by largest loss first."""
-        open_lots = self._get_all_open_lots()
-        # Ensure buy_date is serialisable
-        for lot in open_lots:
+        summary = self.get_unrealised_summary()
+        for lot in summary["lots"]:
             if not isinstance(lot.get("buy_date"), str):
                 lot["buy_date"] = str(lot["buy_date"])
-        opportunities = find_harvest_opportunities(open_lots)
+        opportunities = find_harvest_opportunities(summary["lots"])
         return {"opportunities": opportunities}

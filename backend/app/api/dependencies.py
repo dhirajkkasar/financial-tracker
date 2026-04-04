@@ -7,6 +7,8 @@ Routes import factory functions from this module and use them with Depends().
 Rule: No route file should contain `db: Session = Depends(get_db)` directly
 after migration. All data access goes through a service factory from this file.
 """
+import os
+
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
@@ -130,7 +132,8 @@ def get_snapshot_service(db: Session = Depends(get_db)) -> SnapshotService:
 
 
 def get_tax_service(db: Session = Depends(get_db)) -> TaxService:
-    return TaxService(db)
+    slab_rate_pct = float(os.environ.get("SLAB_RATE", "30.0"))
+    return TaxService(uow_factory=lambda: UnitOfWork(db), slab_rate_pct=slab_rate_pct)
 
 
 def get_corp_actions_service(db: Session = Depends(get_db)) -> CorpActionsService:

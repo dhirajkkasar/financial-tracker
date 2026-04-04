@@ -128,3 +128,56 @@ def test_registry_wildcard_fallback():
     # Wildcard: STOCK_IN with any asset_class
     strategy_any = registry.get("STOCK_IN", "DEBT")
     assert strategy_any is not None  # falls back to ("STOCK_IN", "*")
+
+
+def test_foreign_equity_st_is_slab():
+    """STOCK_US ST gain → slab rate (not 20%)."""
+    from app.services.tax.strategies.foreign_equity import ForeignEquityTaxGainsStrategy
+    strategy = ForeignEquityTaxGainsStrategy()
+    asset = _make_asset(asset_type="STOCK_US", asset_class="EQUITY")
+    # BUY Jun 2024, SELL Sep 2024 → 92 days < 730 → ST
+    txns = [
+        _make_txn("BUY",  d(2024, 6, 1), 5, -50000, lot_id="lot1", txn_id=1),
+        _make_txn("SELL", d(2024, 9, 1), 5,  60000, txn_id=2),
+    ]
+    uow = _make_uow(transactions=txns)
+    result = strategy.compute(asset, uow, d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    assert result.st_gain == pytest.approx(100.0)
+    assert result.st_tax_estimate == pytest.approx(30.0)   # 100 × 30% slab
+    assert result.has_slab is True
+    assert result.ltcg_exempt_eligible is False
+
+
+def test_gold_st_threshold_is_1095_days():
+    """GOLD held 1000 days → still ST (< 1095)."""
+    from app.services.tax.strategies.gold import GoldTaxGainsStrategy
+    strategy = GoldTaxGainsStrategy()
+    asset = _make_asset(asset_type="GOLD", asset_class="GOLD")
+    # BUY Jan 2021, SELL Oct 2023 → 1003 days < 1095 → ST
+    txns = [
+        _make_txn("BUY",  d(2021, 1, 1), 10, -5000000, lot_id="lot1", txn_id=1),
+        _make_txn("SELL", d(2023, 10, 1), 10, 6000000, txn_id=2),
+    ]
+    uow = _make_uow(transactions=txns)
+    result = strategy.compute(asset, uow, d(2023, 4, 1), d(2024, 3, 31), 30.0)
+    assert result.st_gain == pytest.approx(10000.0)
+    assert result.lt_gain == pytest.approx(0.0)
+    assert result.has_slab is True
+
+
+def test_debt_mf_lt_is_also_slab():
+    """Debt MF: both ST and LT at slab rate (post-2023 budget)."""
+    from app.services.tax.strategies.debt_mf import DebtMFTaxGainsStrategy
+    strategy = DebtMFTaxGainsStrategy()
+    asset = _make_asset(asset_type="MF", asset_class="DEBT")
+    # BUY Jan 2022, SELL Jun 2024 → LT but still slab
+    txns = [
+        _make_txn("BUY",  d(2022, 1, 1), 100, -1000000, lot_id="lot1", txn_id=1),
+        _make_txn("SELL", d(2024, 6, 1), 100,  1200000, txn_id=2),
+    ]
+    uow = _make_uow(transactions=txns)
+    result = strategy.compute(asset, uow, d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    assert result.lt_gain == pytest.approx(2000.0)
+    assert result.lt_tax_estimate == pytest.approx(600.0)   # 2000 × 30% slab
+    assert result.ltcg_slab is True
+    assert result.ltcg_exempt_eligible is False

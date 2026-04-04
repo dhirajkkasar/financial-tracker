@@ -59,7 +59,9 @@ A `TaxStrategyRegistry` maps `(asset_type, asset_class)` → strategy instance. 
 
 ### `IndianEquityTaxGainsStrategy` (shared base for STOCK_IN + equity MF)
 
-All logic lives here — FIFO matching, rate application, ₹1.25L exemption. `StockINTaxGainsStrategy` and `EquityMFTaxGainsStrategy` are 3-line leaf classes (`@register` + `pass`). No code duplication.
+All logic lives here — FIFO matching, rate application. `StockINTaxGainsStrategy` and `EquityMFTaxGainsStrategy` are 3-line leaf classes (`@register` + `pass`). No code duplication.
+
+**₹1.25L LTCG exemption (Section 112A):** The exemption is an annual per-individual limit shared across ALL EXEMPTION_ELIGIBLE assets (STOCK_IN + equity MF combined). Strategies do NOT apply it individually. Instead, strategies return raw `lt_gain`; `get_tax_summary()` applies `apply_ltcg_exemption()` once against the aggregated EQUITY entry `lt_gain` after all assets in the class are accumulated. `ltcg_exemption_used` at the per-asset breakdown level is set to `0` — only the class-level entry carries the exemption figure.
 
 ### `FifoTaxGainsStrategy` — lot matching
 

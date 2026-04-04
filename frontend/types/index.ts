@@ -246,21 +246,30 @@ export interface ImportantData {
 
 // ── Tax types ──────────────────────────────────────────────────────────────
 
-export interface TaxSummaryEntry {
+export type AssetClass = 'EQUITY' | 'DEBT' | 'GOLD' | 'REAL_ESTATE'
+
+export interface AssetGainBreakdown {
+  asset_id: number
+  asset_name: string
   asset_type: AssetType
   st_gain: number
   lt_gain: number
-  total_gain: number
-  st_tax_rate_pct: number | null
-  lt_tax_rate_pct: number | null
-  is_st_slab: boolean
-  is_lt_slab: boolean
-  is_lt_exempt: boolean
+  st_tax_estimate: number
+  lt_tax_estimate: number
   ltcg_exemption_used: number
-  taxable_lt_gain: number
-  st_tax_estimate: number | null
-  lt_tax_estimate: number | null
-  total_tax_estimate: number | null
+}
+
+export interface TaxSummaryEntry {
+  asset_class: AssetClass
+  st_gain: number
+  lt_gain: number
+  total_gain: number
+  ltcg_exemption_used: number
+  st_tax_estimate: number
+  lt_tax_estimate: number
+  total_tax_estimate: number
+  slab_rate_pct: number | null
+  asset_breakdown: AssetGainBreakdown[]
 }
 
 export interface TaxSummaryTotals {
@@ -283,6 +292,7 @@ export interface UnrealisedLot {
   asset_id: number
   asset_name: string
   asset_type: AssetType
+  asset_class: AssetClass
   lot_id: string
   buy_date: string
   units_remaining: number

@@ -477,10 +477,10 @@ def test_market_based_compute_alltime_pnl_includes_realised():
     price.is_stale = False
     price.fetched_at = MagicMock()
     price.fetched_at.isoformat.return_value = "2024-01-01T00:00:00"
-    # Buy 100 units at ₹1000 each
-    buy = _make_txn("BUY", -100_000_000, date(2020, 1, 1), units=100.0, lot_id="lot1", price_pu=1000.0)
-    # Sell 50 units at ₹2000 each = ₹1,00,000 inflow (realised ₹50,000 gain)
-    sell = _make_txn("SELL", 20_000_000, date(2022, 1, 1), units=50.0)
+    # Buy 100 units at ₹1000 each = ₹1,00,000 = 10_000_000 paise
+    buy = _make_txn("BUY", -10_000_000, date(2020, 1, 1), units=100.0, lot_id="lot1", price_pu=1000.0)
+    # Sell 50 units at ₹2000 each = ₹1,00,000 inflow = 10_000_000 paise (realised ₹50,000 gain)
+    sell = _make_txn("SELL", 10_000_000, date(2022, 1, 1), units=50.0)
     uow = _make_uow(price=price, transactions=[buy, sell])
     result = strategy.compute(asset, uow)
     # Realised: sold 50 units at ₹2000 cost ₹50,000 → gain ₹50,000

@@ -2,6 +2,45 @@ import pytest
 from tests.factories import make_asset
 
 
+def test_fiscal_years_returns_200(client):
+    resp = client.get("/tax/fiscal-years")
+    assert resp.status_code == 200
+    assert "fiscal_years" in resp.json()
+
+
+def test_fiscal_years_returns_list(client):
+    """Returns a non-empty list of FY labels loaded from config files."""
+    resp = client.get("/tax/fiscal-years")
+    fys = resp.json()["fiscal_years"]
+    assert isinstance(fys, list)
+    assert len(fys) > 0
+
+
+def test_fiscal_years_are_sorted(client):
+    """FY labels are returned in ascending order."""
+    resp = client.get("/tax/fiscal-years")
+    fys = resp.json()["fiscal_years"]
+    assert fys == sorted(fys)
+
+
+def test_fiscal_years_match_config_files(client):
+    """Returned FY labels correspond exactly to yaml filenames in config/tax_rates/."""
+    from pathlib import Path
+    config_dir = Path("app/config/tax_rates")
+    expected = sorted(p.stem for p in config_dir.glob("*.yaml") if p.stem != "__init__")
+
+    resp = client.get("/tax/fiscal-years")
+    assert resp.json()["fiscal_years"] == expected
+
+
+def test_fiscal_years_format(client):
+    """Each FY label matches the YYYY-YY pattern."""
+    import re
+    resp = client.get("/tax/fiscal-years")
+    for fy in resp.json()["fiscal_years"]:
+        assert re.match(r"^\d{4}-\d{2}$", fy), f"Unexpected FY format: {fy}"
+
+
 def test_tax_summary_returns_200(client):
     resp = client.get("/tax/summary?fy=2024-25")
     assert resp.status_code == 200

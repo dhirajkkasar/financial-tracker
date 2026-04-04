@@ -3,12 +3,11 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import date
-from typing import Optional
 
 from app.repositories.unit_of_work import UnitOfWork
 
 
-@dataclass
+@dataclass(frozen=True)
 class AssetTaxGainsResult:
     asset_id: int
     asset_name: str
@@ -72,5 +71,5 @@ class TaxStrategyRegistry:
       3. None if neither found
     """
 
-    def get(self, asset_type: str, asset_class: str) -> Optional[TaxGainsStrategy]:
+    def get(self, asset_type: str, asset_class: str) -> TaxGainsStrategy | None:
         return _REGISTRY.get((asset_type, asset_class)) or _REGISTRY.get((asset_type, "*"))

@@ -529,7 +529,7 @@ git commit -m "feat: add IndianEquityTaxGainsStrategy with StockIN and EquityMF 
 - Create: `backend/app/services/tax/strategies/debt_mf.py`
 - Test: `backend/tests/unit/test_tax_strategies.py` (add tests)
 
-- [ ] **Step 1: Add failing tests**
+- [x] **Step 1: Add failing tests**
 
 Append to `backend/tests/unit/test_tax_strategies.py`:
 
@@ -587,7 +587,7 @@ def test_debt_mf_lt_is_also_slab():
     assert result.ltcg_exempt_eligible is False
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 ```bash
 cd backend && uv run pytest tests/unit/test_tax_strategies.py -k "foreign or gold or debt_mf" -v
@@ -595,7 +595,7 @@ cd backend && uv run pytest tests/unit/test_tax_strategies.py -k "foreign or gol
 
 Expected: `ImportError` on missing modules.
 
-- [ ] **Step 3: Write the three strategy files**
+- [x] **Step 3: Write the three strategy files**
 
 ```python
 # backend/app/services/tax/strategies/foreign_equity.py
@@ -648,7 +648,7 @@ class DebtMFTaxGainsStrategy(FifoTaxGainsStrategy):
     ltcg_slab: ClassVar[bool] = True
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 ```bash
 cd backend && uv run pytest tests/unit/test_tax_strategies.py -v
@@ -656,7 +656,7 @@ cd backend && uv run pytest tests/unit/test_tax_strategies.py -v
 
 Expected: All tests PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd backend && git add app/services/tax/strategies/foreign_equity.py app/services/tax/strategies/gold.py app/services/tax/strategies/debt_mf.py
@@ -671,7 +671,7 @@ git commit -m "feat: add ForeignEquity, Gold, DebtMF tax gain strategies"
 - Create: `backend/app/services/tax/strategies/accrued_interest.py`
 - Test: `backend/tests/unit/test_tax_strategies.py` (add tests)
 
-- [ ] **Step 1: Add failing tests**
+- [x] **Step 1: Add failing tests**
 
 Append to `backend/tests/unit/test_tax_strategies.py`:
 
@@ -735,7 +735,7 @@ def test_accrued_interest_no_fd_detail_returns_zero():
     assert result.st_tax_estimate == 0.0
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 ```bash
 cd backend && uv run pytest tests/unit/test_tax_strategies.py -k "accrued" -v
@@ -743,7 +743,7 @@ cd backend && uv run pytest tests/unit/test_tax_strategies.py -k "accrued" -v
 
 Expected: `ImportError`.
 
-- [ ] **Step 3: Write `accrued_interest.py`**
+- [x] **Step 3: Write `accrued_interest.py`**
 
 ```python
 # backend/app/services/tax/strategies/accrued_interest.py
@@ -867,7 +867,7 @@ class AccruedInterestTaxGainsStrategy(TaxGainsStrategy):
         )
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 ```bash
 cd backend && uv run pytest tests/unit/test_tax_strategies.py -v
@@ -875,7 +875,7 @@ cd backend && uv run pytest tests/unit/test_tax_strategies.py -v
 
 Expected: All tests PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd backend && git add app/services/tax/strategies/accrued_interest.py
@@ -890,7 +890,7 @@ git commit -m "feat: add AccruedInterestTaxGainsStrategy for FD/RD interest inco
 - Create: `backend/app/services/tax/strategies/real_estate.py`
 - Test: `backend/tests/unit/test_tax_strategies.py` (add tests)
 
-- [ ] **Step 1: Add failing tests**
+- [x] **Step 1: Add failing tests**
 
 Append to `backend/tests/unit/test_tax_strategies.py`:
 
@@ -940,7 +940,7 @@ def test_real_estate_st_gain_under_2_years():
     assert result.has_slab is True
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 ```bash
 cd backend && uv run pytest tests/unit/test_tax_strategies.py -k "real_estate" -v
@@ -948,7 +948,7 @@ cd backend && uv run pytest tests/unit/test_tax_strategies.py -k "real_estate" -
 
 Expected: `ImportError`.
 
-- [ ] **Step 3: Write `real_estate.py`**
+- [x] **Step 3: Write `real_estate.py`**
 
 ```python
 # backend/app/services/tax/strategies/real_estate.py
@@ -1043,7 +1043,7 @@ class RealEstateTaxGainsStrategy(TaxGainsStrategy):
         )
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 ```bash
 cd backend && uv run pytest tests/unit/test_tax_strategies.py -v
@@ -1051,7 +1051,7 @@ cd backend && uv run pytest tests/unit/test_tax_strategies.py -v
 
 Expected: All tests PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd backend && git add app/services/tax/strategies/real_estate.py
@@ -1067,7 +1067,7 @@ git commit -m "feat: add RealEstateTaxGainsStrategy with 730-day ST/LT threshold
 
 The registry works by side-effect of importing strategy modules (the `@register_tax_strategy` decorator runs on import). `TaxStrategyRegistry` needs all modules imported before `.get()` is called. We do this once in `__init__.py`.
 
-- [ ] **Step 1: Update `__init__.py`**
+- [x] **Step 1: Update `__init__.py`**
 
 ```python
 # backend/app/services/tax/strategies/__init__.py
@@ -1083,7 +1083,7 @@ from app.services.tax.strategies import (  # noqa: F401
 )
 ```
 
-- [ ] **Step 2: Verify the full test suite still passes**
+- [x] **Step 2: Verify the full test suite still passes**
 
 ```bash
 cd backend && uv run pytest tests/unit/test_tax_strategies.py -v
@@ -1091,7 +1091,7 @@ cd backend && uv run pytest tests/unit/test_tax_strategies.py -v
 
 Expected: All PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 cd backend && git add app/services/tax/strategies/__init__.py
@@ -1107,7 +1107,7 @@ git commit -m "feat: auto-import tax strategy modules to populate registry"
 
 This is the largest change. The service switches from direct-repo to UoW factory, drops the old private helpers, dispatches via `TaxStrategyRegistry`, and emits the new response shape with `asset_class` grouping and `asset_breakdown`.
 
-- [ ] **Step 1: Write the new `tax_service.py`**
+- [x] **Step 1: Write the new `tax_service.py`**
 
 Replace the entire file:
 
@@ -1389,7 +1389,7 @@ class TaxService:
 
 > **Note on the import:** `from app.services.tax.strategies import` triggers `__init__.py` which imports all strategy modules and populates `_REGISTRY`. The `# noqa: F401` suppresses the "imported but unused" linter warning.
 
-- [ ] **Step 2: Fix the import line** — the bare `from app.services.tax.strategies import` is invalid Python. Replace with a named import that still triggers the module load:
+- [x] **Step 2: Fix the import line** — the bare `from app.services.tax.strategies import` is invalid Python. Replace with a named import that still triggers the module load:
 
 In the file above, change:
 ```python
@@ -1400,7 +1400,7 @@ to:
 import app.services.tax.strategies  # noqa: F401 — triggers @register_tax_strategy decorators
 ```
 
-- [ ] **Step 3: Verify the server starts**
+- [x] **Step 3: Verify the server starts**
 
 ```bash
 cd backend && uv run uvicorn app.main:app --reload &
@@ -1410,7 +1410,7 @@ kill %1
 
 Expected: JSON response with `entries`, `totals` keys. No `ImportError`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd backend && git add app/services/tax_service.py
@@ -1425,7 +1425,7 @@ git commit -m "feat: restructure TaxService — UoW factory, strategy dispatch, 
 - Modify: `backend/app/api/dependencies.py`
 - Modify: `backend/.env`
 
-- [ ] **Step 1: Add `SLAB_RATE` to `.env`**
+- [x] **Step 1: Add `SLAB_RATE` to `.env`**
 
 Add this line to `backend/.env`:
 
@@ -1433,7 +1433,7 @@ Add this line to `backend/.env`:
 SLAB_RATE=30
 ```
 
-- [ ] **Step 2: Update `get_tax_service` in `dependencies.py`**
+- [x] **Step 2: Update `get_tax_service` in `dependencies.py`**
 
 Find and replace the existing `get_tax_service` function (currently lines 132–133):
 
@@ -1454,7 +1454,7 @@ def get_tax_service(db: Session = Depends(get_db)) -> TaxService:
 
 Add `import os` at the top of `dependencies.py` if not already present.
 
-- [ ] **Step 3: Run all tests to confirm nothing is broken**
+- [x] **Step 3: Run all tests to confirm nothing is broken**
 
 ```bash
 cd backend && uv run pytest -x -q
@@ -1462,7 +1462,7 @@ cd backend && uv run pytest -x -q
 
 Expected: Any failures will be in `test_tax_api.py` due to response shape change — that's fixed in Task 10. Other tests should PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd backend && git add app/api/dependencies.py .env

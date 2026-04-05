@@ -67,6 +67,11 @@ MF:
       - match:
           bought_on_or_after: "2023-04-01"
         ltcg_rate_pct: null
+
+REAL_ESTATE:
+  stcg_rate_pct: null
+  ltcg_rate_pct: 12.5
+  stcg_days: 730
 """
 
 
@@ -318,6 +323,33 @@ def test_real_estate_st_gain_under_2_years():
     assert result.lt_gain == pytest.approx(0.0)
     assert result.st_tax_estimate == pytest.approx(150_000.0)   # 500K × 30% slab
     assert result.has_slab is True
+
+
+def test_real_estate_lt_uses_resolver_rate(resolver):
+    """RealEstateTaxGainsStrategy with resolver reads ltcg_rate from config."""
+    from app.services.tax.strategies.real_estate import RealEstateTaxGainsStrategy
+    strategy = RealEstateTaxGainsStrategy(resolver=resolver)
+
+    asset = _make_asset(asset_type="REAL_ESTATE", asset_class="REAL_ESTATE")
+
+    # Make buy/sell transactions — 800 days holding (> 730) → LTCG
+    buy_txn = MagicMock()
+    buy_txn.type.value = "BUY"
+    buy_txn.date = d(2022, 1, 1)
+    buy_txn.amount_inr = -10_000_00  # -₹10,000 in paise
+
+    sell_txn = MagicMock()
+    sell_txn.type.value = "SELL"
+    sell_txn.date = d(2024, 4, 15)  # within FY2024-25, 834 days from buy → LT
+    sell_txn.amount_inr = 15_000_00   # ₹15,000 in paise
+
+    uow = MagicMock()
+    uow.transactions.list_by_asset.return_value = [buy_txn, sell_txn]
+
+    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    assert result.lt_gain == pytest.approx(5000.0)
+    assert result.lt_tax_estimate == pytest.approx(625.0)   # 5000 * 12.5% from config
+    assert result.st_gain == pytest.approx(0.0)
 
 
 def test_register_tax_strategy_instance():

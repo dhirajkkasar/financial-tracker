@@ -67,6 +67,8 @@ def get_import_orchestrator(db: Session = Depends(get_db)) -> ImportOrchestrator
 # Service factories — Plan 4
 # ---------------------------------------------------------------------------
 
+from pathlib import Path
+
 from app.services.asset_service import AssetService
 from app.services.transaction_service import TransactionService
 from app.services.returns.returns_service import ReturnsService as StrategyReturnsService
@@ -81,6 +83,23 @@ from app.services.price_service import PriceService
 from app.services.snapshot_service import SnapshotService
 from app.services.tax_service import TaxService
 from app.services.corp_actions_service import CorpActionsService
+from app.engine.tax_engine import TaxRuleResolver
+from app.services.tax.strategies.base import register_tax_strategy_instance
+from app.services.tax.strategies.fifo_base import FifoTaxGainsStrategy
+from app.services.tax.strategies.real_estate import RealEstateTaxGainsStrategy
+from app.services.tax.strategies.accrued_interest import AccruedInterestTaxGainsStrategy
+
+_tax_resolver = TaxRuleResolver(Path("app/config/tax_rates"))
+
+# Register config-driven FIFO strategy for all lot-tracked capital gains types
+_fifo_strategy = FifoTaxGainsStrategy(_tax_resolver)
+for _key in [("STOCK_IN", "*"), ("STOCK_US", "*"), ("MF", "*"), ("GOLD", "*")]:
+    register_tax_strategy_instance(_key, _fifo_strategy)
+
+# Non-FIFO strategies
+register_tax_strategy_instance(("REAL_ESTATE", "*"), RealEstateTaxGainsStrategy(_tax_resolver))
+register_tax_strategy_instance(("FD", "*"), AccruedInterestTaxGainsStrategy())
+register_tax_strategy_instance(("RD", "*"), AccruedInterestTaxGainsStrategy())
 
 
 def get_asset_service(db: Session = Depends(get_db)) -> AssetService:

@@ -71,6 +71,7 @@ class AccruedInterestTaxGainsStrategy(TaxGainsStrategy):
         self,
         asset,
         uow: UnitOfWork,
+        fy: str,
         fy_start: date,
         fy_end: date,
         slab_rate_pct: float,

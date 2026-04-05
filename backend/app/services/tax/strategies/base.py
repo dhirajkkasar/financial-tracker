@@ -29,6 +29,7 @@ class TaxGainsStrategy(ABC):
         self,
         asset,
         uow: UnitOfWork,
+        fy: str,
         fy_start: date,
         fy_end: date,
         slab_rate_pct: float,
@@ -60,6 +61,11 @@ def register_tax_strategy(*keys: tuple[str, str]):
             _REGISTRY[key] = instance
         return cls
     return decorator
+
+
+def register_tax_strategy_instance(key: tuple[str, str], instance: TaxGainsStrategy):
+    """Register a pre-built strategy instance for a (asset_type, asset_class) key."""
+    _REGISTRY[key] = instance
 
 
 class TaxStrategyRegistry:

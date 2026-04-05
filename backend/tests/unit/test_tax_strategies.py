@@ -324,3 +324,27 @@ def test_real_estate_st_gain_under_2_years():
     assert result.lt_gain == pytest.approx(0.0)
     assert result.st_tax_estimate == pytest.approx(150_000.0)   # 500K × 30% slab
     assert result.has_slab is True
+
+
+def test_register_tax_strategy_instance():
+    """register_tax_strategy_instance adds a pre-built instance to the registry."""
+    from app.services.tax.strategies.base import (
+        register_tax_strategy_instance, _REGISTRY, TaxGainsStrategy,
+        AssetTaxGainsResult,
+    )
+    from datetime import date
+
+    class DummyStrategy(TaxGainsStrategy):
+        def compute(self, asset, uow, fy, fy_start, fy_end, slab_rate_pct):
+            return AssetTaxGainsResult(
+                asset_id=0, asset_name="", asset_type="", asset_class="",
+                st_gain=0, lt_gain=0, st_tax_estimate=0, lt_tax_estimate=0,
+                ltcg_exemption_used=0, has_slab=False,
+                ltcg_exempt_eligible=False, ltcg_slab=False,
+            )
+
+    instance = DummyStrategy()
+    register_tax_strategy_instance(("TEST_TYPE", "*"), instance)
+    assert _REGISTRY[("TEST_TYPE", "*")] is instance
+    # Cleanup
+    del _REGISTRY[("TEST_TYPE", "*")]

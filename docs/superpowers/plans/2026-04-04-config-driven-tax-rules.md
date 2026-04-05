@@ -891,7 +891,7 @@ git commit -m "refactor: rewrite FifoTaxGainsStrategy as config-driven with per-
 
 Both need the `fy: str` parameter added to their `compute()` signatures.
 
-- [ ] **Step 1: Update AccruedInterestTaxGainsStrategy**
+- [x] **Step 1: Update AccruedInterestTaxGainsStrategy**
 
 In `backend/app/services/tax/strategies/accrued_interest.py`, change the `compute` method signature to add `fy: str` after `uow`:
 
@@ -909,7 +909,7 @@ In `backend/app/services/tax/strategies/accrued_interest.py`, change the `comput
 
 The body stays identical — `fy` is unused for interest income.
 
-- [ ] **Step 2: Update RealEstateTaxGainsStrategy**
+- [x] **Step 2: Update RealEstateTaxGainsStrategy**
 
 In `backend/app/services/tax/strategies/real_estate.py`:
 
@@ -941,18 +941,18 @@ class RealEstateTaxGainsStrategy(TaxGainsStrategy):
 
 Remove the `LTCG_RATE = 12.5` constant and `REAL_ESTATE_STCG_DAYS = 730` — use `rule.stcg_days` from the resolver instead.
 
-- [ ] **Step 3: Update existing accrued_interest and real_estate tests**
+- [x] **Step 3: Update existing accrued_interest and real_estate tests**
 
 In `backend/tests/unit/test_tax_strategies.py`, update existing tests:
 - `test_accrued_interest_*` tests: add `"2024-25"` as the third argument to `strategy.compute()`
 - `test_real_estate_*` tests: create the strategy with `RealEstateTaxGainsStrategy(resolver)` and add `"2024-25"` arg. Add `REAL_ESTATE` to the resolver fixture YAML.
 
-- [ ] **Step 4: Run all strategy tests**
+- [x] **Step 4: Run all strategy tests**
 
 Run: `cd backend && uv run pytest tests/unit/test_tax_strategies.py -v`
 Expected: All tests PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd backend
@@ -972,7 +972,7 @@ git commit -m "refactor: update AccruedInterest and RealEstate strategy signatur
 - Modify: `backend/app/services/tax/strategies/__init__.py`
 - Modify: `backend/app/api/dependencies.py`
 
-- [ ] **Step 1: Delete the four leaf strategy files**
+- [x] **Step 1: Delete the four leaf strategy files**
 
 ```bash
 cd backend
@@ -982,7 +982,7 @@ rm app/services/tax/strategies/gold.py
 rm app/services/tax/strategies/debt_mf.py
 ```
 
-- [ ] **Step 2: Update `__init__.py` to remove deleted imports**
+- [x] **Step 2: Update `__init__.py` to remove deleted imports**
 
 Replace `backend/app/services/tax/strategies/__init__.py` with:
 
@@ -996,7 +996,7 @@ from app.services.tax.strategies import (  # noqa: F401
 )
 ```
 
-- [ ] **Step 3: Wire strategies in dependencies.py**
+- [x] **Step 3: Wire strategies in dependencies.py**
 
 In `backend/app/api/dependencies.py`, update `get_tax_service`:
 
@@ -1026,16 +1026,16 @@ def get_tax_service(db: Session = Depends(get_db)) -> TaxService:
     return TaxService(uow_factory=lambda: UnitOfWork(db), slab_rate_pct=slab_rate_pct)
 ```
 
-- [ ] **Step 4: Remove old `@register_tax_strategy` decorators from real_estate.py and accrued_interest.py**
+- [x] **Step 4: Remove old `@register_tax_strategy` decorators from real_estate.py and accrued_interest.py**
 
 Since these are now registered in `dependencies.py`, remove the `@register_tax_strategy(...)` decorators from both files. Keep the class definitions.
 
-- [ ] **Step 5: Run all tests**
+- [x] **Step 5: Run all tests**
 
 Run: `cd backend && uv run pytest tests/unit/test_tax_strategies.py -v`
 Expected: PASS — old tests that imported deleted strategies have already been replaced in Task 4
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd backend
@@ -1051,7 +1051,7 @@ git commit -m "refactor: delete leaf tax strategies, wire config-driven registra
 - Modify: `backend/app/services/tax_service.py`
 - Modify: `backend/tests/unit/test_tax_strategies.py` (or create new test file)
 
-- [ ] **Step 1: Write failing test for new response shape**
+- [x] **Step 1: Write failing test for new response shape**
 
 Add to `backend/tests/unit/test_tax_strategies.py` (or a new file `test_tax_service_summary.py`):
 
@@ -1080,12 +1080,12 @@ def test_tax_summary_returns_stcg_ltcg_interest_split():
     assert result["interest"]["assets"] == []
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd backend && uv run pytest tests/unit/test_tax_strategies.py::test_tax_summary_returns_stcg_ltcg_interest_split -v`
 Expected: FAIL — current response uses `entries` key
 
-- [ ] **Step 3: Rewrite get_tax_summary()**
+- [x] **Step 3: Rewrite get_tax_summary()**
 
 In `backend/app/services/tax_service.py`, rewrite `get_tax_summary()` to:
 
@@ -1162,12 +1162,12 @@ The new response shape:
 
 Also add `is_slab_st` and `is_slab_lt` booleans to `AssetTaxGainsResult` to track per-asset slab status, or derive from the existing `has_slab` field and rate values.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `cd backend && uv run pytest tests/unit/test_tax_strategies.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd backend
@@ -1182,7 +1182,7 @@ git commit -m "refactor: restructure get_tax_summary to return stcg/ltcg/interes
 **Files:**
 - Modify: `backend/app/services/tax_service.py`
 
-- [ ] **Step 1: Update `_build_lots_for_asset` to use TaxRuleResolver**
+- [x] **Step 1: Update `_build_lots_for_asset` to use TaxRuleResolver**
 
 In `TaxService.__init__`, accept and store a `TaxRuleResolver`:
 
@@ -1221,7 +1221,7 @@ def _current_fy_label(self) -> str:
     return f"{start_yr}-{str(start_yr + 1)[-2:]}"
 ```
 
-- [ ] **Step 2: Update dependencies.py to pass resolver to TaxService**
+- [x] **Step 2: Update dependencies.py to pass resolver to TaxService**
 
 ```python
 def get_tax_service(db: Session = Depends(get_db)) -> TaxService:
@@ -1233,16 +1233,16 @@ def get_tax_service(db: Session = Depends(get_db)) -> TaxService:
     )
 ```
 
-- [ ] **Step 3: Remove `_STCG_DAYS` import from tax_service.py**
+- [x] **Step 3: Remove `_STCG_DAYS` import from tax_service.py**
 
 Remove: `from app.engine.lot_engine import _STCG_DAYS, EQUITY_STCG_DAYS`
 
-- [ ] **Step 4: Run all backend tests**
+- [x] **Step 4: Run all backend tests**
 
 Run: `cd backend && uv run pytest -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd backend
@@ -1258,7 +1258,7 @@ git commit -m "refactor: update unrealised gains path to use TaxRuleResolver"
 - Modify: `backend/app/engine/tax_engine.py`
 - Modify: `backend/tests/unit/test_tax_engine.py`
 
-- [ ] **Step 1: Remove dead functions and constants**
+- [x] **Step 1: Remove dead functions and constants**
 
 From `backend/app/engine/tax_engine.py`, remove:
 - `EXEMPTION_ELIGIBLE`, `FULLY_EXEMPT`, `SLAB_RATE_ALL`, `LTCG_FLAT_ST_SLAB` constant sets
@@ -1271,16 +1271,16 @@ From `backend/app/engine/tax_engine.py`, remove:
 
 Keep: `parse_fy()`, `classify_holding()`, `apply_ltcg_exemption()`, `find_harvest_opportunities()`, `LTCG_EXEMPTION_LIMIT`, `TaxRuleResolver`, `ResolvedTaxRule`
 
-- [ ] **Step 2: Update test_tax_engine.py**
+- [x] **Step 2: Update test_tax_engine.py**
 
 Remove tests for deleted functions (`test_get_tax_rate_*`, `test_compute_fy_realised_gains_*`, `test_estimate_tax_*`). Keep tests for `parse_fy`, `classify_holding`, `apply_ltcg_exemption`, `find_harvest_opportunities`.
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 Run: `cd backend && uv run pytest tests/unit/test_tax_engine.py -v`
 Expected: PASS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd backend
@@ -1295,7 +1295,7 @@ git commit -m "cleanup: remove dead tax functions replaced by TaxRuleResolver"
 **Files:**
 - Modify: `backend/app/schemas/responses/tax.py`
 
-- [ ] **Step 1: Rewrite tax response models**
+- [x] **Step 1: Rewrite tax response models**
 
 Replace `TaxGainEntry` and `TaxSummaryResponse` in `backend/app/schemas/responses/tax.py`:
 
@@ -1384,12 +1384,12 @@ class HarvestOpportunityEntry(BaseModel):
     is_short_term: bool
 ```
 
-- [ ] **Step 2: Run backend tests**
+- [x] **Step 2: Run backend tests**
 
 Run: `cd backend && uv run pytest -v`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 cd backend

@@ -165,7 +165,7 @@ export default function TaxPage() {
                   </td>
                   <td className="py-3 pr-4 text-right"><GainAmt value={a.gain} fmt={formatINR} /></td>
                   <td className="py-3 pr-4 text-right text-xs text-secondary">
-                    {a.is_slab ? 'slab' : `${a.tax_rate_pct}%`}
+                    {a.is_slab ? 'slab' : a.tax_rate_pct !== null ? `${a.tax_rate_pct}%` : '—'}
                   </td>
                   <td className="py-3 text-right"><TaxEstimate value={a.tax_estimate} fmt={formatINR} /></td>
                 </tr>
@@ -223,7 +223,7 @@ export default function TaxPage() {
                   </td>
                   <td className="py-3 pr-4 text-right"><GainAmt value={a.gain} fmt={formatINR} /></td>
                   <td className="py-3 pr-4 text-right text-xs text-secondary">
-                    {a.is_slab ? 'slab' : `${a.tax_rate_pct}%`}
+                    {a.is_slab ? 'slab' : a.tax_rate_pct !== null ? `${a.tax_rate_pct}%` : '—'}
                   </td>
                   <td className="py-3 text-right"><TaxEstimate value={a.tax_estimate} fmt={formatINR} /></td>
                 </tr>

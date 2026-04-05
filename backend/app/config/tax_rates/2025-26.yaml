@@ -48,12 +48,12 @@ MF:
   EQUITY:
     overrides:
       - match:
-          isins: ["INF209KB1YA0"]
+          isins: ["INF247L01AG2", "INF959L01FV0"]
         stcg_days: 730
         stcg_rate_pct: null
         ltcg_exemption_inr: 0
         ltcg_exempt_eligible: false
       - match:
-          isins: ["INF209KB1YA0"]
+          isins: ["INF247L01AG2", "INF959L01FV0"]
           bought_on_or_after: "2023-04-01"
         ltcg_rate_pct: null

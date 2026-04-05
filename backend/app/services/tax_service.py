@@ -161,7 +161,7 @@ class TaxService:
                         "interest": r.st_gain,
                         "tax_estimate": r.st_tax_estimate,
                     }
-                    for r in interest_results
+                    for r in interest_results if r.st_gain > 0
                 ],
             },
         }

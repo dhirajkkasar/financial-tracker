@@ -250,7 +250,7 @@ class ResolvedTaxRule:
 # Keys that are rule fields (not asset_class sub-levels)
 _RULE_KEYS = {
     "stcg_rate_pct", "ltcg_rate_pct", "stcg_days",
-    "ltcg_exemption_inr", "ltcg_exempt_eligible", "overrides",
+    "ltcg_exemption_inr", "ltcg_exempt_eligible",
 }
 
 _RULE_DEFAULTS: dict[str, object] = {
@@ -289,7 +289,7 @@ class TaxRuleResolver:
 
         # 1. Asset type defaults (scalar rule keys only)
         result = {k: v for k, v in type_block.items()
-                  if k in _RULE_KEYS and k != "overrides"}
+                  if k in _RULE_KEYS}
 
         # 2. Asset type overrides
         result = self._apply_overrides(
@@ -299,7 +299,7 @@ class TaxRuleResolver:
         if asset_class and asset_class in type_block:
             class_block = type_block[asset_class]
             class_fields = {k: v for k, v in class_block.items()
-                           if k in _RULE_KEYS and k != "overrides"}
+                           if k in _RULE_KEYS}
             result = {**result, **class_fields}
 
             # 4. Asset class overrides

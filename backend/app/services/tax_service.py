@@ -6,6 +6,7 @@ import app.services.tax.strategies  # noqa: F401 — triggers @register_tax_stra
 from app.engine.lot_engine import _STCG_DAYS, EQUITY_STCG_DAYS
 from app.engine.lot_engine import match_lots_fifo, compute_lot_unrealised
 from app.engine.tax_engine import (
+    TaxRuleResolver,
     parse_fy,
     apply_ltcg_exemption,
     find_harvest_opportunities,
@@ -25,10 +26,16 @@ LTCG_NEAR_PCT = 0.10
 
 
 class TaxService:
-    def __init__(self, uow_factory: IUnitOfWorkFactory, slab_rate_pct: float = 30.0):
+    def __init__(
+        self,
+        uow_factory: IUnitOfWorkFactory,
+        slab_rate_pct: float = 30.0,
+        resolver: TaxRuleResolver | None = None,
+    ):
         self._uow_factory = uow_factory
         self._slab_rate_pct = slab_rate_pct
         self._registry = TaxStrategyRegistry()
+        self._resolver = resolver
 
     # ── Realised gains ────────────────────────────────────────────────────────
 
@@ -161,8 +168,15 @@ class TaxService:
 
     # ── Unrealised gains ──────────────────────────────────────────────────────
 
-    def _build_lots_for_asset(self, asset_id: int, asset_type: str, uow) -> tuple[list, list]:
+    def _current_fy_label(self) -> str:
+        today = date.today()
+        start_yr = today.year if today.month >= 4 else today.year - 1
+        return f"{start_yr}-{str(start_yr + 1)[-2:]}"
+
+    def _build_lots_for_asset(self, asset, uow) -> tuple[list, list]:
         """Build open lots and matched sells for a single FIFO-tracked asset."""
+        asset_id = asset.id
+        asset_type = asset.asset_type.value
         transactions = uow.transactions.list_by_asset(asset_id)
         lots, sells = [], []
         for t in sorted(transactions, key=lambda x: x.date):
@@ -180,7 +194,16 @@ class TaxService:
             elif ttype in SELL_TYPES and t.units:
                 sells.append(_Sell(date=t.date, units=t.units, amount_inr=abs(t.amount_inr / 100.0)))
 
-        stcg_days = _STCG_DAYS.get(asset_type, EQUITY_STCG_DAYS)
+        if self._resolver is not None:
+            fy_label = self._current_fy_label()
+            rule = self._resolver.resolve(
+                fy_label, asset_type,
+                asset_class=asset.asset_class.value,
+                isin=asset.identifier,
+            )
+            stcg_days = rule.stcg_days
+        else:
+            stcg_days = _STCG_DAYS.get(asset_type, EQUITY_STCG_DAYS)
         matched = match_lots_fifo(lots, sells, stcg_days=stcg_days)
 
         sold_units: dict[str, float] = {}
@@ -231,7 +254,7 @@ class TaxService:
                 if atype not in LOT_ASSET_TYPES:
                     continue
                 try:
-                    open_lots, _ = self._build_lots_for_asset(asset.id, atype, uow)
+                    open_lots, _ = self._build_lots_for_asset(asset, uow)
                     for lot in open_lots:
                         all_lots.append({
                             **lot,

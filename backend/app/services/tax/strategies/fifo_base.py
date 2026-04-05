@@ -44,6 +44,11 @@ class FifoTaxGainsStrategy(TaxGainsStrategy):
         fy_end: date,
         slab_rate_pct: float,
     ) -> AssetTaxGainsResult:
+        if self._resolver is None:
+            raise RuntimeError(
+                "FifoTaxGainsStrategy requires a TaxRuleResolver. "
+                "Use register_tax_strategy_instance() with an injected resolver."
+            )
         asset_type = asset.asset_type.value
         asset_class = asset.asset_class.value
         isin = asset.identifier

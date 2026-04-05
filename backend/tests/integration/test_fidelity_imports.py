@@ -63,7 +63,7 @@ def test_parsed_transaction_has_forex_rate_field():
 
 
 def test_fidelity_rsu_csv_endpoint_preview(client):
-    """POST /import/fidelity-rsu-csv returns a valid preview."""
+    """POST /import/preview-file returns a valid preview for fidelity_rsu CSV."""
     csv_bytes = (FIXTURES / "fidelity_rsu_sample.csv").read_bytes()
     rates = {"2025-03": 86.5, "2024-09": 83.8}
     resp = client.post(
@@ -79,7 +79,7 @@ def test_fidelity_rsu_csv_endpoint_preview(client):
 
 
 def test_fidelity_rsu_csv_endpoint_missing_rate_returns_422(client):
-    """POST /import/preview-file?source=fidelity_rsu&format=csv with incomplete rates returns 422."""
+    """POST /import/preview-file with incomplete rates returns 422 validation error."""
     csv_bytes = (FIXTURES / "fidelity_rsu_sample.csv").read_bytes()
     resp = client.post(
         "/import/preview-file?source=fidelity_rsu&format=csv",
@@ -112,7 +112,7 @@ def test_fidelity_rsu_csv_endpoint_idempotent(client):
 
 
 def test_fidelity_sale_pdf_endpoint_preview(client):
-    """POST /import/fidelity-sale-pdf returns preview with 2 SELL transactions."""
+    """POST /import/preview-file returns preview with BUY/SELL transactions for fidelity_sale PDF."""
     path = FIXTURES / "fidelity_sale_sample.pdf"
     if not path.exists():
         pytest.skip("fidelity_sale_sample.pdf fixture not available")
@@ -133,7 +133,7 @@ def test_fidelity_sale_pdf_endpoint_preview(client):
 
 
 def test_fidelity_sale_pdf_endpoint_missing_rate_returns_422(client):
-    """POST /import/preview-file?source=fidelity_sale&format=pdf with incomplete rates returns 422."""
+    """POST /import/preview-file with incomplete rates returns 422 validation error."""
     path = FIXTURES / "fidelity_sale_sample.pdf"
     if not path.exists():
         pytest.skip("fidelity_sale_sample.pdf fixture not available")

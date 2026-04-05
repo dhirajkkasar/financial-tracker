@@ -11,30 +11,16 @@ class ExchangeRateValidationHelper:
     """
 
     @staticmethod
-    def validate_exchange_rates(result: ImportResult, **kwargs) -> ValidationResult:
-        """Post-parse validation: verify exchange_rates completeness.
+    def validate_exchange_rates(result: ImportResult, exchange_rates: dict[str, float]) -> ValidationResult:
+        """Post-parse validation: verify exchange_rates completeness and structure.
         
         Args:
             result: ImportResult from parse()
-            **kwargs: Should contain 'user_inputs' as JSON string of exchange_rates
+            exchange_rates: Dict mapping "YYYY-MM" strings to exchange rates (USD/INR floats)
         
         Returns:
-            ValidationResult with errors if exchange_rates are missing for required months
+            ValidationResult with errors if exchange_rates missing or invalid for required months
         """
-        # Get raw user_inputs (exchange_rates as JSON string) from kwargs
-        user_inputs = kwargs.get("user_inputs")
-        if not user_inputs:
-            # No exchange_rates provided; if there are transactions, this is an error
-            if result.transactions:
-                return ValidationResult(
-                    is_valid=False,
-                    errors=["exchange_rates is required for fidelity imports"],
-                    required_inputs={}
-                )
-            return ValidationResult(is_valid=True, errors=[], required_inputs={})
-        
-        # Parse user_inputs as JSON
-        exchange_rates = ExchangeRateValidationHelper._parse_exchange_rates_json(user_inputs)
         if exchange_rates is None:
             return ValidationResult(
                 is_valid=False,
@@ -69,18 +55,19 @@ class ExchangeRateValidationHelper:
         return ValidationResult(is_valid=True, errors=[], required_inputs={})
 
     @staticmethod
-    def _parse_exchange_rates_json(user_inputs: str) -> dict[str, float] | None:
-        """Parse exchange_rates from JSON string.
+    def parse_exchange_rates_json(exchange_rates: str) -> dict[str, float] | None:
+        """Parse exchange_rates from JSON string to dict.
         
         Args:
-            user_inputs: JSON string of exchange_rates, e.g. '{"2025-03": 86.5}'
+            exchange_rates: JSON string of exchange_rates, e.g. '{"2025-03": 86.5}'
         
         Returns:
-            Parsed dict or None if parsing fails
+            Parsed dict mapping "YYYY-MM" to float, or None if parsing fails
         """
         try:
-            return _json.loads(user_inputs)
+            return _json.loads(exchange_rates)
         except Exception:
+            print("Failed to parse exchange_rates JSON:", exchange_rates)
             return None
 
     @staticmethod
@@ -91,7 +78,7 @@ class ExchangeRateValidationHelper:
             exchange_rates: dict to validate
         
         Returns:
-            Error message if invalid, None if valid
+            Error message (str) if invalid structure, None if valid
         """
         if not isinstance(exchange_rates, dict):
             return 'exchange_rates must be a dictionary, e.g. {"2025-03": 86.5}'
@@ -103,13 +90,13 @@ class ExchangeRateValidationHelper:
 
     @staticmethod
     def _extract_required_months(result: ImportResult) -> list[str]:
-        """Extract unique YYYY-MM strings from parsed transactions.
+        """Extract unique YYYY-MM strings from all parsed transactions.
         
         Args:
             result: ImportResult containing transactions
         
         Returns:
-            Sorted list of required month-year strings
+            Sorted list of unique required month-year strings
         """
         required_months: set[str] = set()
         for txn in result.transactions:

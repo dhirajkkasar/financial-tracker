@@ -17,8 +17,10 @@ class ImportPipeline:
 
     Steps:
         1. parse    — delegate to the registered importer for (source, format)
-        2. validate — call importer.validate(); raise ValidationError if invalid
+        2. validate — call importer.validate(result); raise ValidationError if invalid
         3. deduplicate — filter out txn_ids already in the database
+    
+    Accepts importer_kwargs (e.g., user_inputs, exchange_rates) passed to importer.__init__
     """
 
     def __init__(self, registry: ImporterRegistry, deduplicator: IDeduplicator):
@@ -26,25 +28,27 @@ class ImportPipeline:
         self._deduplicator = deduplicator
 
     def run(self, source: str, fmt: str, file_bytes: bytes, **importer_kwargs) -> ImportResult:
+        """Run the full import pipeline: parse → validate → deduplicate.
+        
+        Args:
+            source: Importer source identifier (e.g., "fidelity_rsu", "fidelity_sale")
+            fmt: File format (e.g., "csv", "pdf")
+            file_bytes: Raw file bytes to parse
+            **importer_kwargs: Additional arguments passed to importer.__init__ 
+                             (e.g., user_inputs for exchange_rates)
+        
+        Returns:
+            ImportResult with deduplicated transactions
+            
+        Raises:
+            ValidationError: If importer.validate() fails
+        """
         print("kwargs received by ImportPipeline.run:", importer_kwargs)
-        # Extract filename if provided, otherwise use empty string
-        filename = importer_kwargs.pop("filename", "")
-        
-        # Extract user_inputs (for validate) from constructor kwargs (for registry.get)
-        # user_inputs are not passed to importer constructor, only to validate()
-        user_inputs = importer_kwargs.pop("user_inputs", None)
-        print("user_inputs extracted:", user_inputs)
-        # Create importer without user_inputs
         importer = self._registry.get(source, fmt, **importer_kwargs)
-        result = importer.parse(file_bytes, filename=filename)
-        
-        # Call validate with user_inputs and other kwargs
-        validate_kwargs = importer_kwargs.copy()
-        if user_inputs:
-            validate_kwargs["user_inputs"] = user_inputs
-        
-        print("kwargs passed to importer.validate:", validate_kwargs)
-        validation_result = importer.validate(result, **validate_kwargs)
+        print(f"Using importer: {importer.__class__.__name__} for source={source} format={fmt}")
+        result = importer.parse(file_bytes)
+        print("calling validate")
+        validation_result = importer.validate(result)
         if not validation_result.is_valid:
             # Raise ValidationError with first error message and structured details
             error_msg = validation_result.errors[0] if validation_result.errors else "Validation failed"

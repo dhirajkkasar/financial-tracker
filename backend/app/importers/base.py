@@ -6,7 +6,14 @@ from typing import ClassVar, Protocol, Optional, Any
 
 @dataclass
 class ValidationResult:
-    """Result of importer validation."""
+    """Result of importer validation.
+    
+    Attributes:
+        is_valid: True if validation passed, False otherwise
+        errors: List of user-facing error messages
+        required_inputs: Dict of helpful hints for user input correction, 
+                        e.g. {"required_months": ["2025-03"], "provided_months": ["2025-01"]}
+    """
     is_valid: bool
     errors: list[str] = field(default_factory=list)  # User-facing error messages
     required_inputs: dict[str, Any] = field(default_factory=dict)  # Hints for user, e.g., {"required_months": ["2025-03"]}
@@ -87,14 +94,16 @@ class BaseImporter(ABC):
     @abstractmethod
     def parse(self, file_bytes: bytes) -> "ImportResult": ...
 
-    def validate(self, result: "ImportResult", **kwargs) -> ValidationResult:
-        """Post-parse validation hook. Default: pass. Override for custom checks.
+    def validate(self, result: "ImportResult") -> ValidationResult:
+        """Post-parse validation hook. Default: always passes. Override for custom checks.
+        
+        This method is called after parse() completes. Subclasses can override to validate
+        parsed results or check for required inputs (e.g., exchange_rates completeness).
         
         Args:
             result: ImportResult from parse()
-            **kwargs: Importer-specific inputs (e.g., exchange_rates string)
         
         Returns:
-            ValidationResult with is_valid, errors, required_inputs
+            ValidationResult with is_valid, errors, and optional required_inputs hints
         """
         return ValidationResult(is_valid=True, errors=[], required_inputs={})

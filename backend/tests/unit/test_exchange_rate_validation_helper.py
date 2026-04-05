@@ -9,7 +9,7 @@ class TestExchangeRateValidationHelper:
     """Test ExchangeRateValidationHelper class."""
 
     def test_validate_exchange_rates_with_valid_rates(self):
-        """Validation passes when exchange_rates JSON is valid and complete."""
+        """Validation passes when exchange_rates dict is valid and complete."""
         # Create a result with transactions for 2025-03 and 2024-09
         txn1 = ParsedTransaction(
             source="test",
@@ -29,14 +29,14 @@ class TestExchangeRateValidationHelper:
         )
         result = ImportResult(source="test", transactions=[txn1, txn2])
         
-        user_inputs = '{"2025-03": 86.5, "2024-09": 83.8}'
-        validation_result = ExchangeRateValidationHelper.validate_exchange_rates(result, user_inputs=user_inputs)
+        exchange_rates = {"2025-03": 86.5, "2024-09": 83.8}
+        validation_result = ExchangeRateValidationHelper.validate_exchange_rates(result, exchange_rates)
         
         assert validation_result.is_valid is True
         assert validation_result.errors == []
 
-    def test_validate_exchange_rates_with_invalid_json(self):
-        """Validation fails when exchange_rates is not valid JSON."""
+    def test_validate_exchange_rates_with_non_dict_type(self):
+        """Validation fails when exchange_rates is not a dict."""
         txn = ParsedTransaction(
             source="test",
             asset_name="TEST",
@@ -47,12 +47,12 @@ class TestExchangeRateValidationHelper:
         )
         result = ImportResult(source="test", transactions=[txn])
         
-        user_inputs = '{invalid json}'
-        validation_result = ExchangeRateValidationHelper.validate_exchange_rates(result, user_inputs=user_inputs)
+        # Pass a string or list instead of dict
+        validation_result = ExchangeRateValidationHelper.validate_exchange_rates(result, "not a dict")
         
         assert validation_result.is_valid is False
         assert len(validation_result.errors) > 0
-        assert "valid JSON" in validation_result.errors[0]
+        assert "dictionary" in validation_result.errors[0]
 
     def test_validate_exchange_rates_with_non_numeric_values(self):
         """Validation fails when exchange_rates values are not numeric."""
@@ -66,8 +66,8 @@ class TestExchangeRateValidationHelper:
         )
         result = ImportResult(source="test", transactions=[txn])
         
-        user_inputs = '{"2025-03": "abc"}'
-        validation_result = ExchangeRateValidationHelper.validate_exchange_rates(result, user_inputs=user_inputs)
+        exchange_rates = {"2025-03": "abc"}
+        validation_result = ExchangeRateValidationHelper.validate_exchange_rates(result, exchange_rates)
         
         assert validation_result.is_valid is False
         assert len(validation_result.errors) > 0
@@ -94,8 +94,8 @@ class TestExchangeRateValidationHelper:
         result = ImportResult(source="test", transactions=[txn1, txn2])
         
         # Missing 2024-09
-        user_inputs = '{"2025-03": 86.5}'
-        validation_result = ExchangeRateValidationHelper.validate_exchange_rates(result, user_inputs=user_inputs)
+        exchange_rates = {"2025-03": 86.5}
+        validation_result = ExchangeRateValidationHelper.validate_exchange_rates(result, exchange_rates)
         
         assert validation_result.is_valid is False
         assert len(validation_result.errors) > 0
@@ -104,16 +104,16 @@ class TestExchangeRateValidationHelper:
         assert validation_result.required_inputs["required_months"] == ["2024-09", "2025-03"]
         assert validation_result.required_inputs["provided_months"] == ["2025-03"]
 
-    def test_validate_exchange_rates_with_no_transactions_and_no_user_inputs(self):
+    def test_validate_exchange_rates_with_no_transactions_and_no_exchange_rates(self):
         """Validation passes when there are no transactions and no exchange_rates."""
         result = ImportResult(source="test", transactions=[])
         
-        validation_result = ExchangeRateValidationHelper.validate_exchange_rates(result, user_inputs=None)
+        validation_result = ExchangeRateValidationHelper.validate_exchange_rates(result, {})
         
         assert validation_result.is_valid is True
         assert validation_result.errors == []
 
-    def test_validate_exchange_rates_with_no_user_inputs_but_transactions(self):
+    def test_validate_exchange_rates_with_no_exchange_rates_but_transactions(self):
         """Validation fails when there are transactions but no exchange_rates provided."""
         txn = ParsedTransaction(
             source="test",
@@ -125,15 +125,16 @@ class TestExchangeRateValidationHelper:
         )
         result = ImportResult(source="test", transactions=[txn])
         
-        # No user_inputs provided
-        validation_result = ExchangeRateValidationHelper.validate_exchange_rates(result, user_inputs=None)
+        # Empty exchange_rates dict
+        validation_result = ExchangeRateValidationHelper.validate_exchange_rates(result, {})
         
         assert validation_result.is_valid is False
         assert len(validation_result.errors) > 0
-        assert "exchange_rates is required" in validation_result.errors[0]
+        assert "Missing exchange_rates" in validation_result.errors[0]
+        assert "2025-03" in validation_result.errors[0]
 
-    def test_validate_exchange_rates_with_non_dict_json(self):
-        """Validation fails when exchange_rates JSON is not a dict."""
+    def test_validate_exchange_rates_with_non_dict_type_list(self):
+        """Validation fails when exchange_rates is a list instead of dict."""
         txn = ParsedTransaction(
             source="test",
             asset_name="TEST",
@@ -144,9 +145,8 @@ class TestExchangeRateValidationHelper:
         )
         result = ImportResult(source="test", transactions=[txn])
         
-        # JSON array instead of dict
-        user_inputs = '["2025-03", 86.5]'
-        validation_result = ExchangeRateValidationHelper.validate_exchange_rates(result, user_inputs=user_inputs)
+        # List instead of dict
+        validation_result = ExchangeRateValidationHelper.validate_exchange_rates(result, ["2025-03", 86.5])
         
         assert validation_result.is_valid is False
         assert len(validation_result.errors) > 0
@@ -165,8 +165,8 @@ class TestExchangeRateValidationHelper:
         result = ImportResult(source="test", transactions=[txn])
         
         # Provide extra months
-        user_inputs = '{"2025-03": 86.5, "2024-09": 83.8, "2025-06": 85.0}'
-        validation_result = ExchangeRateValidationHelper.validate_exchange_rates(result, user_inputs=user_inputs)
+        exchange_rates = {"2025-03": 86.5, "2024-09": 83.8, "2025-06": 85.0}
+        validation_result = ExchangeRateValidationHelper.validate_exchange_rates(result, exchange_rates)
         
         assert validation_result.is_valid is True
         assert validation_result.errors == []
@@ -174,21 +174,21 @@ class TestExchangeRateValidationHelper:
     def test_parse_exchange_rates_json_valid(self):
         """_parse_exchange_rates_json correctly parses valid JSON."""
         user_inputs = '{"2025-03": 86.5, "2024-09": 83.8}'
-        result = ExchangeRateValidationHelper._parse_exchange_rates_json(user_inputs)
+        result = ExchangeRateValidationHelper.parse_exchange_rates_json(user_inputs)
         
         assert result == {"2025-03": 86.5, "2024-09": 83.8}
 
     def test_parse_exchange_rates_json_invalid(self):
-        """_parse_exchange_rates_json returns None for invalid JSON."""
+        """_parse_exchange_rates_json returns None for invalid JSON strings."""
         user_inputs = '{invalid json}'
-        result = ExchangeRateValidationHelper._parse_exchange_rates_json(user_inputs)
+        result = ExchangeRateValidationHelper.parse_exchange_rates_json(user_inputs)
         
         assert result is None
 
     def test_parse_exchange_rates_json_empty_dict(self):
-        """_parse_exchange_rates_json can parse empty dict."""
+        """_parse_exchange_rates_json can parse empty dict from JSON string."""
         user_inputs = '{}'
-        result = ExchangeRateValidationHelper._parse_exchange_rates_json(user_inputs)
+        result = ExchangeRateValidationHelper.parse_exchange_rates_json(user_inputs)
         
         assert result == {}
 
@@ -286,8 +286,8 @@ class TestExchangeRateValidationHelper:
         
         assert months == []
 
-    def test_validate_exchange_rates_with_float_keys_in_json(self):
-        """Validation handles cases where month keys are strings."""
+    def test_validate_exchange_rates_with_string_month_keys(self):
+        """Validation handles month keys as strings in YYYY-MM format."""
         txn = ParsedTransaction(
             source="test",
             asset_name="TEST",
@@ -298,9 +298,9 @@ class TestExchangeRateValidationHelper:
         )
         result = ImportResult(source="test", transactions=[txn])
         
-        # Month keys must be strings in JSON
-        user_inputs = '{"2025-03": 86.5}'
-        validation_result = ExchangeRateValidationHelper.validate_exchange_rates(result, user_inputs=user_inputs)
+        # Month keys are strings in YYYY-MM format
+        exchange_rates = {"2025-03": 86.5}
+        validation_result = ExchangeRateValidationHelper.validate_exchange_rates(result, exchange_rates)
         
         assert validation_result.is_valid is True
 
@@ -333,8 +333,8 @@ class TestExchangeRateValidationHelper:
         result = ImportResult(source="test", transactions=[txn1, txn2, txn3])
         
         # Missing 2025-01 and 2024-09
-        user_inputs = '{"2025-03": 86.5}'
-        validation_result = ExchangeRateValidationHelper.validate_exchange_rates(result, user_inputs=user_inputs)
+        exchange_rates = {"2025-03": 86.5}
+        validation_result = ExchangeRateValidationHelper.validate_exchange_rates(result, exchange_rates)
         
         assert validation_result.is_valid is False
         assert "2024-09" in validation_result.errors[0]

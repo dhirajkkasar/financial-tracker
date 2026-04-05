@@ -26,30 +26,31 @@ class FidelityRSUImporter(BaseImporter):
 
     Filename format: {MARKET}_{TICKER}.csv  e.g. NASDAQ_AMZN.csv
     Relevant columns: Date acquired, Quantity, Cost basis, Cost basis/share
-    All USD amounts; exchange_rates maps "YYYY-MM" → float (USD/INR).
+    All USD amounts; constructor accepts exchange_rates dict mapping "YYYY-MM" → float (USD/INR).
+    Validates exchange_rates completeness via validate() method after parsing.
     txn_id is a SHA-256 hash of ticker|date|quantity|cost_per_share — stable across re-imports.
     """
 
-    def __init__(self, exchange_rates: dict[str, float] | None = None):
-        """Initialize with optional exchange_rates for backward compatibility.
+    def __init__(self, filename: str = "", user_inputs: str | None = None):
+        """Initialize with filename and user_inputs (JSON string of exchange_rates). 
         
-        In the new flow, exchange_rates should be validated via validate() method,
-        not passed to constructor. But we accept them here for backward compatibility
-        with existing tests.
+        Args:
+            filename: CSV filename to extract ticker from (e.g., NASDAQ_AMZN.csv)
+            user_inputs: JSON string mapping "YYYY-MM" strings to exchange rates (USD/INR).
+                        Will be parsed to dict. Exchange_rates are validated via validate() method.
         """
-        self.exchange_rates = exchange_rates or {}
+        self.filename = filename
+        self.exchange_rates = ExchangeRateValidationHelper.parse_exchange_rates_json(user_inputs)
 
-    def validate(self, result: ImportResult, **kwargs) -> ValidationResult:
+    def validate(self, result: ImportResult) -> ValidationResult:
         """Post-parse validation: verify exchange_rates completeness.
         
         Args:
             result: ImportResult from parse()
-            **kwargs: Should contain 'user_inputs' as JSON string of exchange_rates
-        
         Returns:
             ValidationResult with errors if exchange_rates are missing for required months
         """
-        return ExchangeRateValidationHelper.validate_exchange_rates(result, **kwargs)
+        return ExchangeRateValidationHelper.validate_exchange_rates(result, self.exchange_rates)
 
     @staticmethod
     def extract_required_month_years(file_bytes: bytes) -> list[str]:
@@ -77,9 +78,9 @@ class FidelityRSUImporter(BaseImporter):
             return parts[0].upper(), parts[1].upper()
         return "", stem.upper()
 
-    def parse(self, file_bytes: bytes, filename: str = "") -> ImportResult:
+    def parse(self, file_bytes: bytes) -> ImportResult:
         result = ImportResult(source="fidelity_rsu")
-        market, ticker = self._parse_ticker_from_filename(filename)
+        market, ticker = self._parse_ticker_from_filename(self.filename)
         if not market or not ticker:
             result.errors.append(
                 "Cannot determine ticker from filename. Expected: MARKET_TICKER.csv"

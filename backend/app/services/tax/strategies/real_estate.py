@@ -7,7 +7,6 @@ from app.repositories.unit_of_work import UnitOfWork
 from app.services.tax.strategies.base import (
     AssetTaxGainsResult,
     TaxGainsStrategy,
-    register_tax_strategy,
 )
 
 BUY_TXNS = {"BUY", "CONTRIBUTION"}
@@ -25,7 +24,6 @@ def _zero_result(asset) -> AssetTaxGainsResult:
     )
 
 
-@register_tax_strategy(("REAL_ESTATE", "*"))
 class RealEstateTaxGainsStrategy(TaxGainsStrategy):
     """
     Real estate: SELL/WITHDRAWAL transactions in FY → gain = proceeds − total invested.

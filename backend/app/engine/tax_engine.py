@@ -364,6 +364,59 @@ class TaxRuleResolver:
         return True
 
 
+# ── TaxRatePolicy (backward-compat wrapper over TaxRuleResolver) ──────────────
+
+@dataclass(frozen=True)
+class TaxRate:
+    """Simple flattened tax rate for a given FY + asset_type."""
+    stcg_rate_pct: Optional[float]
+    ltcg_rate_pct: Optional[float]
+    ltcg_exemption_inr: float
+    is_exempt: bool
+
+
+class TaxRatePolicy:
+    """
+    Backward-compatible wrapper around TaxRuleResolver.
+
+    Reads per-FY YAML config and exposes a simple get_rate(fy, asset_type) → TaxRate API.
+    Caches TaxRate objects so repeated calls return the same instance.
+    """
+
+    def __init__(self, config_dir: Path):
+        self._config_dir = config_dir
+        self._raw_cache: dict[str, dict] = {}
+        self._rate_cache: dict[tuple[str, str], TaxRate] = {}
+
+    def get_rate(self, fy: str, asset_type: str) -> TaxRate:
+        key = (fy, asset_type)
+        if key not in self._rate_cache:
+            raw = self._load(fy)
+            if asset_type not in raw:
+                raise ValueError(
+                    f"No tax rate for asset_type {asset_type!r} in FY {fy!r}"
+                )
+            block = raw[asset_type]
+            self._rate_cache[key] = TaxRate(
+                stcg_rate_pct=block.get("stcg_rate_pct"),
+                ltcg_rate_pct=block.get("ltcg_rate_pct"),
+                ltcg_exemption_inr=block.get("ltcg_exemption_inr", 0.0),
+                is_exempt=bool(block.get("is_exempt", False)),
+            )
+        return self._rate_cache[key]
+
+    def _load(self, fy: str) -> dict:
+        if fy not in self._raw_cache:
+            path = self._config_dir / f"{fy}.yaml"
+            if not path.exists():
+                raise ValueError(
+                    f"No tax rate config for FY {fy!r}. Expected file: {path}"
+                )
+            with open(path) as f:
+                self._raw_cache[fy] = yaml.safe_load(f)
+        return self._raw_cache[fy]
+
+
 # ── Harvest opportunities ─────────────────────────────────────────────────────
 
 def find_harvest_opportunities(open_lots: list[dict]) -> list[dict]:

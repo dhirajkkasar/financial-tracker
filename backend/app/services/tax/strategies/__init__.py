@@ -1,10 +1,7 @@
-# Import all strategy modules to trigger @register_tax_strategy decorators.
-# Order does not matter.
+# Import strategy modules to trigger registration.
+# indian_equity, foreign_equity, gold, debt_mf are DELETED —
+# their asset types are now handled by FifoTaxGainsStrategy registered in dependencies.py.
 from app.services.tax.strategies import (  # noqa: F401
-    indian_equity,
-    foreign_equity,
-    gold,
-    debt_mf,
     accrued_interest,
     real_estate,
 )

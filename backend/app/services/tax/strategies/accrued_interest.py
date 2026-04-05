@@ -7,7 +7,6 @@ from app.repositories.unit_of_work import UnitOfWork
 from app.services.tax.strategies.base import (
     AssetTaxGainsResult,
     TaxGainsStrategy,
-    register_tax_strategy,
 )
 
 
@@ -58,7 +57,6 @@ def _zero_result(asset) -> AssetTaxGainsResult:
     )
 
 
-@register_tax_strategy(("FD", "*"), ("RD", "*"))
 class AccruedInterestTaxGainsStrategy(TaxGainsStrategy):
     """
     FD/RD: interest accrued in the FY is taxed at slab rate.

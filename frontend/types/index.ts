@@ -246,44 +246,62 @@ export interface ImportantData {
 
 // ── Tax types ──────────────────────────────────────────────────────────────
 
-export interface AssetGainBreakdown {
+export interface StcgAssetEntry {
   asset_id: number
   asset_name: string
   asset_type: AssetType
-  st_gain: number
-  lt_gain: number
-  st_tax_estimate: number
-  lt_tax_estimate: number
-  ltcg_exemption_used: number
+  gain: number
+  tax_estimate: number
+  is_slab: boolean
+  tax_rate_pct: number | null
 }
 
-export interface TaxSummaryEntry {
-  asset_class: AssetClass
-  st_gain: number
-  lt_gain: number
-  total_gain: number
-  ltcg_exemption_used: number
-  st_tax_estimate: number
-  lt_tax_estimate: number
-  total_tax_estimate: number
-  slab_rate_pct: number | null
-  asset_breakdown: AssetGainBreakdown[]
+export interface LtcgAssetEntry {
+  asset_id: number
+  asset_name: string
+  asset_type: AssetType
+  gain: number
+  tax_estimate: number
+  is_slab: boolean
+  tax_rate_pct: number | null
+  ltcg_exempt_eligible: boolean
 }
 
-export interface TaxSummaryTotals {
-  total_st_gain: number
-  total_lt_gain: number
+export interface InterestAssetEntry {
+  asset_id: number
+  asset_name: string
+  asset_type: AssetType
+  interest: number
+  tax_estimate: number
+}
+
+export interface StcgSection {
   total_gain: number
-  total_st_tax: number
-  total_lt_tax: number
   total_tax: number
-  has_slab_rate_items: boolean
+  has_slab_items: boolean
+  assets: StcgAssetEntry[]
+}
+
+export interface LtcgSection {
+  total_gain: number
+  total_tax: number
+  ltcg_exemption_used: number
+  has_slab_items: boolean
+  assets: LtcgAssetEntry[]
+}
+
+export interface InterestSection {
+  total_interest: number
+  total_tax: number
+  slab_rate_pct: number
+  assets: InterestAssetEntry[]
 }
 
 export interface TaxSummaryResponse {
   fy: string
-  entries: TaxSummaryEntry[]
-  totals: TaxSummaryTotals
+  stcg: StcgSection
+  ltcg: LtcgSection
+  interest: InterestSection
 }
 
 export interface UnrealisedLot {

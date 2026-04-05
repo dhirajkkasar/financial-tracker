@@ -46,18 +46,21 @@ def test_tax_summary_returns_200(client):
     assert resp.status_code == 200
     data = resp.json()
     assert "fy" in data
-    assert "entries" in data
-    assert "totals" in data
+    assert "stcg" in data
+    assert "ltcg" in data
+    assert "interest" in data
 
 
 def test_tax_summary_empty_db(client):
     resp = client.get("/tax/summary?fy=2024-25")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["entries"] == []
-    assert data["totals"]["total_st_gain"] == 0.0
-    assert data["totals"]["total_lt_gain"] == 0.0
-    assert data["totals"]["total_tax"] == 0.0
+    assert data["stcg"]["assets"] == []
+    assert data["ltcg"]["assets"] == []
+    assert data["interest"]["assets"] == []
+    assert data["stcg"]["total_gain"] == 0.0
+    assert data["ltcg"]["total_gain"] == 0.0
+    assert data["interest"]["total_interest"] == 0.0
 
 
 def test_tax_summary_invalid_fy_returns_422(client):
@@ -86,22 +89,22 @@ def test_tax_summary_stock_lt_gain(client):
 
     resp = client.get("/tax/summary?fy=2024-25")
     assert resp.status_code == 200
-    entries = resp.json()["entries"]
-    # Grouped by asset_class now
-    entry = next((e for e in entries if e["asset_class"] == "EQUITY"), None)
-    assert entry is not None
-    assert entry["lt_gain"] == pytest.approx(5000.0)
-    assert entry["st_gain"] == pytest.approx(0.0)
-    # LTCG exemption: 5000 < 125000 → fully exempt → lt_tax = 0
-    assert entry["lt_tax_estimate"] == pytest.approx(0.0)
-    assert entry["ltcg_exemption_used"] == pytest.approx(5000.0)
-    assert entry["slab_rate_pct"] is None   # pure equity — no slab rate
+    data = resp.json()
 
-    # asset_breakdown present and contains this asset
-    assert len(entry["asset_breakdown"]) == 1
-    breakdown = entry["asset_breakdown"][0]
-    assert breakdown["asset_id"] == asset_id
-    assert breakdown["lt_gain"] == pytest.approx(5000.0)
+    # Should appear in ltcg section
+    ltcg_assets = data["ltcg"]["assets"]
+    entry = next((a for a in ltcg_assets if a["asset_id"] == asset_id), None)
+    assert entry is not None
+    assert entry["gain"] == pytest.approx(5000.0)
+    assert entry["ltcg_exempt_eligible"] is True
+
+    # LTCG exemption: 5000 < 125000 → fully exempt → total_tax = 0
+    assert data["ltcg"]["total_tax"] == pytest.approx(0.0)
+    assert data["ltcg"]["ltcg_exemption_used"] == pytest.approx(5000.0)
+
+    # No ST gain
+    stcg_assets = data["stcg"]["assets"]
+    assert not any(a["asset_id"] == asset_id for a in stcg_assets)
 
 
 def test_tax_summary_stock_st_gain(client):
@@ -119,10 +122,14 @@ def test_tax_summary_stock_st_gain(client):
     })
 
     resp = client.get("/tax/summary?fy=2024-25")
-    entry = next(e for e in resp.json()["entries"] if e["asset_class"] == "EQUITY")
-    assert entry["st_gain"] == pytest.approx(2000.0)
-    assert entry["st_tax_estimate"] == pytest.approx(400.0)   # 2000 × 20%
-    assert entry["slab_rate_pct"] is None
+    data = resp.json()
+    stcg_assets = data["stcg"]["assets"]
+    entry = next((a for a in stcg_assets if a["asset_id"] == asset_id), None)
+    assert entry is not None
+    assert entry["gain"] == pytest.approx(2000.0)
+    assert entry["tax_estimate"] == pytest.approx(400.0)   # 2000 × 20%
+    assert entry["is_slab"] is False
+    assert entry["tax_rate_pct"] == pytest.approx(20.0)
 
 
 def test_tax_summary_excludes_sells_outside_fy(client):
@@ -141,8 +148,9 @@ def test_tax_summary_excludes_sells_outside_fy(client):
 
     resp = client.get("/tax/summary?fy=2024-25")
     data = resp.json()
-    assert data["totals"]["total_lt_gain"] == pytest.approx(0.0)
-    assert data["entries"] == []
+    assert data["ltcg"]["total_gain"] == pytest.approx(0.0)
+    assert data["stcg"]["assets"] == []
+    assert data["ltcg"]["assets"] == []
 
 
 def test_tax_summary_us_stock_st_uses_slab(client):
@@ -163,14 +171,17 @@ def test_tax_summary_us_stock_st_uses_slab(client):
     })
 
     resp = client.get("/tax/summary?fy=2024-25")
-    entry = next(e for e in resp.json()["entries"] if e["asset_class"] == "EQUITY")
-    assert entry["st_gain"] == pytest.approx(100.0)
-    assert entry["st_tax_estimate"] == pytest.approx(30.0)   # 100 × 30% slab
-    assert entry["slab_rate_pct"] == pytest.approx(30.0)     # slab label present
+    data = resp.json()
+    stcg_assets = data["stcg"]["assets"]
+    entry = next((a for a in stcg_assets if a["asset_id"] == asset_id), None)
+    assert entry is not None
+    assert entry["gain"] == pytest.approx(100.0)
+    assert entry["tax_estimate"] == pytest.approx(30.0)   # 100 × 30% slab
+    assert entry["is_slab"] is True
 
 
-def test_tax_summary_asset_breakdown_link(client):
-    """asset_breakdown contains asset_id for linking to asset page."""
+def test_tax_summary_asset_id_present(client):
+    """Each asset entry has asset_id for linking to asset page."""
     asset_resp = client.post("/assets", json=make_asset(asset_type="STOCK_IN", asset_class="EQUITY"))
     asset_id = asset_resp.json()["id"]
     client.post(f"/assets/{asset_id}/transactions", json={
@@ -183,11 +194,12 @@ def test_tax_summary_asset_breakdown_link(client):
     })
 
     resp = client.get("/tax/summary?fy=2024-25")
-    entry = next(e for e in resp.json()["entries"] if e["asset_class"] == "EQUITY")
-    assert len(entry["asset_breakdown"]) == 1
-    assert entry["asset_breakdown"][0]["asset_id"] == asset_id
-    assert "asset_name" in entry["asset_breakdown"][0]
-    assert "asset_type" in entry["asset_breakdown"][0]
+    data = resp.json()
+    stcg_assets = data["stcg"]["assets"]
+    entry = next((a for a in stcg_assets if a["asset_id"] == asset_id), None)
+    assert entry is not None
+    assert "asset_name" in entry
+    assert "asset_type" in entry
 
 
 def test_tax_unrealised_returns_200(client):

@@ -352,6 +352,28 @@ def test_real_estate_lt_uses_resolver_rate(resolver):
     assert result.st_gain == pytest.approx(0.0)
 
 
+def test_tax_summary_returns_stcg_ltcg_interest_split():
+    """get_tax_summary returns { fy, stcg, ltcg, interest } structure."""
+    from app.services.tax_service import TaxService
+
+    uow_factory = MagicMock()
+    uow = MagicMock()
+    uow_factory.return_value.__enter__ = MagicMock(return_value=uow)
+    uow_factory.return_value.__exit__ = MagicMock(return_value=False)
+    uow.assets.list.return_value = []  # no assets
+
+    svc = TaxService(uow_factory=uow_factory, slab_rate_pct=30.0)
+    result = svc.get_tax_summary("2024-25")
+
+    assert result["fy"] == "2024-25"
+    assert "stcg" in result
+    assert "ltcg" in result
+    assert "interest" in result
+    assert result["stcg"]["assets"] == []
+    assert result["ltcg"]["assets"] == []
+    assert result["interest"]["assets"] == []
+
+
 def test_register_tax_strategy_instance():
     """register_tax_strategy_instance adds a pre-built instance to the registry."""
     from app.services.tax.strategies.base import (

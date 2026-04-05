@@ -63,7 +63,7 @@ class TaxService:
 
     def get_tax_summary(self, fy_label: str) -> dict:
         fy_start, fy_end = parse_fy(fy_label)
-        buckets: dict[str, list[AssetTaxGainsResult]] = {}
+        all_results: list[AssetTaxGainsResult] = []
 
         with self._uow_factory() as uow:
             for asset in uow.assets.list(active=None):
@@ -74,76 +74,88 @@ class TaxService:
                 if strategy is None:
                     continue
                 try:
-                    result = strategy.compute(asset, uow, fy_start, fy_end, self._slab_rate_pct)
+                    result = strategy.compute(asset, uow, fy_label, fy_start, fy_end, self._slab_rate_pct)
                 except Exception as e:
                     logger.warning("Tax gains error for asset %d: %s", asset.id, str(e))
                     continue
-                if result.st_gain == 0.0 and result.lt_gain == 0.0:
-                    continue
-                buckets.setdefault(asset.asset_class.value, []).append(result)
+                all_results.append(result)
 
-        entries = []
-        total_st_gain = 0.0
-        total_lt_gain = 0.0
-        total_st_tax = 0.0
-        total_lt_tax = 0.0
-        has_slab = False
+        # Separate FD/RD (interest income) from capital gains assets
+        interest_results = [r for r in all_results if r.asset_type in {"FD", "RD"}]
+        cg_results = [r for r in all_results if r.asset_type not in {"FD", "RD"}
+                      and (r.st_gain != 0.0 or r.lt_gain != 0.0)]
 
-        for asset_class_val in ASSET_CLASS_ORDER:
-            results = buckets.get(asset_class_val)
-            if not results:
-                continue
+        # STCG totals
+        total_st_gain = sum(r.st_gain for r in cg_results)
+        total_st_tax = sum(r.st_tax_estimate for r in cg_results)
+        st_has_slab = any(r.has_slab and r.st_gain != 0 for r in cg_results)
 
-            st_gain = sum(r.st_gain for r in results)
-            lt_gain = sum(r.lt_gain for r in results)
-            st_tax = sum(r.st_tax_estimate for r in results)
-            lt_tax, exemption_used = self._compute_entry_lt_tax(results)
-            entry_has_slab = any(r.has_slab for r in results)
-            slab_rate_for_entry = self._slab_rate_pct if entry_has_slab else None
+        # LTCG totals with Section 112A exemption applied once across all eligible gains
+        total_lt_gain = sum(r.lt_gain for r in cg_results)
+        exempt_eligible_lt_gain = sum(max(0.0, r.lt_gain) for r in cg_results if r.ltcg_exempt_eligible)
+        exemption_result = apply_ltcg_exemption(exempt_eligible_lt_gain, "STOCK_IN")
+        exemption_used = exemption_result["exemption_used"]
+        exemption_tax_saved = exemption_used * 12.5 / 100.0
+        total_lt_tax_post_exemption = sum(r.lt_tax_estimate for r in cg_results) - exemption_tax_saved
+        total_lt_tax_post_exemption = max(0.0, total_lt_tax_post_exemption)
+        lt_has_slab = any(r.ltcg_slab for r in cg_results)
 
-            entries.append({
-                "asset_class": asset_class_val,
-                "st_gain": st_gain,
-                "lt_gain": lt_gain,
-                "total_gain": st_gain + lt_gain,
-                "ltcg_exemption_used": exemption_used,
-                "st_tax_estimate": st_tax,
-                "lt_tax_estimate": lt_tax,
-                "total_tax_estimate": st_tax + lt_tax,
-                "slab_rate_pct": slab_rate_for_entry,
-                "asset_breakdown": [
+        # Interest totals
+        total_interest = sum(r.st_gain for r in interest_results if r.st_gain != 0.0)
+        interest_tax = sum(r.st_tax_estimate for r in interest_results)
+
+        return {
+            "fy": fy_label,
+            "stcg": {
+                "total_gain": total_st_gain,
+                "total_tax": total_st_tax,
+                "has_slab_items": st_has_slab,
+                "assets": [
                     {
                         "asset_id": r.asset_id,
                         "asset_name": r.asset_name,
                         "asset_type": r.asset_type,
-                        "st_gain": r.st_gain,
-                        "lt_gain": r.lt_gain,
-                        "st_tax_estimate": r.st_tax_estimate,
-                        "lt_tax_estimate": r.lt_tax_estimate,
-                        "ltcg_exemption_used": r.ltcg_exemption_used,
+                        "gain": r.st_gain,
+                        "tax_estimate": r.st_tax_estimate,
+                        "is_slab": r.has_slab and r.st_gain != 0,
+                        "tax_rate_pct": None if (r.has_slab and r.st_gain != 0) else (r.st_tax_estimate / r.st_gain * 100 if r.st_gain > 0 else None),
                     }
-                    for r in sorted(results, key=lambda r: abs(r.st_gain + r.lt_gain), reverse=True)
+                    for r in cg_results if r.st_gain != 0
                 ],
-            })
-
-            total_st_gain += st_gain
-            total_lt_gain += lt_gain
-            total_st_tax += st_tax
-            total_lt_tax += lt_tax
-            if entry_has_slab:
-                has_slab = True
-
-        return {
-            "fy": fy_label,
-            "entries": entries,
-            "totals": {
-                "total_st_gain": total_st_gain,
-                "total_lt_gain": total_lt_gain,
-                "total_gain": total_st_gain + total_lt_gain,
-                "total_st_tax": total_st_tax,
-                "total_lt_tax": total_lt_tax,
-                "total_tax": total_st_tax + total_lt_tax,
-                "has_slab_rate_items": has_slab,
+            },
+            "ltcg": {
+                "total_gain": total_lt_gain,
+                "total_tax": total_lt_tax_post_exemption,
+                "ltcg_exemption_used": exemption_used,
+                "has_slab_items": lt_has_slab,
+                "assets": [
+                    {
+                        "asset_id": r.asset_id,
+                        "asset_name": r.asset_name,
+                        "asset_type": r.asset_type,
+                        "gain": r.lt_gain,
+                        "tax_estimate": r.lt_tax_estimate,
+                        "is_slab": r.ltcg_slab,
+                        "tax_rate_pct": None if r.ltcg_slab else (r.lt_tax_estimate / r.lt_gain * 100 if r.lt_gain > 0 else None),
+                        "ltcg_exempt_eligible": r.ltcg_exempt_eligible,
+                    }
+                    for r in cg_results if r.lt_gain != 0
+                ],
+            },
+            "interest": {
+                "total_interest": total_interest,
+                "total_tax": interest_tax,
+                "slab_rate_pct": self._slab_rate_pct,
+                "assets": [
+                    {
+                        "asset_id": r.asset_id,
+                        "asset_name": r.asset_name,
+                        "asset_type": r.asset_type,
+                        "interest": r.st_gain,
+                        "tax_estimate": r.st_tax_estimate,
+                    }
+                    for r in interest_results
+                ],
             },
         }
 

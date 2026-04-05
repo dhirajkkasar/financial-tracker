@@ -234,57 +234,134 @@ def estimate_tax(st_gain: float, lt_gain: float, asset_type: str) -> dict:
 # ── Harvest opportunities ─────────────────────────────────────────────────────
 
 # ---------------------------------------------------------------------------
-# TaxRate dataclass + TaxRatePolicy — config-driven rate lookup
+# ResolvedTaxRule + TaxRuleResolver — config-driven rate lookup
 # ---------------------------------------------------------------------------
 
-@dataclass
-class TaxRate:
-    """Tax rate descriptor for one asset type in one FY."""
+@dataclass(frozen=True)
+class ResolvedTaxRule:
+    """Resolved tax rule for one asset type + class + ISIN + buy_date combination."""
     stcg_rate_pct: float | None      # None = slab rate
-    stcg_is_slab: bool
     ltcg_rate_pct: float | None
-    ltcg_is_slab: bool
-    ltcg_threshold_days: int | None  # None = no LT distinction
+    stcg_days: int
     ltcg_exemption_inr: float
-    is_exempt: bool                  # EEE (PPF)
-    maturity_exempt: bool = False    # SGB held to maturity
+    ltcg_exempt_eligible: bool
 
 
-class TaxRatePolicy:
+# Keys that are rule fields (not asset_class sub-levels)
+_RULE_KEYS = {
+    "stcg_rate_pct", "ltcg_rate_pct", "stcg_days",
+    "ltcg_exemption_inr", "ltcg_exempt_eligible", "overrides",
+}
+
+_RULE_DEFAULTS: dict[str, object] = {
+    "ltcg_exemption_inr": 0.0,
+    "ltcg_exempt_eligible": False,
+}
+
+
+class TaxRuleResolver:
     """
-    Loads per-FY YAML config files from a directory and returns TaxRate objects.
+    Loads per-FY YAML config and resolves tax rules via hierarchical override chain.
 
-    Adding a new FY = drop a YYYY-YY.yaml file into config_dir. Zero code changes.
+    Resolution order:
+      1. asset_type default fields
+      2. asset_type overrides (ordered merge)
+      3. asset_class fields (if sub-level exists)
+      4. asset_class overrides (ordered merge)
 
-    Usage:
-        policy = TaxRatePolicy(Path("app/config/tax_rates"))
-        rate = policy.get_rate("2024-25", "STOCK_IN")
+    Adding a new FY = drop a YYYY-YY.yaml file into config_dir.
     """
 
     def __init__(self, config_dir: Path):
         self._config_dir = config_dir
-        self._cache: dict[str, dict[str, TaxRate]] = {}
+        self._cache: dict[str, dict] = {}
 
-    def get_rate(self, fy: str, asset_type: str) -> TaxRate:
+    def resolve(
+        self,
+        fy: str,
+        asset_type: str,
+        asset_class: str | None = None,
+        isin: str | None = None,
+        buy_date: date | None = None,
+    ) -> ResolvedTaxRule:
+        raw = self._load(fy)
+        type_block = raw[asset_type]
+
+        # 1. Asset type defaults (scalar rule keys only)
+        result = {k: v for k, v in type_block.items()
+                  if k in _RULE_KEYS and k != "overrides"}
+
+        # 2. Asset type overrides
+        result = self._apply_overrides(
+            result, type_block.get("overrides", []), isin, buy_date)
+
+        # 3. Asset class fields (if sub-level exists)
+        if asset_class and asset_class in type_block:
+            class_block = type_block[asset_class]
+            class_fields = {k: v for k, v in class_block.items()
+                           if k in _RULE_KEYS and k != "overrides"}
+            result = {**result, **class_fields}
+
+            # 4. Asset class overrides
+            result = self._apply_overrides(
+                result, class_block.get("overrides", []), isin, buy_date)
+
+        # Fill defaults for optional keys
+        for k, default in _RULE_DEFAULTS.items():
+            result.setdefault(k, default)
+
+        # Strip 'overrides' if it leaked in
+        result.pop("overrides", None)
+
+        return ResolvedTaxRule(**result)
+
+    def _load(self, fy: str) -> dict:
         if fy not in self._cache:
             path = self._config_dir / f"{fy}.yaml"
             if not path.exists():
                 raise ValueError(
-                    f"No tax rate config for FY {fy!r}. "
-                    f"Expected file: {path}"
+                    f"No tax rate config for FY {fy!r}. Expected file: {path}"
                 )
             with open(path) as f:
-                raw_data: dict = yaml.safe_load(f)
-            self._cache[fy] = {
-                at: TaxRate(**fields) for at, fields in raw_data.items()
-            }
-        rates = self._cache[fy]
-        if asset_type not in rates:
-            raise ValueError(
-                f"No tax rate for asset_type={asset_type!r} in FY {fy!r}. "
-                f"Available: {sorted(rates.keys())}"
-            )
-        return rates[asset_type]
+                self._cache[fy] = yaml.safe_load(f)
+        return self._cache[fy]
+
+    def _apply_overrides(
+        self,
+        base: dict,
+        overrides: list[dict],
+        isin: str | None,
+        buy_date: date | None,
+    ) -> dict:
+        result = dict(base)
+        for override in overrides:
+            match_conds = override["match"]
+            if not self._matches(match_conds, isin, buy_date):
+                continue
+            for k, v in override.items():
+                if k != "match" and k in _RULE_KEYS:
+                    result[k] = v
+        return result
+
+    @staticmethod
+    def _matches(
+        match: dict,
+        isin: str | None,
+        buy_date: date | None,
+    ) -> bool:
+        """Return True if ALL conditions in the match block are satisfied."""
+        if "isins" in match:
+            if isin is None or isin not in match["isins"]:
+                return False
+        if "bought_before" in match:
+            cutoff = date.fromisoformat(match["bought_before"])
+            if buy_date is None or buy_date >= cutoff:
+                return False
+        if "bought_on_or_after" in match:
+            cutoff = date.fromisoformat(match["bought_on_or_after"])
+            if buy_date is None or buy_date < cutoff:
+                return False
+        return True
 
 
 # ── Harvest opportunities ─────────────────────────────────────────────────────

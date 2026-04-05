@@ -242,7 +242,7 @@ def test_accrued_interest_fd_partial_fy():
         rate_pct=7.0, compounding="QUARTERLY",
     )
     uow = _make_uow(fd_detail=fd)
-    result = strategy.compute(asset, uow, d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31), 30.0)
     # Interest for Apr 2024 – Mar 2025 on a 1L FD at 7% quarterly
     assert result.st_gain > 0
     assert result.lt_gain == 0.0
@@ -260,7 +260,7 @@ def test_accrued_interest_fd_before_fy_zero():
         maturity_date=d(2023, 12, 31),   # matured before FY 2024-25
     )
     uow = _make_uow(fd_detail=fd)
-    result = strategy.compute(asset, uow, d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31), 30.0)
     assert result.st_gain == 0.0
 
 
@@ -270,7 +270,7 @@ def test_accrued_interest_no_fd_detail_returns_zero():
     strategy = AccruedInterestTaxGainsStrategy()
     asset = _make_asset(asset_type="FD", asset_class="DEBT")
     uow = _make_uow(fd_detail=None)
-    result = strategy.compute(asset, uow, d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31), 30.0)
     assert result.st_gain == 0.0
     assert result.st_tax_estimate == 0.0
 
@@ -281,7 +281,7 @@ def test_real_estate_no_sell_in_fy_zero():
     asset = _make_asset(asset_type="REAL_ESTATE", asset_class="REAL_ESTATE")
     txns = [_make_txn("CONTRIBUTION", d(2020, 1, 1), None, -500000000, txn_id=1)]
     uow = _make_uow(transactions=txns)
-    result = strategy.compute(asset, uow, d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31), 30.0)
     assert result.st_gain == 0.0
     assert result.lt_gain == 0.0
 
@@ -296,7 +296,7 @@ def test_real_estate_lt_gain_over_2_years():
         _make_txn("SELL",         d(2024, 6, 1), None,  700000000, txn_id=2),
     ]
     uow = _make_uow(transactions=txns)
-    result = strategy.compute(asset, uow, d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31), 30.0)
     assert result.lt_gain == pytest.approx(2_000_000.0)
     assert result.st_gain == pytest.approx(0.0)
     assert result.lt_tax_estimate == pytest.approx(250_000.0)   # 2M × 12.5%
@@ -313,7 +313,7 @@ def test_real_estate_st_gain_under_2_years():
         _make_txn("SELL",         d(2024, 9, 1), None,  350000000, txn_id=2),
     ]
     uow = _make_uow(transactions=txns)
-    result = strategy.compute(asset, uow, d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31), 30.0)
     assert result.st_gain == pytest.approx(500_000.0)
     assert result.lt_gain == pytest.approx(0.0)
     assert result.st_tax_estimate == pytest.approx(150_000.0)   # 500K × 30% slab

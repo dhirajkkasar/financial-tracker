@@ -2,15 +2,13 @@ from __future__ import annotations
 
 from datetime import date
 
+from app.engine.tax_engine import TaxRuleResolver
 from app.repositories.unit_of_work import UnitOfWork
 from app.services.tax.strategies.base import (
     AssetTaxGainsResult,
     TaxGainsStrategy,
     register_tax_strategy,
 )
-
-REAL_ESTATE_STCG_DAYS = 730   # 2 years
-LTCG_RATE = 12.5
 
 BUY_TXNS = {"BUY", "CONTRIBUTION"}
 SELL_TXNS = {"SELL", "WITHDRAWAL"}
@@ -31,16 +29,20 @@ def _zero_result(asset) -> AssetTaxGainsResult:
 class RealEstateTaxGainsStrategy(TaxGainsStrategy):
     """
     Real estate: SELL/WITHDRAWAL transactions in FY → gain = proceeds − total invested.
-    STCG (< 730 days from earliest purchase) at slab; LTCG (≥ 730 days) at 12.5%.
+    STCG (< stcg_days from earliest purchase) at slab; LTCG (≥ stcg_days) at ltcg_rate from config.
 
     Not FIFO — real estate is not unit-tracked. Gain = all proceeds in FY minus
     total cost basis across all purchase transactions for this asset.
     """
 
+    def __init__(self, resolver: TaxRuleResolver | None = None):
+        self._resolver = resolver
+
     def compute(
         self,
         asset,
         uow: UnitOfWork,
+        fy: str,
         fy_start: date,
         fy_end: date,
         slab_rate_pct: float,
@@ -70,13 +72,23 @@ class RealEstateTaxGainsStrategy(TaxGainsStrategy):
         earliest_buy_date = min(t.date for t in buy_txns)
         latest_sell_date = max(t.date for t in sell_txns_in_fy)
         holding_days = (latest_sell_date - earliest_buy_date).days
-        is_short_term = holding_days < REAL_ESTATE_STCG_DAYS
+
+        # Resolve rule from config or use fallback defaults
+        if self._resolver is not None:
+            rule = self._resolver.resolve(fy, "REAL_ESTATE")
+            stcg_days = rule.stcg_days
+            ltcg_rate = rule.ltcg_rate_pct if rule.ltcg_rate_pct is not None else slab_rate_pct
+        else:
+            stcg_days = 730
+            ltcg_rate = 12.5
+
+        is_short_term = holding_days < stcg_days
 
         st_gain = gain if is_short_term else 0.0
         lt_gain = 0.0 if is_short_term else gain
 
         st_tax = max(0.0, st_gain) * slab_rate_pct / 100.0
-        lt_tax = max(0.0, lt_gain) * LTCG_RATE / 100.0
+        lt_tax = max(0.0, lt_gain) * ltcg_rate / 100.0
         has_slab = is_short_term and gain > 0
 
         return AssetTaxGainsResult(

@@ -77,18 +77,6 @@ function TaxEstimate({ value, fmt }: { value: number; fmt: (n: number) => string
   return <span className="font-mono text-loss">{fmt(value)}</span>
 }
 
-function ToggleBtn({ expanded, onClick }: { expanded: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border border-border text-[10px] text-tertiary transition-colors hover:border-accent hover:text-accent"
-      aria-label={expanded ? 'Collapse' : 'Expand'}
-    >
-      {expanded ? '−' : '+'}
-    </button>
-  )
-}
-
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function TaxPage() {
@@ -101,7 +89,6 @@ export default function TaxPage() {
   const [loadingSummary, setLoadingSummary] = useState(true)
   const [loadingUnrealised, setLoadingUnrealised] = useState(true)
   const [loadingHarvest, setLoadingHarvest] = useState(true)
-  const [expandedClasses, setExpandedClasses] = useState<Set<string>>(new Set())
 
   const [harvestPage, setHarvestPage] = useState(1)
   const [harvestPageSize, setHarvestPageSize] = useState(10)
@@ -129,23 +116,12 @@ export default function TaxPage() {
     })()
   }, [fy])
 
-
   const unrealisedRows = useMemo(() => rollupUnrealised(unrealised?.lots ?? []), [unrealised])
   const harvestRows = useMemo(() => rollupHarvest(harvest?.opportunities ?? []), [harvest])
 
   const harvestTotal = harvestRows.length
   const harvestTotalPages = Math.max(1, Math.ceil(harvestTotal / harvestPageSize))
   const harvestSlice = harvestRows.slice((harvestPage - 1) * harvestPageSize, harvestPage * harvestPageSize)
-
-  const totals = summary?.totals
-
-  function toggleClass(cls: string) {
-    setExpandedClasses(prev => {
-      const next = new Set(prev)
-      if (next.has(cls)) { next.delete(cls) } else { next.add(cls) }
-      return next
-    })
-  }
 
   return (
     <div className="space-y-8">
@@ -154,129 +130,163 @@ export default function TaxPage() {
         <h1 className="text-2xl text-primary">Tax Summary</h1>
         <select
           value={fy}
-          onChange={(e) => { setFy(e.target.value); setExpandedClasses(new Set()) }}
+          onChange={(e) => setFy(e.target.value)}
           className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-accent"
         >
           {fyOptions.map((f) => <option key={f} value={f}>FY {f}</option>)}
         </select>
       </div>
 
-      {/* Summary stat cards */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {loadingSummary ? [1,2,3,4].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />) : (<>
-          {[
-            { label: 'ST Gains', value: totals?.total_st_gain ?? 0 },
-            { label: 'LT Gains', value: totals?.total_lt_gain ?? 0 },
-            { label: 'Total Gain', value: totals?.total_gain ?? 0 },
-            { label: 'Est. Tax', value: totals?.total_tax ?? 0, suffix: totals?.has_slab_rate_items ? '+ slab est.' : undefined },
-          ].map(({ label, value, suffix }) => (
-            <div key={label} className={`${card} space-y-1`} style={cardStyle}>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-tertiary">{label}</p>
-              <p className={`text-xl font-semibold font-mono ${value >= 0 ? 'text-gain' : 'text-loss'}`}>{formatINR(value)}</p>
-              {suffix && <p className="text-[10px] text-tertiary">{suffix}</p>}
-            </div>
-          ))}
-        </>)}
-      </div>
-
-      {/* ── Realised gains ── */}
+      {/* ── Short-Term Capital Gains ── */}
       <div className={card} style={cardStyle}>
         <h2 className="mb-4 text-[10px] font-semibold uppercase tracking-[0.12em] text-tertiary">
-          Realised Gains — FY {fy}
+          Short-Term Capital Gains — FY {fy}
         </h2>
         {loadingSummary ? (
           <div className="space-y-3">{[1,2,3].map((i) => <Skeleton key={i} className="h-10 rounded" />)}</div>
-        ) : !summary?.entries.length ? (
-          <p className="py-10 text-center text-sm text-tertiary">No realised gains for FY {fy}</p>
+        ) : !summary?.stcg.assets.length ? (
+          <p className="py-10 text-center text-sm text-tertiary">No short-term capital gains for FY {fy}</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border">
-                <th className={th}>Category</th>
-                <th className={thr}>ST Gain / Loss</th>
-                <th className={thr}>LT Gain / Loss</th>
-                <th className={thr}>Exemption</th>
-                <th className={thr}>ST Tax Est.</th>
-                <th className={thr}>LT Tax Est.</th>
+                <th className={th}>Asset</th>
+                <th className={thr}>Gain / Loss</th>
+                <th className={thr}>Tax Rate</th>
+                <th className={thr}>Tax Est.</th>
               </tr>
             </thead>
             <tbody>
-              {summary.entries.map((row) => {
-                const isExpanded = expandedClasses.has(row.asset_class)
-                const hasBreakdown = row.asset_breakdown.length > 0
-                return (
-                  <React.Fragment key={row.asset_class}>
-                    {/* Category row */}
-                    <tr className="border-b border-border hover:bg-accent-subtle/30 transition-colors">
-                      <td className="py-3 pr-4">
-                        <div className="flex items-center gap-2">
-                          {hasBreakdown && (
-                            <ToggleBtn expanded={isExpanded} onClick={() => toggleClass(row.asset_class)} />
-                          )}
-                          <span className="font-medium text-primary">
-                            {ASSET_CLASS_LABELS[row.asset_class] ?? row.asset_class}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-3 pr-4 text-right"><GainAmt value={row.st_gain} fmt={formatINR} /></td>
-                      <td className="py-3 pr-4 text-right"><GainAmt value={row.lt_gain} fmt={formatINR} /></td>
-                      <td className="py-3 pr-4 text-right font-mono text-gain">
-                        {row.ltcg_exemption_used > 0 ? formatINR(row.ltcg_exemption_used) : '—'}
-                      </td>
-                      <td className="py-3 pr-4 text-right">
-                        <TaxEstimate value={row.st_tax_estimate} fmt={formatINR} />
-                        {row.slab_rate_pct != null && (
-                          <div className="mt-0.5 text-[10px] text-tertiary">{row.slab_rate_pct}% slab (est.)</div>
-                        )}
-                      </td>
-                      <td className="py-3 text-right">
-                        <TaxEstimate value={row.lt_tax_estimate} fmt={formatINR} />
-                      </td>
-                    </tr>
-
-                    {/* Asset sub-rows */}
-                    {isExpanded && row.asset_breakdown.map((asset) => (
-                      <tr
-                        key={asset.asset_id}
-                        className="border-b border-border last:border-0 bg-accent-subtle/20"
-                      >
-                        <td className="py-2 pl-8 pr-4">
-                          <Link
-                            href={`/assets/${asset.asset_id}`}
-                            className="text-sm font-medium text-accent hover:underline"
-                          >
-                            {asset.asset_name}
-                          </Link>
-                          <span className="ml-2 text-[10px] text-tertiary">
-                            {ASSET_TYPE_LABELS[asset.asset_type as AssetType] ?? asset.asset_type}
-                          </span>
-                        </td>
-                        <td className="py-2 pr-4 text-right text-sm">
-                          <GainAmt value={asset.st_gain} fmt={formatINR} />
-                        </td>
-                        <td className="py-2 pr-4 text-right text-sm">
-                          <GainAmt value={asset.lt_gain} fmt={formatINR} />
-                        </td>
-                        <td className="py-2 pr-4 text-right text-tertiary text-sm">—</td>
-                        <td className="py-2 pr-4 text-right text-sm">
-                          <TaxEstimate value={asset.st_tax_estimate} fmt={formatINR} />
-                        </td>
-                        <td className="py-2 text-right text-sm">
-                          <TaxEstimate value={asset.lt_tax_estimate} fmt={formatINR} />
-                        </td>
-                      </tr>
-                    ))}
-                  </React.Fragment>
-                )
-              })}
+              {summary.stcg.assets.map((a) => (
+                <tr key={a.asset_id} className="border-b border-border last:border-0 hover:bg-accent-subtle/30 transition-colors">
+                  <td className="py-3 pr-4">
+                    <Link href={`/assets/${a.asset_id}`} className="font-medium text-accent hover:underline">{a.asset_name}</Link>
+                    <span className="ml-2 text-[10px] text-tertiary">{ASSET_TYPE_LABELS[a.asset_type as AssetType] ?? a.asset_type}</span>
+                  </td>
+                  <td className="py-3 pr-4 text-right"><GainAmt value={a.gain} fmt={formatINR} /></td>
+                  <td className="py-3 pr-4 text-right text-xs text-secondary">
+                    {a.is_slab ? 'slab' : `${a.tax_rate_pct}%`}
+                  </td>
+                  <td className="py-3 text-right"><TaxEstimate value={a.tax_estimate} fmt={formatINR} /></td>
+                </tr>
+              ))}
+              {/* Footer total */}
+              <tr className="border-t-2 border-border font-semibold">
+                <td className="py-3 pr-4 text-primary">Total STCG</td>
+                <td className="py-3 pr-4 text-right"><GainAmt value={summary.stcg.total_gain} fmt={formatINR} /></td>
+                <td className="py-3 pr-4" />
+                <td className="py-3 text-right"><TaxEstimate value={summary.stcg.total_tax} fmt={formatINR} /></td>
+              </tr>
             </tbody>
           </table>
         )}
-        {totals?.has_slab_rate_items && !loadingSummary && (
-          <p className="mt-3 text-[11px] text-tertiary">
-            * Slab-rate estimates use the configured SLAB_RATE. Actual tax depends on your income bracket.
-          </p>
+        {summary?.stcg.has_slab_items && !loadingSummary && (
+          <p className="mt-3 text-[11px] text-tertiary">* Slab-rate estimates use the configured SLAB_RATE. Actual tax depends on your income bracket.</p>
         )}
+      </div>
+
+      {/* ── Long-Term Capital Gains ── */}
+      <div className={card} style={cardStyle}>
+        <div className="mb-4 flex items-baseline justify-between">
+          <h2 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-tertiary">
+            Long-Term Capital Gains — FY {fy}
+          </h2>
+          {summary && summary.ltcg.ltcg_exemption_used > 0 && !loadingSummary && (
+            <span className="text-xs text-tertiary">
+              Exemption: <span className="font-mono text-gain">{formatINR(summary.ltcg.ltcg_exemption_used)}</span>
+            </span>
+          )}
+        </div>
+        {loadingSummary ? (
+          <div className="space-y-3">{[1,2,3].map((i) => <Skeleton key={i} className="h-10 rounded" />)}</div>
+        ) : !summary?.ltcg.assets.length ? (
+          <p className="py-10 text-center text-sm text-tertiary">No long-term capital gains for FY {fy}</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border">
+                <th className={th}>Asset</th>
+                <th className={thr}>Gain / Loss</th>
+                <th className={thr}>Tax Rate</th>
+                <th className={thr}>Tax Est.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {summary.ltcg.assets.map((a) => (
+                <tr key={a.asset_id} className="border-b border-border last:border-0 hover:bg-accent-subtle/30 transition-colors">
+                  <td className="py-3 pr-4">
+                    <Link href={`/assets/${a.asset_id}`} className="font-medium text-accent hover:underline">{a.asset_name}</Link>
+                    <span className="ml-2 text-[10px] text-tertiary">{ASSET_TYPE_LABELS[a.asset_type as AssetType] ?? a.asset_type}</span>
+                    {a.ltcg_exempt_eligible && (
+                      <span className="ml-2 rounded bg-gain/10 px-1.5 py-0.5 text-[9px] font-medium text-gain">112A</span>
+                    )}
+                  </td>
+                  <td className="py-3 pr-4 text-right"><GainAmt value={a.gain} fmt={formatINR} /></td>
+                  <td className="py-3 pr-4 text-right text-xs text-secondary">
+                    {a.is_slab ? 'slab' : `${a.tax_rate_pct}%`}
+                  </td>
+                  <td className="py-3 text-right"><TaxEstimate value={a.tax_estimate} fmt={formatINR} /></td>
+                </tr>
+              ))}
+              {/* Footer total */}
+              <tr className="border-t-2 border-border font-semibold">
+                <td className="py-3 pr-4 text-primary">Total LTCG</td>
+                <td className="py-3 pr-4 text-right"><GainAmt value={summary.ltcg.total_gain} fmt={formatINR} /></td>
+                <td className="py-3 pr-4" />
+                <td className="py-3 text-right"><TaxEstimate value={summary.ltcg.total_tax} fmt={formatINR} /></td>
+              </tr>
+            </tbody>
+          </table>
+        )}
+        {summary?.ltcg.has_slab_items && !loadingSummary && (
+          <p className="mt-3 text-[11px] text-tertiary">* Slab-rate estimates use the configured SLAB_RATE. Actual tax depends on your income bracket.</p>
+        )}
+      </div>
+
+      {/* ── Interest Income ── */}
+      <div className={card} style={cardStyle}>
+        <div className="mb-4 flex items-baseline justify-between">
+          <h2 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-tertiary">
+            Interest Income — FY {fy}
+          </h2>
+          {summary && !loadingSummary && (
+            <span className="text-xs text-tertiary">Slab rate: {summary.interest.slab_rate_pct}%</span>
+          )}
+        </div>
+        {loadingSummary ? (
+          <div className="space-y-3">{[1,2,3].map((i) => <Skeleton key={i} className="h-10 rounded" />)}</div>
+        ) : !summary?.interest.assets.length ? (
+          <p className="py-10 text-center text-sm text-tertiary">No interest income for FY {fy}</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border">
+                <th className={th}>Asset</th>
+                <th className={thr}>Interest</th>
+                <th className={thr}>Tax Est.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {summary.interest.assets.map((a) => (
+                <tr key={a.asset_id} className="border-b border-border last:border-0 hover:bg-accent-subtle/30 transition-colors">
+                  <td className="py-3 pr-4">
+                    <Link href={`/assets/${a.asset_id}`} className="font-medium text-accent hover:underline">{a.asset_name}</Link>
+                    <span className="ml-2 text-[10px] text-tertiary">{ASSET_TYPE_LABELS[a.asset_type as AssetType] ?? a.asset_type}</span>
+                  </td>
+                  <td className="py-3 pr-4 text-right font-mono text-gain">{formatINR(a.interest)}</td>
+                  <td className="py-3 text-right"><TaxEstimate value={a.tax_estimate} fmt={formatINR} /></td>
+                </tr>
+              ))}
+              {/* Footer total */}
+              <tr className="border-t-2 border-border font-semibold">
+                <td className="py-3 pr-4 text-primary">Total Interest</td>
+                <td className="py-3 pr-4 text-right font-mono text-gain">{summary ? formatINR(summary.interest.total_interest) : '—'}</td>
+                <td className="py-3 text-right"><TaxEstimate value={summary?.interest.total_tax ?? 0} fmt={formatINR} /></td>
+              </tr>
+            </tbody>
+          </table>
+        )}
+        <p className="mt-3 text-[11px] text-tertiary">Interest income is taxed at your income slab rate.</p>
       </div>
 
       {/* ── Unrealised gains ── */}

@@ -26,7 +26,7 @@
 
 This task builds the core config resolution engine. `TaxRuleResolver` replaces `TaxRatePolicy`.
 
-- [ ] **Step 1: Write failing tests for TaxRuleResolver**
+- [x] **Step 1: Write failing tests for TaxRuleResolver**
 
 Create `backend/tests/unit/test_tax_rule_resolver.py`:
 
@@ -213,12 +213,12 @@ def test_resolved_tax_rule_is_frozen():
         rule.stcg_rate_pct = 99.0
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd backend && uv run pytest tests/unit/test_tax_rule_resolver.py -v`
 Expected: FAIL — `ImportError: cannot import name 'TaxRuleResolver'`
 
-- [ ] **Step 3: Implement TaxRuleResolver and ResolvedTaxRule**
+- [x] **Step 3: Implement TaxRuleResolver and ResolvedTaxRule**
 
 In `backend/app/engine/tax_engine.py`, replace the old `TaxRate` dataclass and `TaxRatePolicy` class (lines 240-287) with:
 
@@ -356,12 +356,12 @@ class TaxRuleResolver:
 
 Also remove the old `TaxRate` dataclass and `TaxRatePolicy` class from the same file (lines 240-287).
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd backend && uv run pytest tests/unit/test_tax_rule_resolver.py -v`
 Expected: All 14 tests PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd backend
@@ -380,7 +380,7 @@ git commit -m "feat: add TaxRuleResolver with hierarchical override resolution"
 
 Replace the flat per-asset-type configs with hierarchical structure. Remove FD/RD/PPF/EPF/NPS/SGB.
 
-- [ ] **Step 1: Rewrite 2025-26.yaml**
+- [x] **Step 1: Rewrite 2025-26.yaml**
 
 Replace entire contents of `backend/app/config/tax_rates/2025-26.yaml` with:
 
@@ -446,20 +446,20 @@ MF:
         ltcg_rate_pct: null
 ```
 
-- [ ] **Step 2: Rewrite 2024-25.yaml**
+- [x] **Step 2: Rewrite 2024-25.yaml**
 
 Same structure as 2025-26 (rates are identical per existing comment). Copy the content from 2025-26.yaml, update the comment header to `# FY 2024-25 capital gains tax rules`.
 
-- [ ] **Step 3: Rewrite 2026-27.yaml**
+- [x] **Step 3: Rewrite 2026-27.yaml**
 
 Same structure. Update comment header to `# FY 2026-27 capital gains tax rules`.
 
-- [ ] **Step 4: Run resolver tests against new configs**
+- [x] **Step 4: Run resolver tests against new configs**
 
 Run: `cd backend && uv run pytest tests/unit/test_tax_rule_resolver.py -v`
 Expected: PASS (tests use tmp_path fixtures, not actual config files, but this confirms no import issues)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd backend
@@ -477,7 +477,7 @@ git commit -m "refactor: rewrite tax rate YAML configs with hierarchical overrid
 
 Update the `compute()` signature to accept `fy: str` and add `register_tax_strategy_instance()` for direct instance registration.
 
-- [ ] **Step 1: Write failing test for updated signature and instance registration**
+- [x] **Step 1: Write failing test for updated signature and instance registration**
 
 Add to `backend/tests/unit/test_tax_strategies.py`:
 
@@ -506,12 +506,12 @@ def test_register_tax_strategy_instance():
     del _REGISTRY[("TEST_TYPE", "*")]
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd backend && uv run pytest tests/unit/test_tax_strategies.py::test_register_tax_strategy_instance -v`
 Expected: FAIL — `ImportError: cannot import name 'register_tax_strategy_instance'`
 
-- [ ] **Step 3: Update base.py**
+- [x] **Step 3: Update base.py**
 
 In `backend/app/services/tax/strategies/base.py`:
 
@@ -540,12 +540,12 @@ def register_tax_strategy_instance(key: tuple[str, str], instance: TaxGainsStrat
     _REGISTRY[key] = instance
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd backend && uv run pytest tests/unit/test_tax_strategies.py::test_register_tax_strategy_instance -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd backend
@@ -563,7 +563,7 @@ git commit -m "refactor: add fy param to TaxGainsStrategy.compute(), add registe
 
 Remove all ClassVars. Inject `TaxRuleResolver`. Resolve rules per-lot in the match loop.
 
-- [ ] **Step 1: Write failing tests for config-driven FifoTaxGainsStrategy**
+- [x] **Step 1: Write failing tests for config-driven FifoTaxGainsStrategy**
 
 Replace the strategy-specific tests in `backend/tests/unit/test_tax_strategies.py`. Remove imports of deleted strategies (`StockINTaxGainsStrategy`, `ForeignEquityTaxGainsStrategy`, `GoldTaxGainsStrategy`, `DebtMFTaxGainsStrategy`). Replace with tests that create a `FifoTaxGainsStrategy(resolver)`:
 
@@ -737,12 +737,12 @@ def test_fifo_config_sell_outside_fy_excluded(resolver):
     assert result.lt_gain == 0.0
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd backend && uv run pytest tests/unit/test_tax_strategies.py -v -k "fifo_config"`
 Expected: FAIL — `FifoTaxGainsStrategy` still expects ClassVars, not a resolver
 
-- [ ] **Step 3: Rewrite fifo_base.py**
+- [x] **Step 3: Rewrite fifo_base.py**
 
 Replace entire contents of `backend/app/services/tax/strategies/fifo_base.py`:
 
@@ -868,12 +868,12 @@ class FifoTaxGainsStrategy(TaxGainsStrategy):
         )
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd backend && uv run pytest tests/unit/test_tax_strategies.py -v -k "fifo_config"`
 Expected: All 8 new tests PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd backend

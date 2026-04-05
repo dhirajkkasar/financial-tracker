@@ -5,7 +5,6 @@ from app.schemas.responses.returns import (
     LotsPageResponse,
 )
 from app.schemas.responses.tax import (
-    TaxGainEntry,
     TaxSummaryResponse,
     UnrealisedGainEntry,
     HarvestOpportunityEntry,
@@ -22,7 +21,6 @@ __all__ = [
     "AssetReturnsResponse",
     "LotComputedResponse",
     "LotsPageResponse",
-    "TaxGainEntry",
     "TaxSummaryResponse",
     "UnrealisedGainEntry",
     "HarvestOpportunityEntry",

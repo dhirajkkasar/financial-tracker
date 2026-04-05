@@ -1,13 +1,8 @@
 """
 Tax engine — pure functions, no DB access.
 
-FY2024-25 rates:
-  STOCK_IN / equity MF : STCG 20%, LTCG 12.5%, ₹1.25L Section-112A exemption
-  STOCK_US / RSU       : STCG slab, LTCG 12.5%
-  GOLD / SGB           : STCG slab, LTCG 12.5%
-  REAL_ESTATE          : STCG slab, LTCG 12.5%
-  FD / RD / EPF        : slab rate regardless of holding
-  PPF                  : EEE — fully exempt
+Tax rates are config-driven: see config/tax_rates/{FY}.yaml
+Resolved via TaxRuleResolver with hierarchical override support.
 """
 import yaml
 from dataclasses import dataclass

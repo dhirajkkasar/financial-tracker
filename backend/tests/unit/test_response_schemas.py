@@ -5,8 +5,12 @@ from app.schemas.responses.returns import (
     LotsPageResponse,
 )
 from app.schemas.responses.tax import (
-    TaxGainEntry,
     TaxSummaryResponse,
+    StcgSection,
+    LtcgSection,
+    InterestSection,
+    StcgAssetEntry,
+    LtcgAssetEntry,
     HarvestOpportunityEntry,
     UnrealisedGainEntry,
 )
@@ -64,20 +68,34 @@ def test_lots_page_response():
 
 
 def test_tax_summary_response():
-    entry = TaxGainEntry(
-        category="Equity",
-        asset_types=["STOCK_IN", "MF"],
-        st_gain=5000.0,
-        lt_gain=20000.0,
-        st_tax=1000.0,
-        lt_tax=None,
-        is_st_slab=False,
-        is_lt_slab=False,
-        ltcg_exemption_used=12500.0,
+    stcg_asset = StcgAssetEntry(
+        asset_id=1,
+        asset_name="HDFC Equity Fund",
+        asset_type="MF",
+        gain=5000.0,
+        tax_estimate=1000.0,
+        is_slab=False,
+        tax_rate_pct=20.0,
     )
-    resp = TaxSummaryResponse(fy="2024-25", entries=[entry], total_estimated_tax=1000.0)
+    ltcg_asset = LtcgAssetEntry(
+        asset_id=1,
+        asset_name="HDFC Equity Fund",
+        asset_type="MF",
+        gain=20000.0,
+        tax_estimate=0.0,
+        is_slab=False,
+        tax_rate_pct=12.5,
+        ltcg_exempt_eligible=True,
+    )
+    resp = TaxSummaryResponse(
+        fy="2024-25",
+        stcg=StcgSection(total_gain=5000.0, total_tax=1000.0, assets=[stcg_asset]),
+        ltcg=LtcgSection(total_gain=20000.0, total_tax=0.0, ltcg_exemption_used=12500.0, assets=[ltcg_asset]),
+    )
     assert resp.fy == "2024-25"
-    assert len(resp.entries) == 1
+    assert len(resp.stcg.assets) == 1
+    assert len(resp.ltcg.assets) == 1
+    assert resp.ltcg.ltcg_exemption_used == 12500.0
 
 
 def test_harvest_opportunity_entry():

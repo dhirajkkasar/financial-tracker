@@ -29,6 +29,7 @@ class _Sell:
     date: date
     units: float
     amount_inr: float
+    lot_id: Optional[str] = None  # set for specific-lot sells (Fidelity PDF path)
 
 
 LOT_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST", "BONUS", "SWITCH_IN", "BILLING"}
@@ -67,7 +68,12 @@ class LotHelper:
                     buy_amount_inr=0.0 if is_bonus else abs(t.amount_inr / 100.0),
                 ))
             elif ttype in SELL_TYPES and t.units:
-                sells.append(_Sell(date=t.date, units=t.units, amount_inr=abs(t.amount_inr / 100.0)))
+                sells.append(_Sell(
+                    date=t.date,
+                    units=t.units,
+                    amount_inr=abs(t.amount_inr / 100.0),
+                    lot_id=t.lot_id,  # None for non-Fidelity SELLs; specific lot_id for Fidelity path
+                ))
         return lots, sells
 
     def match(self, lots: list[_Lot], sells: list[_Sell]) -> list[dict]:

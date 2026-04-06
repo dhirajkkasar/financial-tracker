@@ -370,3 +370,49 @@ def test_lot_helper_match_produces_gain():
     assert len(matched) == 1
     assert matched[0]["realised_gain_inr"] == pytest.approx(50.0)  # (150-100) INR
     assert matched[0]["is_short_term"] is False   # 517 days >= 365
+
+
+from app.engine.lot_helper import LotHelper, _Sell
+
+class TestLotHelperSellLotId:
+    """_Sell.lot_id is populated from transaction.lot_id."""
+
+    def _make_txn(self, ttype, units, amount_paise, lot_id=None):
+        from dataclasses import make_dataclass
+        from datetime import date
+        from enum import Enum
+
+        class TType(Enum):
+            BUY = "BUY"
+            SELL = "SELL"
+
+        T = make_dataclass("T", [
+            "type", "date", "units", "amount_inr", "lot_id",
+            ("id", int, 1),
+        ])
+        return T(
+            type=TType(ttype),
+            date=date(2024, 1, 1),
+            units=units,
+            amount_inr=amount_paise,
+            lot_id=lot_id,
+        )
+
+    def test_sell_lot_id_populated_from_transaction(self):
+        txns = [
+            self._make_txn("BUY", 10, -100000, lot_id="lot-buy-1"),
+            self._make_txn("SELL", 5, 60000, lot_id="lot-buy-1"),
+        ]
+        helper = LotHelper(stcg_days=730)
+        lots, sells = helper.build_lots_sells(txns)
+        assert len(sells) == 1
+        assert sells[0].lot_id == "lot-buy-1"
+
+    def test_sell_without_lot_id_is_none(self):
+        txns = [
+            self._make_txn("BUY", 10, -100000, lot_id="lot-buy-1"),
+            self._make_txn("SELL", 5, 60000, lot_id=None),
+        ]
+        helper = LotHelper(stcg_days=730)
+        _, sells = helper.build_lots_sells(txns)
+        assert sells[0].lot_id is None

@@ -10,7 +10,7 @@ from datetime import date
 from typing import ClassVar, Optional
 
 from app.engine.lot_engine import (
-    match_lots_fifo,
+    match_lots,
     compute_gains_summary,
     compute_lot_unrealised,
     GRANDFATHERING_CUTOFF,
@@ -95,7 +95,7 @@ class MarketBasedStrategy(AssetReturnsStrategy):
         Returns:
             (open_lots, matched) where matched is the raw FIFO match result.
         """
-        matched = match_lots_fifo(lots, sells, stcg_days=self.stcg_days)
+        matched = match_lots(lots, sells, stcg_days=self.stcg_days)
         sold_units = _accumulate_sold_units(matched)
 
         if as_of is None:

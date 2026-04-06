@@ -416,3 +416,76 @@ class TestLotHelperSellLotId:
         helper = LotHelper(stcg_days=730)
         _, sells = helper.build_lots_sells(txns)
         assert sells[0].lot_id is None
+
+
+class TestMatchLots:
+    """match_lots: specific-lot when sell.lot_id set; FIFO fallback when None."""
+
+    def _lot(self, lot_id, buy_date, units, price):
+        return FakeLot(
+            lot_id=lot_id, asset_id=1,
+            buy_date=buy_date, units=units,
+            buy_price_per_unit=price,
+            buy_amount_inr=units * price,
+        )
+
+    def _sell(self, sell_date, units, amount, lot_id=None):
+        from dataclasses import dataclass as dc
+        @dc
+        class FakeSellWithLot:
+            date: object
+            units: float
+            amount_inr: float
+            lot_id: object = None
+        return FakeSellWithLot(date=sell_date, units=units, amount_inr=amount, lot_id=lot_id)
+
+    def test_specific_lot_match_skips_fifo_order(self):
+        """Sell pinned to lot B should consume B even though A is older."""
+        lots = [
+            self._lot("A", date(2022, 1, 1), 10, 100.0),
+            self._lot("B", date(2023, 1, 1), 10, 200.0),
+        ]
+        sell = self._sell(date(2024, 6, 1), units=5, amount=1200.0, lot_id="B")
+        from app.engine.lot_engine import match_lots
+        matched = match_lots(lots, [sell], stcg_days=730)
+        assert len(matched) == 1
+        assert matched[0]["lot_id"] == "B"
+        assert matched[0]["units_sold"] == 5.0
+
+    def test_no_lot_id_falls_back_to_fifo(self):
+        """Sell with lot_id=None uses FIFO — consumes from A (oldest) first."""
+        lots = [
+            self._lot("A", date(2022, 1, 1), 10, 100.0),
+            self._lot("B", date(2023, 1, 1), 10, 200.0),
+        ]
+        sell = self._sell(date(2024, 6, 1), units=5, amount=600.0, lot_id=None)
+        from app.engine.lot_engine import match_lots
+        matched = match_lots(lots, [sell], stcg_days=730)
+        assert matched[0]["lot_id"] == "A"
+
+    def test_unknown_lot_id_falls_back_to_fifo(self):
+        """Sell with unrecognised lot_id falls back to FIFO, not silent failure."""
+        lots = [self._lot("A", date(2022, 1, 1), 10, 100.0)]
+        sell = self._sell(date(2024, 6, 1), units=5, amount=600.0, lot_id="NONEXISTENT")
+        from app.engine.lot_engine import match_lots
+        matched = match_lots(lots, [sell], stcg_days=730)
+        assert matched[0]["lot_id"] == "A"
+
+    def test_specific_lot_realised_gain_computed_correctly(self):
+        lots = [
+            self._lot("A", date(2022, 1, 1), 10, 100.0),  # cost 1000
+            self._lot("B", date(2023, 1, 1), 10, 200.0),  # cost 2000
+        ]
+        sell = self._sell(date(2024, 6, 1), units=10, amount=3000.0, lot_id="B")
+        from app.engine.lot_engine import match_lots
+        matched = match_lots(lots, [sell], stcg_days=730)
+        # proceeds 3000, cost 2000 → gain 1000
+        assert matched[0]["realised_gain_inr"] == pytest.approx(1000.0)
+
+    def test_specific_lot_is_short_term_flag(self):
+        """Lot bought 6 months ago, stcg_days=730 → is_short_term=True."""
+        lots = [self._lot("A", date(2023, 12, 1), 10, 100.0)]
+        sell = self._sell(date(2024, 6, 1), units=5, amount=600.0, lot_id="A")
+        from app.engine.lot_engine import match_lots
+        matched = match_lots(lots, [sell], stcg_days=730)
+        assert matched[0]["is_short_term"] is True

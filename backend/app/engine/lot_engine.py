@@ -112,6 +112,78 @@ def match_lots_fifo(lots: list, sells: list, stcg_days: int = 365) -> list[dict]
     return matches
 
 
+def match_lots(lots: list, sells: list, stcg_days: int = 365) -> list[dict]:
+    """
+    Match sell events against buy lots.
+
+    - If sell.lot_id is set and found in lots: specific-lot match (consume from that lot only).
+    - If sell.lot_id is None or not found: FIFO fallback (earliest lot first).
+
+    Args:
+        lots:      List of lot-like objects (must have .lot_id, .buy_date, .units, etc.)
+        sells:     List of sell-like objects (must have .date, .units, .amount_inr, .lot_id).
+        stcg_days: Short-term holding threshold in days.
+
+    Returns:
+        Same structure as match_lots_fifo.
+    """
+    import logging
+    _log = logging.getLogger(__name__)
+
+    remaining = {lot.lot_id: lot.units for lot in lots}
+    lot_index = {lot.lot_id: lot for lot in lots}
+    ordered_ids = [lot.lot_id for lot in sorted(lots, key=lambda l: l.buy_date)]
+
+    matches: list[dict] = []
+
+    for sell in sells:
+        sell_lot_id = getattr(sell, "lot_id", None)
+        units_to_sell = sell.units
+        sell_price = sell.amount_inr / sell.units if sell.units > 0 else 0.0
+
+        if sell_lot_id and sell_lot_id in lot_index:
+            # Specific-lot path: consume from exactly this lot
+            consume_ids = [sell_lot_id]
+        else:
+            if sell_lot_id and sell_lot_id not in lot_index:
+                _log.warning(
+                    "match_lots: lot_id %r not found in lots — falling back to FIFO", sell_lot_id
+                )
+            # FIFO fallback
+            consume_ids = ordered_ids
+
+        for lot_id in consume_ids:
+            if units_to_sell <= 0:
+                break
+            avail = remaining.get(lot_id, 0.0)
+            if avail <= 0:
+                continue
+
+            lot = lot_index[lot_id]
+            consumed = min(avail, units_to_sell)
+            remaining[lot_id] = avail - consumed
+            units_to_sell -= consumed
+
+            cost_basis = lot.buy_price_per_unit * consumed
+            proceeds = sell_price * consumed
+            realised_gain = proceeds - cost_basis
+            holding_days = (sell.date - lot.buy_date).days
+
+            matches.append({
+                "lot_id": lot_id,
+                "sell_date": sell.date,
+                "buy_date": lot.buy_date,
+                "units_sold": consumed,
+                "units_remaining": remaining[lot_id],
+                "buy_price_per_unit": lot.buy_price_per_unit,
+                "sell_price_per_unit": sell_price,
+                "realised_gain_inr": realised_gain,
+                "is_short_term": holding_days < stcg_days,
+            })
+
+    return matches
+
+
 # ---------------------------------------------------------------------------
 # compute_lot_unrealised
 # ---------------------------------------------------------------------------

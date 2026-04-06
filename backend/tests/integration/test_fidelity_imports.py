@@ -169,3 +169,128 @@ def test_fidelity_sale_pdf_endpoint_idempotent(client):
     assert first["created_count"] == 2
     assert second["created_count"] == 0
     assert second["skipped_count"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: FidelityPreCommitProcessor lot resolution
+# ---------------------------------------------------------------------------
+
+import pytest
+import hashlib as _hashlib
+from datetime import date as _date
+
+from app.models.asset import AssetType, AssetClass
+from app.models.transaction import TransactionType
+from app.importers.base import ImportResult, ParsedTransaction
+from app.repositories.unit_of_work import UnitOfWork
+from app.services.imports.post_processors.fidelity import FidelityPreCommitProcessor
+
+
+def _seed_asset_and_buy(db, ticker: str, lot_id: str, buy_date, units: float):
+    """Find-or-create a STOCK_US asset and add a BUY transaction with a specific lot_id."""
+    uow = UnitOfWork(db)
+    asset = uow.assets.get_by_identifier(ticker)
+    if asset is None:
+        asset = uow.assets.create(
+            name=ticker,
+            identifier=ticker,
+            asset_type=AssetType.STOCK_US,
+            asset_class=AssetClass.EQUITY,
+            currency="USD",
+            is_active=True,
+        )
+    uow.transactions.create(
+        asset_id=asset.id,
+        txn_id=f"seed-buy-{lot_id}",
+        type=TransactionType.BUY,
+        date=buy_date,
+        units=units,
+        price_per_unit=100.0,
+        forex_rate=83.0,
+        amount_inr=-int(units * 100.0 * 83.0 * 100),
+        charges_inr=0,
+        lot_id=lot_id,
+        notes="seeded",
+    )
+    return asset
+
+
+def _make_sell_txn(ticker, date_sold, date_acquired, units, proceeds_inr, cost_inr, acq_forex=83.0):
+    qty_int = round(units * 10000)
+    raw = f"fidelity_sale|{ticker}|{date_sold.isoformat()}|{date_acquired.isoformat()}|{qty_int}"
+    txn_id = "fidelity_sale_" + _hashlib.sha256(raw.encode()).hexdigest()[:16]
+    return ParsedTransaction(
+        source="fidelity_sale",
+        asset_name=ticker, asset_identifier=ticker,
+        asset_type="STOCK_US", txn_type="SELL",
+        date=date_sold, units=units,
+        amount_inr=proceeds_inr,
+        acquisition_date=date_acquired,
+        acquisition_cost=cost_inr,
+        acquisition_forex_rate=acq_forex,
+        txn_id=txn_id,
+    )
+
+
+class TestFidelityLotResolutionIntegration:
+
+    def test_sell_resolves_to_existing_lot_id(self, db):
+        """PDF SELL for a ticker already in DB gets the correct lot_id."""
+        lot_id = "test-lot-uuid-1"
+        _seed_asset_and_buy(db, "AMZN", lot_id, _date(2023, 1, 15), 50.0)
+
+        sell = _make_sell_txn("AMZN", _date(2024, 3, 1), _date(2023, 1, 15), 10, 1000.0, 800.0)
+        result = ImportResult(source="fidelity_sale", transactions=[sell])
+        processor = FidelityPreCommitProcessor()
+        out = processor.process(result, UnitOfWork(db))
+
+        assert len(out.transactions) == 1
+        assert out.transactions[0].lot_id == lot_id
+        assert out.transactions[0].txn_type == "SELL"
+
+    def test_sell_to_cover_creates_buy_sell_pair(self, db):
+        """When date_acquired == date_sold and no lot found, BUY+SELL pair is created."""
+        # Seed asset with no buy transactions — processor creates synthetic BUY+SELL pair
+        uow = UnitOfWork(db)
+        uow.assets.create(
+            name="MSFT", identifier="MSFT",
+            asset_type=AssetType.STOCK_US, asset_class=AssetClass.EQUITY,
+            currency="USD", is_active=True,
+        )
+        sell = _make_sell_txn("MSFT", _date(2024, 3, 1), _date(2024, 3, 1), 5, 500.0, 450.0)
+        result = ImportResult(source="fidelity_sale", transactions=[sell])
+        processor = FidelityPreCommitProcessor()
+        out = processor.process(result, UnitOfWork(db))
+
+        types = {t.txn_type for t in out.transactions}
+        assert types == {"BUY", "SELL"}
+        buy = next(t for t in out.transactions if t.txn_type == "BUY")
+        sell_out = next(t for t in out.transactions if t.txn_type == "SELL")
+        assert buy.lot_id == sell_out.lot_id
+
+    def test_reprocess_produces_same_partial_txn_ids(self, db):
+        """Running the processor twice on the same sell produces identical txn_ids."""
+        lot_id = "test-lot-uuid-2"
+        _seed_asset_and_buy(db, "AMZN", lot_id, _date(2023, 6, 1), 100.0)
+
+        sell = _make_sell_txn("AMZN", _date(2024, 6, 1), _date(2023, 6, 1), 20, 2000.0, 1600.0)
+        processor = FidelityPreCommitProcessor()
+
+        r1 = processor.process(ImportResult(source="fidelity_sale", transactions=[sell]), UnitOfWork(db))
+        r2 = processor.process(ImportResult(source="fidelity_sale", transactions=[sell]), UnitOfWork(db))
+
+        assert r1.transactions[0].txn_id == r2.transactions[0].txn_id
+
+    def test_split_across_two_same_date_lots(self, db):
+        """36 shares sold, split across two lots of 20 and 16 bought on same date."""
+        _seed_asset_and_buy(db, "AMZN", "lot-a", _date(2023, 3, 15), 20.0)
+        _seed_asset_and_buy(db, "AMZN", "lot-b", _date(2023, 3, 15), 16.0)
+
+        sell = _make_sell_txn("AMZN", _date(2024, 3, 1), _date(2023, 3, 15), 36, 3600.0, 2800.0)
+        result = ImportResult(source="fidelity_sale", transactions=[sell])
+        out = FidelityPreCommitProcessor().process(result, UnitOfWork(db))
+
+        assert len(out.transactions) == 2
+        assert sum(t.units for t in out.transactions) == pytest.approx(36.0)
+        lot_ids = {t.lot_id for t in out.transactions}
+        assert lot_ids == {"lot-a", "lot-b"}

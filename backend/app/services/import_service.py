@@ -119,7 +119,7 @@ class ImportService:
             amount_paise = round(txn.amount_inr * 100)
             charges_paise = round(txn.charges_inr * 100)
 
-            lot_id = str(uuid.uuid4()) if txn.txn_type in LOT_TYPES else None
+            lot_id = txn.lot_id or (str(uuid.uuid4()) if txn.txn_type in LOT_TYPES else None)
 
             txn_repo.create(
                 txn_id=txn.txn_id,

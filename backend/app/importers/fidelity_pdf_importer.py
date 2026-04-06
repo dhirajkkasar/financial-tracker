@@ -2,7 +2,6 @@ import hashlib
 import io
 import logging
 import re
-import uuid
 from datetime import datetime
 
 import pdfplumber
@@ -41,35 +40,55 @@ class FidelityPDFImporter(BaseImporter):
     Extracts rows from the 'Stock sales' section.
     All USD amounts; constructor accepts exchange_rates dict mapping "YYYY-MM" → float (USD/INR).
     Validates exchange_rates completeness via validate() method after parsing.
-    Sale transactions generate both BUY and SELL ParsedTransaction entries.
-    txn_id is SHA-256 of ticker|date_sold|date_acquired|quantity for SELL, 
-    ticker|date_acquired|quantity for BUY — stable across re-imports.
+    Sale transactions generate SELL-only ParsedTransaction entries with acquisition metadata.
+    FidelityPreCommitProcessor resolves specific lot_ids before DB writes.
+    txn_id: SHA-256 of ticker|date_sold|date_acquired|quantity — stable across re-imports.
     """
 
-    def __init__(self, filename: str = "", user_inputs: str | None = None):
-        """Initialize with filename and user_inputs (JSON string of exchange_rates).
-        
+    def __init__(self, filename: str = "", user_inputs: str | None = None, exchange_rates: dict | None = None):
+        """Initialize with filename and either user_inputs (JSON string) or exchange_rates (dict).
+
         Args:
             filename: PDF filename (optional, for logging/tracking)
             user_inputs: JSON string mapping "YYYY-MM" strings to exchange rates (USD/INR).
-                        Will be parsed to dict. Exchange_rates are validated via validate() method.
+                        Parsed to dict. Validated via validate() method.
+            exchange_rates: Pre-parsed dict mapping "YYYY-MM" to float. Takes precedence over user_inputs.
         """
         self.filename = filename
-        self.exchange_rates = ExchangeRateValidationHelper.parse_exchange_rates_json(user_inputs)
+        if exchange_rates is not None:
+            self.exchange_rates = exchange_rates
+        else:
+            self.exchange_rates = ExchangeRateValidationHelper.parse_exchange_rates_json(user_inputs)
 
-    def validate(self, result: ImportResult) -> ValidationResult:
+    def validate(self, result: ImportResult, user_inputs: str | None = None) -> ValidationResult:
         """Post-parse validation: verify exchange_rates completeness.
-        
+
         Args:
             result: ImportResult from parse()
+            user_inputs: Optional JSON string of exchange_rates; if provided, overrides constructor value.
         Returns:
             ValidationResult with errors if exchange_rates are missing for required months
         """
-        return ExchangeRateValidationHelper.validate_exchange_rates(result, self.exchange_rates)
+        if not result.transactions:
+            return ValidationResult(is_valid=True, errors=[], required_inputs={})
+
+        if user_inputs is not None:
+            exchange_rates = ExchangeRateValidationHelper.parse_exchange_rates_json(user_inputs)
+        else:
+            exchange_rates = self.exchange_rates
+
+        if exchange_rates is None:
+            return ValidationResult(
+                is_valid=False,
+                errors=["exchange_rates is required. Provide a JSON string like {\"2025-03\": 86.5}"],
+                required_inputs={},
+            )
+
+        return ExchangeRateValidationHelper.validate_exchange_rates(result, exchange_rates)
 
     @staticmethod
     def extract_required_month_years(file_bytes: bytes) -> list[str]:
-        """Return sorted unique YYYY-MM strings from 'Date sold' column in Stock sales section."""
+        """Return sorted unique YYYY-MM strings from 'Date sold' and 'Date acquired' columns."""
         months: set[str] = set()
         with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
             in_sales = False
@@ -84,11 +103,8 @@ class FidelityPDFImporter(BaseImporter):
                             try:
                                 sale_date = datetime.strptime(m.group(1), "%b-%d-%Y")
                                 buy_date = datetime.strptime(m.group(2), "%b-%d-%Y")
-                                formatted_sale_month = sale_date.strftime("%Y-%m")
-                                formatted_buy_month = buy_date.strftime("%Y-%m")
-                                months.add(formatted_sale_month)
-                                if formatted_buy_month != formatted_sale_month:
-                                    months.add(formatted_buy_month)
+                                months.add(sale_date.strftime("%Y-%m"))
+                                months.add(buy_date.strftime("%Y-%m"))
                             except ValueError:
                                 pass
         return sorted(months)
@@ -114,8 +130,7 @@ class FidelityPDFImporter(BaseImporter):
                         m = _SALE_ROW_RE.search(line)
                         if m:
                             try:
-                                buy_txn, sell_txn = self._parse_match(m, ticker)
-                                result.transactions.append(buy_txn)
+                                sell_txn = self._parse_match(m, ticker)
                                 result.transactions.append(sell_txn)
                             except ValueError as e:
                                 print(f"ERROR parsing row for ticker {ticker}: {e}")
@@ -125,7 +140,7 @@ class FidelityPDFImporter(BaseImporter):
             result.errors.append("Could not find ticker in PDF (expected 'TICK: Company Name' line)")
         return result
 
-    def _parse_match(self, m: re.Match, ticker: str) -> tuple[ParsedTransaction, ParsedTransaction]:
+    def _parse_match(self, m: re.Match, ticker: str) -> ParsedTransaction:
         date_sold_str, date_acq_str = m.group(1), m.group(2)
         quantity_str, cost_str, proceeds_str = m.group(3), m.group(4), m.group(5)
 
@@ -135,49 +150,23 @@ class FidelityPDFImporter(BaseImporter):
         proceeds_usd = float(proceeds_str.replace(",", ""))
         cost_usd = float(cost_str.replace(",", "")) if cost_str else 0.0
 
-        # For backward compatibility: if exchange_rates were provided to constructor, use them
-        # Otherwise, leave amount_inr as placeholder (will be calculated during commit with validated exchange_rates)
         date_sold_month_year = date_sold.strftime("%Y-%m")
         date_acquired_month_year = date_acquired.strftime("%Y-%m")
-        date_sold_forex_rate = self.exchange_rates.get(date_sold_month_year)
-        date_acquired_forex_rate = self.exchange_rates.get(date_acquired_month_year)
-        
-        print(f"DEBUG: Forex rates - Sold Month-Year: {date_sold_month_year} Rate: {date_sold_forex_rate}, Acquired Month-Year: {date_acquired_month_year} Rate: {date_acquired_forex_rate}")
+        date_sold_forex_rate = self.exchange_rates.get(date_sold_month_year) if self.exchange_rates else None
+        date_acquired_forex_rate = self.exchange_rates.get(date_acquired_month_year) if self.exchange_rates else None
+
         if date_sold_forex_rate is None and self.exchange_rates:
-            # Exchange_rates provided but missing this month
             raise ValueError(f"No exchange rate provided for {date_sold_month_year}")
-        
         if date_acquired_forex_rate is None and self.exchange_rates:
-            # Exchange_rates provided but missing this month
             raise ValueError(f"No exchange rate provided for {date_acquired_month_year}")
 
         sale_amount_inr = proceeds_usd * date_sold_forex_rate if date_sold_forex_rate else 0.0
         acquire_amount_inr = cost_usd * date_acquired_forex_rate if date_acquired_forex_rate else 0.0
-        
+
         sale_price_per_unit_usd = round(proceeds_usd / quantity, 4) if quantity else 0.0
-        acquire_price_per_unit_usd = round(cost_usd / quantity, 4) if quantity else 0.0
-        sale_txn_id = self._make_txn_id(ticker, date_sold.isoformat(), date_acquired.isoformat(), quantity, False)
-        acquire_txn_id = self._make_txn_id(ticker, date_acquired.isoformat(), date_acquired.isoformat(), quantity, True)
-        lot_id = uuid.uuid4()
+        sell_txn_id = self._make_txn_id(ticker, date_sold.isoformat(), date_acquired.isoformat(), quantity)
 
-        buy_txn = ParsedTransaction(
-            source="fidelity_sale",
-            asset_name=ticker,
-            asset_identifier=ticker,
-            asset_type="STOCK_US",
-            txn_type="BUY",
-            date=date_acquired,
-            units=quantity,
-            price_per_unit=acquire_price_per_unit_usd,
-            forex_rate=date_acquired_forex_rate,
-            # amount_inr is negative for BUY (cash outflow)
-            amount_inr=-acquire_amount_inr,
-            txn_id=acquire_txn_id,
-            lot_id=str(lot_id),
-            notes=f"Tax cover buy (sold {date_sold.isoformat()})",
-        )
-
-        sell_txn = ParsedTransaction(
+        return ParsedTransaction(
             source="fidelity_sale",
             asset_name=ticker,
             asset_identifier=ticker,
@@ -187,21 +176,17 @@ class FidelityPDFImporter(BaseImporter):
             units=quantity,
             price_per_unit=sale_price_per_unit_usd,
             forex_rate=date_sold_forex_rate,
-            # amount_inr is positive for SELL (cash inflow)
             amount_inr=sale_amount_inr,
-            txn_id=sale_txn_id,
-            lot_id=str(lot_id),
-            notes=f"Tax cover sale (acquired {date_acquired.isoformat()})",
+            txn_id=sell_txn_id,
+            lot_id=None,                                   # FidelityPreCommitProcessor assigns this
+            acquisition_date=date_acquired,
+            acquisition_cost=acquire_amount_inr,
+            acquisition_forex_rate=date_acquired_forex_rate,
+            notes=f"Acquired {date_acquired.isoformat()}",
         )
 
-        return buy_txn, sell_txn
-
     @staticmethod
-    def _make_txn_id(ticker: str, date_sold: str, date_acquired: str, quantity: float, buy_txn: bool) -> str:
+    def _make_txn_id(ticker: str, date_sold: str, date_acquired: str, quantity: float) -> str:
         q_int = round(quantity * 10000)
-        if buy_txn:
-            raw = f"fidelity_buy|{ticker}|{date_acquired}|{q_int}"
-            return "fidelity_buy_" + hashlib.sha256(raw.encode()).hexdigest()[:16]
         raw = f"fidelity_sale|{ticker}|{date_sold}|{date_acquired}|{q_int}"
         return "fidelity_sale_" + hashlib.sha256(raw.encode()).hexdigest()[:16]
-

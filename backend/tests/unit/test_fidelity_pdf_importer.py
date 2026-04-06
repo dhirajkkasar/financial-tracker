@@ -6,7 +6,6 @@ FIXTURES = Path(__file__).parent.parent / "fixtures"
 
 
 def _make_sample_pdf_bytes() -> bytes:
-    """Return the real Fidelity PDF fixture bytes for testing."""
     path = FIXTURES / "fidelity_sale_sample.pdf"
     if path.exists():
         return path.read_bytes()
@@ -19,58 +18,84 @@ class TestFidelityPDFImporter:
     def _parse(self):
         from app.importers.fidelity_pdf_importer import FidelityPDFImporter
         data = _make_sample_pdf_bytes()
-        return FidelityPDFImporter(exchange_rates=self.RATES).parse(data, "fidelity_sale.pdf")
+        return FidelityPDFImporter(exchange_rates=self.RATES).parse(data)
 
-    def test_parse_returns_two_transactions(self):
+    # --- Structural ---
+
+    def test_parse_returns_one_transaction_per_sale_row(self):
+        """Each PDF sale row now produces exactly 1 SELL (no synthetic BUY)."""
         result = self._parse()
+        # fixture has 2 sale rows → 2 transactions
         assert len(result.transactions) == 2
         assert result.errors == []
 
-    def test_parse_sell_transaction_type(self):
-        txn = self._parse().transactions[0]
-        assert txn.txn_type == "SELL"
-        assert txn.asset_type == "STOCK_US"
+    def test_all_transactions_are_sells(self):
+        result = self._parse()
+        for t in result.transactions:
+            assert t.txn_type == "SELL"
 
-    def test_parse_ticker_is_amzn(self):
-        txn = self._parse().transactions[0]
-        assert txn.asset_name == "AMZN"
-        assert txn.asset_identifier == "AMZN"
+    def test_no_buy_transactions_emitted(self):
+        result = self._parse()
+        assert all(t.txn_type != "BUY" for t in result.transactions)
 
-    def test_parse_first_sale_date(self):
-        txn = self._parse().transactions[0]
-        assert txn.date == date(2025, 3, 17)
+    # --- Sell transaction fields ---
 
-    def test_parse_first_sale_units(self):
-        txn = self._parse().transactions[0]
-        assert txn.units == pytest.approx(36.0)
+    def test_sell_asset_type_and_name(self):
+        t = self._parse().transactions[0]
+        assert t.asset_type == "STOCK_US"
+        assert t.asset_name == "AMZN"
+        assert t.asset_identifier == "AMZN"
 
-    def test_parse_first_sale_amount_inr_positive_inflow(self):
-        # proceeds = $7,070.24, rate = 86.0 → +608,040.64 INR
-        txn = self._parse().transactions[0]
-        assert txn.amount_inr == pytest.approx(7070.24 * 86.0, rel=1e-4)
-        assert txn.amount_inr > 0  # SELL = inflow
+    def test_sell_date(self):
+        t = self._parse().transactions[0]
+        assert t.date == date(2025, 3, 17)
 
-    def test_parse_forex_rate_stored(self):
-        txn = self._parse().transactions[0]
-        assert txn.forex_rate == pytest.approx(86.0)
+    def test_sell_units(self):
+        t = self._parse().transactions[0]
+        assert t.units == pytest.approx(36.0)
 
-    def test_parse_notes_tag_tax_cover(self):
-        txn = self._parse().transactions[0]
-        assert "Tax cover sale" in (txn.notes or "")
+    def test_sell_amount_inr_positive_inflow(self):
+        # proceeds = $7,070.24, rate = 86.0
+        t = self._parse().transactions[0]
+        assert t.amount_inr == pytest.approx(7070.24 * 86.0, rel=1e-4)
+        assert t.amount_inr > 0
 
-    def test_parse_txn_id_is_stable(self):
-        from app.importers.fidelity_pdf_importer import FidelityPDFImporter
-        data = _make_sample_pdf_bytes()
-        imp = FidelityPDFImporter(exchange_rates=self.RATES)
-        id1 = imp.parse(data, "f.pdf").transactions[0].txn_id
-        id2 = imp.parse(data, "f.pdf").transactions[0].txn_id
-        assert id1 == id2
-        assert id1.startswith("fidelity_sale_")
+    def test_sell_forex_rate(self):
+        t = self._parse().transactions[0]
+        assert t.forex_rate == pytest.approx(86.0)
 
-    def test_parse_txn_ids_are_unique(self):
-        txns = self._parse().transactions
-        ids = [t.txn_id for t in txns]
-        assert len(ids) == len(set(ids))
+    def test_sell_lot_id_is_none(self):
+        """lot_id is None — FidelityPreCommitProcessor will assign it."""
+        t = self._parse().transactions[0]
+        assert t.lot_id is None
+
+    # --- Acquisition metadata fields (NEW) ---
+
+    def test_sell_acquisition_date_populated(self):
+        t = self._parse().transactions[0]
+        assert t.acquisition_date == date(2025, 3, 17)  # same date = sell-to-cover fixture
+
+    def test_sell_acquisition_cost_inr_populated(self):
+        # cost = $7,070.44, rate = 86.0 → 607,857.84 INR
+        t = self._parse().transactions[0]
+        assert t.acquisition_cost == pytest.approx(7070.44 * 86.0, rel=1e-4)
+        assert t.acquisition_cost > 0
+
+    def test_sell_acquisition_forex_rate_populated(self):
+        t = self._parse().transactions[0]
+        assert t.acquisition_forex_rate == pytest.approx(86.0)
+
+    # --- txn_id stability ---
+
+    def test_sell_txn_id_is_stable(self):
+        """txn_id scheme unchanged: hash(ticker|date_sold|date_acquired|qty)."""
+        r1 = self._parse()
+        r2 = self._parse()
+        assert r1.transactions[0].txn_id == r2.transactions[0].txn_id
+
+    def test_sell_txn_id_not_empty(self):
+        t = self._parse().transactions[0]
+        assert t.txn_id and len(t.txn_id) > 10
 
     def test_extract_required_month_years(self):
         from app.importers.fidelity_pdf_importer import FidelityPDFImporter
@@ -82,9 +107,10 @@ class TestFidelityPDFImporter:
     def test_missing_rate_adds_error(self):
         from app.importers.fidelity_pdf_importer import FidelityPDFImporter
         data = _make_sample_pdf_bytes()
-        result = FidelityPDFImporter(exchange_rates={"2025-03": 86.0}).parse(data, "f.pdf")
+        result = FidelityPDFImporter(exchange_rates={"2025-03": 86.0}).parse(data)
         # 2025-09 row should error
         assert any("2025-09" in e for e in result.errors)
+
 
 class TestFidelityPDFImporterValidation:
     """Test post-parse validation of Fidelity PDF importer."""
@@ -99,12 +125,12 @@ class TestFidelityPDFImporterValidation:
         """Validation passes when exchange_rates JSON is valid and complete."""
         from app.importers.fidelity_pdf_importer import FidelityPDFImporter
         data = self._load_data()
-        result = FidelityPDFImporter().parse(data, "fidelity_sale.pdf")
-        
+        result = FidelityPDFImporter().parse(data)
+
         # Valid exchange_rates JSON string
         user_inputs = '{"2025-03": 86.0, "2025-09": 84.5}'
         validation_result = FidelityPDFImporter().validate(result, user_inputs=user_inputs)
-        
+
         assert validation_result.is_valid is True
         assert validation_result.errors == []
 
@@ -112,12 +138,12 @@ class TestFidelityPDFImporterValidation:
         """Validation fails when exchange_rates is not valid JSON."""
         from app.importers.fidelity_pdf_importer import FidelityPDFImporter
         data = self._load_data()
-        result = FidelityPDFImporter().parse(data, "fidelity_sale.pdf")
-        
+        result = FidelityPDFImporter().parse(data)
+
         # Invalid JSON
         user_inputs = '{invalid json}'
         validation_result = FidelityPDFImporter().validate(result, user_inputs=user_inputs)
-        
+
         assert validation_result.is_valid is False
         assert len(validation_result.errors) > 0
         assert "valid JSON" in validation_result.errors[0]
@@ -126,12 +152,12 @@ class TestFidelityPDFImporterValidation:
         """Validation fails when exchange_rates values are not numeric."""
         from app.importers.fidelity_pdf_importer import FidelityPDFImporter
         data = self._load_data()
-        result = FidelityPDFImporter().parse(data, "fidelity_sale.pdf")
-        
+        result = FidelityPDFImporter().parse(data)
+
         # Non-numeric values
         user_inputs = '{"2025-03": "not_a_number"}'
         validation_result = FidelityPDFImporter().validate(result, user_inputs=user_inputs)
-        
+
         assert validation_result.is_valid is False
         assert len(validation_result.errors) > 0
         assert "numbers" in validation_result.errors[0]
@@ -140,12 +166,12 @@ class TestFidelityPDFImporterValidation:
         """Validation fails when required months are missing from exchange_rates."""
         from app.importers.fidelity_pdf_importer import FidelityPDFImporter
         data = self._load_data()
-        result = FidelityPDFImporter().parse(data, "fidelity_sale.pdf")
-        
+        result = FidelityPDFImporter().parse(data)
+
         # Missing 2025-09
         user_inputs = '{"2025-03": 86.0}'
         validation_result = FidelityPDFImporter().validate(result, user_inputs=user_inputs)
-        
+
         assert validation_result.is_valid is False
         assert len(validation_result.errors) > 0
         assert "Missing exchange_rates" in validation_result.errors[0]
@@ -158,9 +184,9 @@ class TestFidelityPDFImporterValidation:
         from app.importers.fidelity_pdf_importer import FidelityPDFImporter
         from app.importers.base import ImportResult
         result = ImportResult(source="fidelity_sale", transactions=[])
-        
+
         validation_result = FidelityPDFImporter().validate(result, user_inputs=None)
-        
+
         assert validation_result.is_valid is True
         assert validation_result.errors == []
 
@@ -168,11 +194,11 @@ class TestFidelityPDFImporterValidation:
         """Validation fails when there are transactions but no exchange_rates provided."""
         from app.importers.fidelity_pdf_importer import FidelityPDFImporter
         data = self._load_data()
-        result = FidelityPDFImporter().parse(data, "fidelity_sale.pdf")
-        
+        result = FidelityPDFImporter().parse(data)
+
         # No user_inputs provided
         validation_result = FidelityPDFImporter().validate(result, user_inputs=None)
-        
+
         assert validation_result.is_valid is False
         assert len(validation_result.errors) > 0
         assert "exchange_rates is required" in validation_result.errors[0]

@@ -23,6 +23,7 @@ from app.services.imports.post_processors.stock import StockPostProcessor
 from app.services.imports.post_processors.mf import MFPostProcessor
 from app.services.imports.post_processors.ppf import PPFPostProcessor
 from app.services.imports.post_processors.epf import EPFPostProcessor
+from app.services.imports.post_processors.fidelity import FidelityPreCommitProcessor
 from app.services.imports.preview_store import PreviewStore
 
 # ---------------------------------------------------------------------------
@@ -59,6 +60,7 @@ def get_import_orchestrator(db: Session = Depends(get_db)) -> ImportOrchestrator
         pipeline=pipeline,
         preview_store=_preview_store,
         post_processors=[StockPostProcessor(), MFPostProcessor(), PPFPostProcessor(), EPFPostProcessor()],
+        pre_commit_processors=[FidelityPreCommitProcessor()],
         event_bus=_event_bus,
     )
 

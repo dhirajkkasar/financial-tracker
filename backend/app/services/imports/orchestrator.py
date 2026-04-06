@@ -52,12 +52,16 @@ class ImportOrchestrator:
         preview_store: PreviewStore,
         post_processors: list,
         event_bus: IEventBus,
+        pre_commit_processors: list | None = None,  # optional for backwards compat
     ):
         self._uow_factory = uow_factory
         self._pipeline = pipeline
         self._store = preview_store
         self._processors: dict[str, IPostProcessor] = {
             at: p for p in post_processors for at in p.asset_types
+        }
+        self._pre_commit_processors: dict[str, object] = {
+            p.source: p for p in (pre_commit_processors or [])
         }
         self._bus = event_bus
 
@@ -113,6 +117,11 @@ class ImportOrchestrator:
         assets_created: dict[int, Asset] = {}
 
         with self._uow_factory() as uow:
+            # Run pre-commit processor (e.g. Fidelity lot resolution) before any DB writes
+            pre_processor = self._pre_commit_processors.get(result.source)
+            if pre_processor:
+                result = pre_processor.process(result, uow)
+
             for parsed_txn in result.transactions:
                 try:
                     # Find or create the asset

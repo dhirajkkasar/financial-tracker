@@ -42,6 +42,10 @@ class ParsedTransaction:
     scheme_category: Optional[str] = None
     asset_class: Optional[str] = None     # e.g. "EQUITY", "DEBT" — overrides ASSET_CLASS_MAP if set
     forex_rate: Optional[float] = None    # USD/INR rate used for conversion
+    # Fidelity PDF acquisition metadata — used by FidelityPreCommitProcessor
+    acquisition_date: Optional[date] = None        # date_acquired from Fidelity PDF sale row
+    acquisition_cost: Optional[float] = None       # cost basis in INR (cost_usd * acquisition_forex_rate)
+    acquisition_forex_rate: Optional[float] = None # USD/INR rate at acquisition date
 
 
 @dataclass

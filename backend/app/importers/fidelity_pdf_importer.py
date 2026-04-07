@@ -45,20 +45,17 @@ class FidelityPDFImporter(BaseImporter):
     txn_id: SHA-256 of ticker|date_sold|date_acquired|quantity — stable across re-imports.
     """
 
-    def __init__(self, filename: str = "", user_inputs: str | None = None, exchange_rates: dict | None = None):
-        """Initialize with filename and either user_inputs (JSON string) or exchange_rates (dict).
+    def __init__(self, filename: str = "", user_inputs: str | None = None):
+        """Initialize with filename and user_inputs (JSON string of exchange_rates).
 
         Args:
             filename: PDF filename (optional, for logging/tracking)
             user_inputs: JSON string mapping "YYYY-MM" strings to exchange rates (USD/INR).
                         Parsed to dict. Validated via validate() method.
-            exchange_rates: Pre-parsed dict mapping "YYYY-MM" to float. Takes precedence over user_inputs.
         """
         self.filename = filename
-        if exchange_rates is not None:
-            self.exchange_rates = exchange_rates
-        else:
-            self.exchange_rates = ExchangeRateValidationHelper.parse_exchange_rates_json(user_inputs)
+        self._user_inputs = user_inputs
+        self.exchange_rates = ExchangeRateValidationHelper.parse_exchange_rates_json(user_inputs)
 
     def validate(self, result: ImportResult, user_inputs: str | None = None) -> ValidationResult:
         """Post-parse validation: verify exchange_rates completeness.
@@ -69,11 +66,20 @@ class FidelityPDFImporter(BaseImporter):
         Returns:
             ValidationResult with errors if exchange_rates are missing for required months
         """
+        if result.errors:
+            return ValidationResult(is_valid=False, errors=result.errors, required_inputs={})
+
         if not result.transactions:
             return ValidationResult(is_valid=True, errors=[], required_inputs={})
 
         if user_inputs is not None:
             exchange_rates = ExchangeRateValidationHelper.parse_exchange_rates_json(user_inputs)
+            if exchange_rates is None:
+                return ValidationResult(
+                    is_valid=False,
+                    errors=['exchange_rates must be valid JSON, e.g. {"2025-03": 86.5}'],
+                    required_inputs={},
+                )
         else:
             exchange_rates = self.exchange_rates
 

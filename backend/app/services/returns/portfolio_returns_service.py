@@ -8,7 +8,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.engine.allocation import compute_allocation, find_top_gainers
-from app.engine.lot_engine import match_lots_fifo
+from app.engine.lot_engine import match_lots
 from app.engine.returns import compute_xirr, compute_absolute_return
 from app.middleware.error_handler import NotFoundError
 from app.repositories.unit_of_work import UnitOfWork, IUnitOfWorkFactory
@@ -111,10 +111,11 @@ class PortfolioReturnsService:
                             date=t.date,
                             units=t.units,
                             amount_inr=abs(t.amount_inr / 100.0),
+                            lot_id=t.lot_id or str(t.id)
                         ))
                 
                 if lots_objs and sells_objs:
-                    matched_sells = match_lots_fifo(lots_objs, sells_objs, stcg_days=strategy.stcg_days)
+                    matched_sells = match_lots(lots_objs, sells_objs, stcg_days=strategy.stcg_days)
 
             return {
                 "open_lots": lot_dicts,

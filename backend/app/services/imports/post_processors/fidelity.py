@@ -41,32 +41,43 @@ class FidelityPreCommitProcessor:
         return result
 
     def _resolve_sell(self, sell: ParsedTransaction, uow) -> list[ParsedTransaction]:
-        # Step 1: find asset in DB
-        asset = uow.assets.get_by_identifier(sell.asset_identifier)
-        if asset is None:
-            logger.warning(
-                "FidelityPreCommitProcessor: no asset found for %r — passing SELL through",
-                sell.asset_identifier,
+        is_stc = sell.acquisition_date == sell.date
+        
+        # Step 1: sell-to-cover or orphaned
+        if is_stc:
+            logger.info(
+                "FidelityPreCommitProcessor: resolving sell-to-cover for %r acquired %s",
+                sell.asset_identifier, sell.acquisition_date,
             )
-            return [sell]
+            
+            return self._create_buy_sell_pair(is_stc, sell)
+        else:
+            # Step 2: find asset in DB
+            asset = uow.assets.get_by_identifier(sell.asset_identifier)
+            if asset is None:
+                logger.warning(
+                    "FidelityPreCommitProcessor: no asset found for %r — passing SELL through",
+                    sell.asset_identifier,
+                )
+                return [sell]
 
-        # Step 2: find same-date BUY/VEST lots ordered by id (FIFO among same date)
-        all_txns = uow.transactions.list_by_asset(asset.id)
-        same_date_lots = sorted(
-            [
-                t for t in all_txns
-                if t.date == sell.acquisition_date
-                and self._txn_type_str(t) in _LOT_TYPES
-                and t.lot_id
-            ],
-            key=lambda t: t.id,
-        )
+            # Step 3: find same-date BUY/VEST lots ordered by id (FIFO among same date)
+            all_txns = uow.transactions.list_by_asset(asset.id)
+            same_date_lots = sorted(
+                [
+                    t for t in all_txns
+                    if t.date == sell.acquisition_date
+                    and self._txn_type_str(t) in _LOT_TYPES
+                    and t.lot_id
+                ],
+                key=lambda t: t.id,
+            )
 
-        if same_date_lots:
-            return self._split_sell(sell, same_date_lots)
+            if same_date_lots:
+                return self._split_sell(sell, same_date_lots)
 
-        # Step 3: no lots found — sell-to-cover or orphaned
-        return self._create_buy_sell_pair(sell)
+            # No lots found — orphaned sale, create synthetic BUY + SELL
+            return self._create_buy_sell_pair(is_stc, sell)
 
     def _split_sell(self, sell: ParsedTransaction, lots: list) -> list[ParsedTransaction]:
         """FIFO split of sell across same-date lots."""
@@ -99,10 +110,9 @@ class FidelityPreCommitProcessor:
 
         return partials
 
-    def _create_buy_sell_pair(self, sell: ParsedTransaction) -> list[ParsedTransaction]:
+    def _create_buy_sell_pair(self, is_stc: bool, sell: ParsedTransaction) -> list[ParsedTransaction]:
         """Create a synthetic BUY + the SELL, sharing a fresh lot_id."""
         new_lot_id = str(uuid.uuid4())
-        is_stc = sell.acquisition_date == sell.date
         prefix = "fidelity_stc_buy" if is_stc else "fidelity_orphan_buy"
         qty_int = round((sell.units or 0) * 10000)
         raw = f"{prefix}|{sell.asset_identifier}|{sell.acquisition_date.isoformat()}|{qty_int}"

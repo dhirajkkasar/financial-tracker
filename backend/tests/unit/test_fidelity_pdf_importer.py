@@ -13,12 +13,12 @@ def _make_sample_pdf_bytes() -> bytes:
 
 
 class TestFidelityPDFImporter:
-    RATES = {"2025-03": 86.0, "2025-09": 84.5}
+    RATES_JSON = '{"2025-03": 86.0, "2025-09": 84.5}'
 
     def _parse(self):
         from app.importers.fidelity_pdf_importer import FidelityPDFImporter
         data = _make_sample_pdf_bytes()
-        return FidelityPDFImporter(exchange_rates=self.RATES).parse(data)
+        return FidelityPDFImporter(user_inputs=self.RATES_JSON).parse(data)
 
     # --- Structural ---
 
@@ -107,7 +107,7 @@ class TestFidelityPDFImporter:
     def test_missing_rate_adds_error(self):
         from app.importers.fidelity_pdf_importer import FidelityPDFImporter
         data = _make_sample_pdf_bytes()
-        result = FidelityPDFImporter(exchange_rates={"2025-03": 86.0}).parse(data)
+        result = FidelityPDFImporter(user_inputs='{"2025-03": 86.0}').parse(data)
         # 2025-09 row should error
         assert any("2025-09" in e for e in result.errors)
 

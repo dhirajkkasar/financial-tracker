@@ -14,6 +14,7 @@ from app.engine.lot_engine import (
     compute_gains_summary,
     compute_lot_unrealised,
     GRANDFATHERING_CUTOFF,
+    match_lots_fifo,
 )
 from app.engine.lot_helper import LotHelper, LOT_TYPES, SELL_TYPES, _Lot, _Sell
 from app.engine.returns import UNIT_ADD_TYPES, UNIT_SUB_TYPES, EXCLUDED_TYPES, compute_cagr

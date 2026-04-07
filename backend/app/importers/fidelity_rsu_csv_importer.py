@@ -32,24 +32,44 @@ class FidelityRSUImporter(BaseImporter):
     """
 
     def __init__(self, filename: str = "", user_inputs: str | None = None):
-        """Initialize with filename and user_inputs (JSON string of exchange_rates). 
-        
+        """Initialize with filename and user_inputs (JSON string of exchange_rates).
+
         Args:
             filename: CSV filename to extract ticker from (e.g., NASDAQ_AMZN.csv)
             user_inputs: JSON string mapping "YYYY-MM" strings to exchange rates (USD/INR).
                         Will be parsed to dict. Exchange_rates are validated via validate() method.
         """
         self.filename = filename
+        self._user_inputs = user_inputs
         self.exchange_rates = ExchangeRateValidationHelper.parse_exchange_rates_json(user_inputs)
 
     def validate(self, result: ImportResult) -> ValidationResult:
         """Post-parse validation: verify exchange_rates completeness.
-        
+
         Args:
             result: ImportResult from parse()
         Returns:
             ValidationResult with errors if exchange_rates are missing for required months
         """
+        if result.errors:
+            return ValidationResult(is_valid=False, errors=result.errors, required_inputs={})
+
+        if not result.transactions:
+            return ValidationResult(is_valid=True, errors=[], required_inputs={})
+
+        if self.exchange_rates is None:
+            if self._user_inputs is not None:
+                return ValidationResult(
+                    is_valid=False,
+                    errors=['exchange_rates must be valid JSON, e.g. {"2025-03": 86.5}'],
+                    required_inputs={},
+                )
+            return ValidationResult(
+                is_valid=False,
+                errors=["exchange_rates is required. Provide a JSON string like {\"2025-03\": 86.5}"],
+                required_inputs={},
+            )
+
         return ExchangeRateValidationHelper.validate_exchange_rates(result, self.exchange_rates)
 
     @staticmethod
@@ -108,10 +128,8 @@ class FidelityRSUImporter(BaseImporter):
         cost_basis_total = float(row["Cost basis"].replace(",", "").removeprefix("$"))
         cost_basis_per_share = float(row["Cost basis/share"].replace(",", "").removeprefix("$"))
 
-        # For backward compatibility: if exchange_rates were provided to constructor, use them
-        # Otherwise, leave amount_inr as placeholder (will be calculated during commit with validated exchange_rates)
         month_year = vest_date.strftime("%Y-%m")
-        forex_rate = self.exchange_rates.get(month_year)
+        forex_rate = self.exchange_rates.get(month_year) if self.exchange_rates else None
         if forex_rate is None and self.exchange_rates:
             # Exchange_rates provided but missing this month
             raise ValueError(f"No exchange rate provided for {month_year}")

@@ -3,8 +3,8 @@ from datetime import date
 from pathlib import Path
 
 import app.services.tax.strategies  # noqa: F401 — triggers @register_tax_strategy decorators
-from app.engine.lot_engine import _STCG_DAYS, EQUITY_STCG_DAYS
-from app.engine.lot_engine import match_lots_fifo, compute_lot_unrealised
+from app.engine.lot_engine import _STCG_DAYS, EQUITY_STCG_DAYS, match_lots_fifo
+from app.engine.lot_engine import match_lots, compute_lot_unrealised
 from app.engine.tax_engine import (
     TaxRuleResolver,
     parse_fy,
@@ -192,7 +192,14 @@ class TaxService:
                     buy_amount_inr=0.0 if is_bonus else abs(t.amount_inr / 100.0),
                 ))
             elif ttype in SELL_TYPES and t.units:
-                sells.append(_Sell(date=t.date, units=t.units, amount_inr=abs(t.amount_inr / 100.0)))
+                sells.append(
+                    _Sell(
+                        date=t.date,
+                        units=t.units,
+                        amount_inr=abs(t.amount_inr / 100.0),
+                        lot_id=t.lot_id or str(t.id),
+                    )
+                )
 
         if self._resolver is not None:
             fy_label = self._current_fy_label()
@@ -204,7 +211,7 @@ class TaxService:
             stcg_days = rule.stcg_days
         else:
             stcg_days = _STCG_DAYS.get(asset_type, EQUITY_STCG_DAYS)
-        matched = match_lots_fifo(lots, sells, stcg_days=stcg_days)
+        matched = match_lots(lots, sells, stcg_days=stcg_days)
 
         sold_units: dict[str, float] = {}
         for m in matched:

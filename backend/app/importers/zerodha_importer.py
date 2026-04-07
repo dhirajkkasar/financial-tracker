@@ -16,6 +16,9 @@ class ZerodhaImporter(BaseImporter):
     format = "csv"
     """Parses Zerodha tradebook CSV files."""
 
+    def __init__(self, **_kwargs):
+        pass
+
     # Gold ETFs traded on NSE — classified as GOLD (price via NSE ticker, shown in Gold tab)
     _GOLD_ETF_SYMBOLS: frozenset[str] = frozenset({
         "GOLDBEES", "GOLDSHARE", "IPGETF", "PGULD", "GOLDCASE",

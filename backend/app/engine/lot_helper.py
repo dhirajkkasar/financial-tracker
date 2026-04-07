@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Optional
 
-from app.engine.lot_engine import match_lots_fifo
+from app.engine.lot_engine import match_lots, match_lots_fifo
 
 
 @dataclass
@@ -78,4 +78,4 @@ class LotHelper:
 
     def match(self, lots: list[_Lot], sells: list[_Sell]) -> list[dict]:
         """Run FIFO matching; return raw match dicts from match_lots_fifo."""
-        return match_lots_fifo(lots, sells, stcg_days=self.stcg_days)
+        return match_lots(lots, sells, stcg_days=self.stcg_days)

@@ -19,6 +19,9 @@ class NPSImporter(BaseImporter):
     format = "csv"
     """Parses NPS transaction statement CSV (multi-section format)."""
 
+    def __init__(self, **_kwargs):
+        pass
+
     def parse(self, file_bytes: bytes, filename: str = "") -> ImportResult:
         result = ImportResult(source="nps")
         try:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from app.engine.lot_engine import match_lots_fifo
+from app.engine.lot_engine import match_lots, match_lots_fifo
 from app.engine.lot_helper import LotHelper
 from app.engine.tax_engine import TaxRuleResolver
 from app.repositories.unit_of_work import UnitOfWork
@@ -64,7 +64,7 @@ class FifoTaxGainsStrategy(TaxGainsStrategy):
         if not lots or not sells:
             return self._zero_result(asset)
 
-        matched = match_lots_fifo(lots, sells, stcg_days=default_rule.stcg_days)
+        matched = match_lots(lots, sells, stcg_days=default_rule.stcg_days)
 
         st_gain, lt_gain = 0.0, 0.0
         st_tax, lt_tax = 0.0, 0.0

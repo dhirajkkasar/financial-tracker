@@ -34,20 +34,20 @@ def upgrade() -> None:
     op.create_index(op.f('ix_members_id'), 'members', ['id'], unique=False)
 
     # 2. Add member_id columns (nullable initially for backfill)
+    # Note: SQLite does not support ADD CONSTRAINT / CREATE FOREIGN KEY after table creation.
+    # FK enforcement is handled at the SQLAlchemy model level.
     op.add_column('assets', sa.Column('member_id', sa.Integer(), nullable=True))
     op.create_index(op.f('ix_assets_member_id'), 'assets', ['member_id'], unique=False)
-    op.create_foreign_key(None, 'assets', 'members', ['member_id'], ['id'])
 
     op.add_column('important_data', sa.Column('member_id', sa.Integer(), nullable=True))
     op.create_index(op.f('ix_important_data_member_id'), 'important_data', ['member_id'], unique=False)
-    op.create_foreign_key(None, 'important_data', 'members', ['member_id'], ['id'])
 
     op.add_column('portfolio_snapshots', sa.Column('member_id', sa.Integer(), nullable=True))
     op.drop_index(op.f('ix_portfolio_snapshots_date'), table_name='portfolio_snapshots')
     op.create_index(op.f('ix_portfolio_snapshots_date'), 'portfolio_snapshots', ['date'], unique=False)
     op.create_index(op.f('ix_portfolio_snapshots_member_id'), 'portfolio_snapshots', ['member_id'], unique=False)
-    op.create_unique_constraint('uq_snapshot_member_date', 'portfolio_snapshots', ['member_id', 'date'])
-    op.create_foreign_key(None, 'portfolio_snapshots', 'members', ['member_id'], ['id'])
+    with op.batch_alter_table('portfolio_snapshots') as batch_op:
+        batch_op.create_unique_constraint('uq_snapshot_member_date', ['member_id', 'date'])
 
     # 3. Seed default member from env vars and backfill existing rows
     pan = os.environ.get("DEFAULT_MEMBER_PAN")
@@ -72,16 +72,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_constraint(None, 'portfolio_snapshots', type_='foreignkey')
-    op.drop_constraint('uq_snapshot_member_date', 'portfolio_snapshots', type_='unique')
+    with op.batch_alter_table('portfolio_snapshots') as batch_op:
+        batch_op.drop_constraint('uq_snapshot_member_date', type_='unique')
     op.drop_index(op.f('ix_portfolio_snapshots_member_id'), table_name='portfolio_snapshots')
     op.drop_index(op.f('ix_portfolio_snapshots_date'), table_name='portfolio_snapshots')
-    op.create_index(op.f('ix_portfolio_snapshots_date'), 'portfolio_snapshots', ['date'], unique=1)
+    op.create_index(op.f('ix_portfolio_snapshots_date'), 'portfolio_snapshots', ['date'], unique=True)
     op.drop_column('portfolio_snapshots', 'member_id')
-    op.drop_constraint(None, 'important_data', type_='foreignkey')
     op.drop_index(op.f('ix_important_data_member_id'), table_name='important_data')
     op.drop_column('important_data', 'member_id')
-    op.drop_constraint(None, 'assets', type_='foreignkey')
     op.drop_index(op.f('ix_assets_member_id'), table_name='assets')
     op.drop_column('assets', 'member_id')
     op.drop_index(op.f('ix_members_id'), table_name='members')

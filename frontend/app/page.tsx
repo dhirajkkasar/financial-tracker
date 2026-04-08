@@ -15,6 +15,7 @@ import { formatXIRR, formatPct } from '@/lib/formatters'
 import { usePrivateMoney } from '@/hooks/usePrivateMoney'
 import { ASSET_TYPE_LABELS } from '@/constants'
 import Link from 'next/link'
+import MemberSelector from '@/components/ui/MemberSelector'
 
 const card = 'rounded-xl border border-border bg-card p-5'
 const cardStyle = { boxShadow: 'var(--shadow-card)' }
@@ -90,6 +91,7 @@ export default function OverviewPage() {
 
   return (
     <div className="space-y-8">
+      <MemberSelector />
       <h1 className="text-2xl text-primary">Overview</h1>
 
       {/* Portfolio stat cards */}

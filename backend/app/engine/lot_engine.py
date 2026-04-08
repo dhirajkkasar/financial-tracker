@@ -130,16 +130,11 @@ def match_lots(lots: list, sells: list, stcg_days: int = 365) -> list[dict]:
     Returns:
         Same structure as match_lots_fifo.
     """
-    import inspect
-    print("caller is", inspect.currentframe().f_back.f_code.co_name)  # for debugging to confirm which function is in use
-    print("match_lots: received", len(lots), "lots and", len(sells), "sells")
     remaining = {lot.lot_id: lot.units for lot in lots}
     lot_index = {lot.lot_id: lot for lot in lots}
     ordered_ids = [lot.lot_id for lot in sorted(lots, key=lambda l: l.buy_date)]
 
     matches: list[dict] = []
-
-    print("sells", len(sells))
 
     for sell in sells:
         sell_lot_id = getattr(sell, "lot_id", None)
@@ -149,17 +144,13 @@ def match_lots(lots: list, sells: list, stcg_days: int = 365) -> list[dict]:
         consume_ids: list[str] = []
         if sell_lot_id and sell_lot_id in lot_index:
             # Specific-lot path: consume from exactly this lot
-            _log.info(
-                "match_lots: matching sell on %s against specified lot_id %r",
-                sell.date, sell_lot_id,)
             consume_ids = [sell_lot_id]
         else:
-            if sell_lot_id and sell_lot_id not in lot_index:
-                _log.warning(
-                    "match_lots: lot_id %r not found in lots — falling back to FIFO", sell_lot_id
-                )
+            # if sell_lot_id and sell_lot_id not in lot_index:
+            #     _log.warning(
+            #         "match_lots: lot_id %r not found in lots — falling back to FIFO", sell_lot_id
+            #     )
                 # FIFO fallback
-            _log.info("fifo fallback")
             consume_ids = ordered_ids
 
         for lot_id in consume_ids:

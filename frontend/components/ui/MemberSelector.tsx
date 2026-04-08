@@ -24,7 +24,7 @@ export default function MemberSelector() {
 
   const allSelected = selectedMemberIds.length === members.length
   const label = allSelected
-    ? 'All Members'
+    ? 'All'
     : selectedMemberIds.length === 1
       ? (members.find((m) => m.id === selectedMemberIds[0])?.name ?? 'Select')
       : `${selectedMemberIds.length} Members`
@@ -36,6 +36,8 @@ export default function MemberSelector() {
     setSelectedMemberIds(next.length === 0 ? members.map((m) => m.id) : next)
   }
 
+  if (members.length === 1) return null
+
   return (
     <div ref={ref} className="relative">
       <button
@@ -45,7 +47,7 @@ export default function MemberSelector() {
         {label} ▾
       </button>
       {open && (
-        <div className="absolute right-0 mt-1 w-56 rounded-md border border-border bg-bg-page shadow-lg z-50">
+        <div className="absolute left-0 mt-1 w-56 rounded-md border border-border bg-bg-page shadow-lg z-50">
           {members.map((m) => (
             <label
               key={m.id}

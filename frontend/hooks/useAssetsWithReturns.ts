@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { api } from '@/lib/api'
 import { Asset, AssetType, ReturnResult } from '@/types'
+import { useMembers } from '@/context/MemberContext'
 
 export interface AssetWithReturns extends Asset {
   total_invested?: number
@@ -24,6 +25,8 @@ export function useAssetsWithReturns(type?: AssetType | AssetType[], activeOnly 
   const [assets, setAssets] = useState<AssetWithReturns[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const { selectedMemberIds } = useMembers()
+  const memberKey = selectedMemberIds.join(',')
 
   // activeOnly=true → send active=true (filter to active only)
   // activeOnly=false → omit active param (backend returns all assets)
@@ -33,7 +36,7 @@ export function useAssetsWithReturns(type?: AssetType | AssetType[], activeOnly 
     setLoading(true)
     const types = Array.isArray(type) ? type : type ? [type] : [undefined as AssetType | undefined]
 
-    Promise.all(types.map((t) => api.assets.list({ type: t, active: activeParam })))
+    Promise.all(types.map((t) => api.assets.list({ type: t, active: activeParam, member_ids: selectedMemberIds })))
       .then((results) => results.flat())
       .then(async (assetList) => {
         if (assetList.length === 0) {
@@ -73,7 +76,7 @@ export function useAssetsWithReturns(type?: AssetType | AssetType[], activeOnly 
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [type, activeParam])
+  }, [type, activeParam, memberKey])
 
   return { assets, loading, error }
 }

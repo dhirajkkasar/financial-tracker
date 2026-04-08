@@ -4,6 +4,7 @@ import { useAssetsWithReturns } from '@/hooks/useAssetsWithReturns'
 import { useOverview } from '@/hooks/useOverview'
 import { HoldingsTable } from '@/components/domain/HoldingsTable'
 import { AssetSummaryCards } from '@/components/ui/AssetSummaryCards'
+import MemberSelector from '@/components/ui/MemberSelector'
 
 export default function PpfPage() {
   const [activeOnly, setActiveOnly] = useState(true)
@@ -11,6 +12,7 @@ export default function PpfPage() {
   const { data: summary, loading: summaryLoading } = useOverview(['PPF'])
   return (
     <div className="space-y-6">
+      <MemberSelector />
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-primary">PPF</h1>
         <button

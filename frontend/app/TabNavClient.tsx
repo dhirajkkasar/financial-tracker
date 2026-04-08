@@ -4,7 +4,6 @@ import { usePathname } from 'next/navigation'
 import { NAV_TABS } from '@/constants'
 import { usePrivateMode } from '@/context/PrivateModeContext'
 import { useDarkMode } from '@/context/DarkModeContext'
-import MemberSelector from '@/components/ui/MemberSelector'
 
 type Tab = typeof NAV_TABS[number]
 
@@ -31,7 +30,6 @@ export function TabNavClient({ tabs }: { tabs: readonly Tab[] }) {
           </Link>
         )
       })}
-      <MemberSelector />
       <button
         onClick={toggleDark}
         title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}

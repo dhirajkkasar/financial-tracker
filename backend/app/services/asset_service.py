@@ -25,9 +25,10 @@ class AssetService:
         asset_type: Optional[AssetType] = None,
         asset_class: Optional[AssetClass] = None,
         active: Optional[bool] = None,
+        member_ids: Optional[list[int]] = None,
     ) -> list[Asset]:
         with self._uow_factory() as uow:
-            return uow.assets.list(asset_type=asset_type, asset_class=asset_class, active=active)
+            return uow.assets.list(asset_type=asset_type, asset_class=asset_class, active=active, member_ids=member_ids)
 
     def get_by_id(self, asset_id: int) -> Asset:
         with self._uow_factory() as uow:

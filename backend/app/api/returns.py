@@ -66,28 +66,42 @@ def get_asset_lots(
     }
 
 
+def _parse_member_ids(member_ids: Optional[str]) -> Optional[list[int]]:
+    if not member_ids:
+        return None
+    return [int(x.strip()) for x in member_ids.split(",") if x.strip()]
+
+
 @router.get("/returns/breakdown", response_model=BreakdownResponse)
-def get_returns_breakdown(svc: PortfolioReturnsService = Depends(get_portfolio_returns_service)):
-    return svc.get_breakdown()
+def get_returns_breakdown(
+    member_ids: Optional[str] = Query(None, description="Comma-separated member IDs"),
+    svc: PortfolioReturnsService = Depends(get_portfolio_returns_service),
+):
+    return svc.get_breakdown(member_ids=_parse_member_ids(member_ids))
 
 
 @router.get("/overview/allocation", response_model=AllocationResponse)
-def get_overview_allocation(svc: PortfolioReturnsService = Depends(get_portfolio_returns_service)):
-    return svc.get_allocation()
+def get_overview_allocation(
+    member_ids: Optional[str] = Query(None, description="Comma-separated member IDs"),
+    svc: PortfolioReturnsService = Depends(get_portfolio_returns_service),
+):
+    return svc.get_allocation(member_ids=_parse_member_ids(member_ids))
 
 
 @router.get("/overview/gainers", response_model=GainersResponse)
 def get_overview_gainers(
     n: int = Query(5, ge=1, le=20, description="Number of top gainers/losers to return"),
+    member_ids: Optional[str] = Query(None, description="Comma-separated member IDs"),
     svc: PortfolioReturnsService = Depends(get_portfolio_returns_service),
 ):
-    return svc.get_gainers(n=n)
+    return svc.get_gainers(n=n, member_ids=_parse_member_ids(member_ids))
 
 
 @router.get("/returns/overview", response_model=OverviewReturnsResponse)
 def get_returns_overview(
     types: Optional[str] = Query(None, description="Comma-separated asset types, e.g. STOCK_IN,MF"),
+    member_ids: Optional[str] = Query(None, description="Comma-separated member IDs"),
     svc: PortfolioReturnsService = Depends(get_portfolio_returns_service),
 ):
     asset_types = [t.strip() for t in types.split(",")] if types else None
-    return svc.get_overview(asset_types=asset_types)
+    return svc.get_overview(asset_types=asset_types, member_ids=_parse_member_ids(member_ids))

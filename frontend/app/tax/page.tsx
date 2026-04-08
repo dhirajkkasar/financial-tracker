@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { api } from '@/lib/api'
 import { ASSET_TYPE_LABELS } from '@/constants'
 import { usePrivateMoney } from '@/hooks/usePrivateMoney'
+import { useMembers } from '@/context/MemberContext'
 import {
   TaxSummaryResponse,
   UnrealisedResponse, UnrealisedLot, HarvestResponse, HarvestOpportunity, AssetType,
@@ -79,8 +80,14 @@ function TaxEstimate({ value, fmt }: { value: number; fmt: (n: number) => string
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+function maskPan(pan: string): string {
+  return pan.length >= 6 ? `XXXX${pan.slice(4, 8)}${pan.slice(-1)}` : pan
+}
+
 export default function TaxPage() {
   const { formatINR } = usePrivateMoney()
+  const { members } = useMembers()
+  const [taxMemberId, setTaxMemberId] = useState<number | null>(null)
   const [fyOptions, setFyOptions] = useState<string[]>([])
   const [fy, setFy] = useState('')
   const [summary, setSummary] = useState<TaxSummaryResponse | null>(null)
@@ -93,28 +100,41 @@ export default function TaxPage() {
   const [harvestPage, setHarvestPage] = useState(1)
   const [harvestPageSize, setHarvestPageSize] = useState(10)
 
+  // Set default member when members load
+  useEffect(() => {
+    if (members.length > 0 && taxMemberId === null) {
+      setTaxMemberId(members[0].id)
+    }
+  }, [members, taxMemberId])
+
   useEffect(() => {
     api.tax.fiscalYears().then(({ fiscal_years }) => {
       setFyOptions(fiscal_years)
       setFy(pickDefaultFy(fiscal_years))
     })
-    api.tax.unrealised().then(setUnrealised).finally(() => setLoadingUnrealised(false))
-    api.tax.harvestOpportunities().then(setHarvest).finally(() => setLoadingHarvest(false))
   }, [])
 
   useEffect(() => {
-    if (!fy) return
+    if (taxMemberId === null) return
+    setLoadingUnrealised(true)
+    setLoadingHarvest(true)
+    api.tax.unrealised(taxMemberId).then(setUnrealised).finally(() => setLoadingUnrealised(false))
+    api.tax.harvestOpportunities(taxMemberId).then(setHarvest).finally(() => setLoadingHarvest(false))
+  }, [taxMemberId])
+
+  useEffect(() => {
+    if (!fy || taxMemberId === null) return
     void (async () => {
       setLoadingSummary(true)
       setSummary(null)
       try {
-        const data = await api.tax.summary(fy)
+        const data = await api.tax.summary(fy, taxMemberId)
         setSummary(data)
       } finally {
         setLoadingSummary(false)
       }
     })()
-  }, [fy])
+  }, [fy, taxMemberId])
 
   const unrealisedRows = useMemo(() => rollupUnrealised(unrealised?.lots ?? []), [unrealised])
   const harvestRows = useMemo(() => rollupHarvest(harvest?.opportunities ?? []), [harvest])
@@ -125,16 +145,31 @@ export default function TaxPage() {
 
   return (
     <div className="space-y-8">
-      {/* Header + FY selector */}
-      <div className="flex items-center justify-between">
+      {/* Header + member + FY selector */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-2xl text-primary">Tax Summary</h1>
-        <select
-          value={fy}
-          onChange={(e) => setFy(e.target.value)}
-          className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-        >
-          {fyOptions.map((f) => <option key={f} value={f}>FY {f}</option>)}
-        </select>
+        <div className="flex items-center gap-2">
+          {members.length > 0 && (
+            <select
+              value={taxMemberId ?? ''}
+              onChange={(e) => setTaxMemberId(Number(e.target.value))}
+              className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+            >
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} — {maskPan(m.pan)}
+                </option>
+              ))}
+            </select>
+          )}
+          <select
+            value={fy}
+            onChange={(e) => setFy(e.target.value)}
+            className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            {fyOptions.map((f) => <option key={f} value={f}>FY {f}</option>)}
+          </select>
+        </div>
       </div>
 
       {/* ── Short-Term Capital Gains ── */}

@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import Protocol
 from sqlalchemy.orm import Session
 
+from app.repositories.member_repo import MemberRepository
 from app.repositories.asset_repo import AssetRepository
 from app.repositories.transaction_repo import TransactionRepository
 from app.repositories.valuation_repo import ValuationRepository
@@ -35,6 +36,7 @@ class UnitOfWork:
 
     def __init__(self, session: Session):
         self.session = session
+        self.members = MemberRepository(session)
         self.assets = AssetRepository(session)
         self.transactions = TransactionRepository(session)
         self.valuations = ValuationRepository(session)

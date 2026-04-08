@@ -17,8 +17,10 @@ class ImportantDataRepository:
     def get_by_id(self, item_id: int) -> Optional[ImportantData]:
         return self.db.query(ImportantData).filter(ImportantData.id == item_id).first()
 
-    def list_all(self, category: Optional[ImportantDataCategory] = None) -> list[ImportantData]:
+    def list_all(self, category: Optional[ImportantDataCategory] = None, member_ids: Optional[list[int]] = None) -> list[ImportantData]:
         q = self.db.query(ImportantData)
+        if member_ids is not None:
+            q = q.filter(ImportantData.member_id.in_(member_ids))
         if category is not None:
             q = q.filter(ImportantData.category == category)
         return q.order_by(ImportantData.id).all()

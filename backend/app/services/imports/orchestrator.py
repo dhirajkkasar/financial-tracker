@@ -74,9 +74,11 @@ class ImportOrchestrator:
         source: str,
         fmt: str,
         file_bytes: bytes,
+        member_id: int | None = None,
         **importer_kwargs,
     ) -> ImportPreviewResponse:
         result = self._pipeline.run(source, fmt, file_bytes, **importer_kwargs)
+        result.member_id = member_id  # attach for commit phase
         logger.info("ImportOrchestrator.preview: result.transactions=%d, duplicate_count=%s", len(result.transactions), getattr(result, 'duplicate_count', None))
         preview_id = self._store.put(result)
 
@@ -115,6 +117,7 @@ class ImportOrchestrator:
         skipped = getattr(result, "duplicate_count", 0)
         errors: list[str] = []
         assets_created: dict[int, Asset] = {}
+        member_id = getattr(result, "member_id", None)
 
         with self._uow_factory() as uow:
             # Run pre-commit processor (e.g. Fidelity lot resolution) before any DB writes
@@ -125,7 +128,7 @@ class ImportOrchestrator:
             for parsed_txn in result.transactions:
                 try:
                     # Find or create the asset
-                    asset = self._find_or_create_asset(parsed_txn, uow)
+                    asset = self._find_or_create_asset(parsed_txn, uow, member_id=member_id)
 
                     # Track created asssetsfor post-commit processing
                     assets_created[asset.id] = asset
@@ -177,7 +180,7 @@ class ImportOrchestrator:
     # helpers
     # ------------------------------------------------------------------
 
-    def _find_or_create_asset(self, parsed_txn: ParsedTransaction, uow: UnitOfWork) -> Asset:
+    def _find_or_create_asset(self, parsed_txn: ParsedTransaction, uow: UnitOfWork, member_id: int | None = None) -> Asset:
         """Find asset by identifier or name; create if not found.
 
         For MF assets the scheme_code and scheme_category are resolved from the
@@ -224,6 +227,7 @@ class ImportOrchestrator:
             asset_class=asset_class,
             currency="USD" if parsed_txn.asset_type in ("STOCK_US", "RSU") else "INR",
             is_active=True,
+            member_id=member_id,
         )
 
     def _apply_mf_scheme(self, asset: Asset, isin: str | None) -> None:

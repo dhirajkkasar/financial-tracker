@@ -2,13 +2,15 @@
 Portfolio CLI — wraps the backend REST API for data loading and updates.
 
 Usage (server must be running):
-  python cli.py import ppf <file>
-  python cli.py import epf <file>
-  python cli.py import cas <file>
-  python cli.py import nps <file>
-  python cli.py import zerodha <file>
-  python cli.py import fidelity-rsu <file>    # Fidelity RSU holding CSV
-  python cli.py import fidelity-sale <file>   # Fidelity tax-cover sale PDF
+  python cli.py add-member --pan ABCDE1234F --name "Dhiraj"
+
+  python cli.py import ppf <file> --pan ABCDE1234F
+  python cli.py import epf <file> --pan ABCDE1234F
+  python cli.py import cas <file> --pan ABCDE1234F
+  python cli.py import nps <file> --pan ABCDE1234F
+  python cli.py import zerodha <file> --pan ABCDE1234F
+  python cli.py import fidelity-rsu <file> --pan ABCDE1234F    # Fidelity RSU holding CSV
+  python cli.py import fidelity-sale <file> --pan ABCDE1234F   # Fidelity tax-cover sale PDF
 
   python cli.py add fd   --name "HDFC FD" --bank HDFC --principal 500000 --rate 7.1 --start 2024-01-15 --maturity 2025-01-15 --compounding QUARTERLY
   python cli.py add rd   --name "SBI RD"  --bank SBI  --installment 10000 --rate 6.5 --start 2024-01-01 --maturity 2026-01-01 --compounding QUARTERLY
@@ -92,6 +94,16 @@ def find_goal(name_query: str) -> dict:
     return goal
 
 
+def resolve_member_id(pan: str) -> int:
+    """Look up member by PAN via GET /members. Exit if not found."""
+    members = _api("get", "/members")
+    for m in members:
+        if m["pan"].upper() == pan.upper():
+            print(f"  → matched member: {m['name']} (id={m['id']}, PAN={m['pan']})")
+            return m["id"]
+    sys.exit(f"No member with PAN '{pan}'. Run 'add-member --pan {pan} --name <name>' first.")
+
+
 def _find_or_create_asset(name: str, asset_type: str, asset_class: str,
                            identifier: str | None = None, currency: str = "INR") -> dict:
     """Return existing asset by exact name, or create a new one."""
@@ -110,54 +122,53 @@ def _find_or_create_asset(name: str, asset_type: str, asset_class: str,
 
 # ── Import commands ───────────────────────────────────────────────────────────
 
-def cmd_import_ppf(file_path: str) -> dict:
+def cmd_import_ppf(file_path: str, member_id: int) -> dict:
     _check_file(file_path)
     with open(file_path, "rb") as f:
-        preview = _api("post", "/import/preview-file?source=ppf&format=csv", files={"file": f})
+        preview = _api("post", f"/import/preview-file?source=ppf&format=csv&member_id={member_id}", files={"file": f})
     result = _api("post", f"/import/commit-file/{preview['preview_id']}")
     _print_import_summary("PPF", inserted=result["inserted"], skipped=result["skipped"])
     return result
 
 
-def cmd_import_epf(file_path: str) -> dict:
+def cmd_import_epf(file_path: str, member_id: int) -> dict:
     _check_file(file_path)
     with open(file_path, "rb") as f:
-        preview = _api("post", "/import/preview-file?source=epf&format=pdf", files={"file": f})
+        preview = _api("post", f"/import/preview-file?source=epf&format=pdf&member_id={member_id}", files={"file": f})
     result = _api("post", f"/import/commit-file/{preview['preview_id']}")
     _print_import_summary("EPF", inserted=result["inserted"], skipped=result["skipped"])
     return result
 
 
-def cmd_import_cas(file_path: str) -> dict:
+def cmd_import_cas(file_path: str, member_id: int) -> dict:
     _check_file(file_path)
     with open(file_path, "rb") as f:
-        preview = _api("post", "/import/preview-file?source=cas&format=pdf", files={"file": f})
+        preview = _api("post", f"/import/preview-file?source=cas&format=pdf&member_id={member_id}", files={"file": f})
     result = _api("post", f"/import/commit-file/{preview['preview_id']}")
     _print_import_summary("CAS", inserted=result["inserted"], skipped=result["skipped"])
     return result
-    return result
 
 
-def cmd_import_nps(file_path: str) -> dict:
+def cmd_import_nps(file_path: str, member_id: int) -> dict:
     _check_file(file_path)
     with open(file_path, "rb") as f:
-        preview = _api("post", "/import/preview-file?source=nps&format=csv", files={"file": f})
+        preview = _api("post", f"/import/preview-file?source=nps&format=csv&member_id={member_id}", files={"file": f})
     result = _api("post", f"/import/commit-file/{preview['preview_id']}")
     cmd_refresh_prices()
     _print_import_summary("NPS", inserted=result["inserted"], skipped=result["skipped"])
     return result
 
 
-def cmd_import_broker_csv(file_path: str, broker: str) -> dict:
+def cmd_import_broker_csv(file_path: str, broker: str, member_id: int) -> dict:
     _check_file(file_path)
     with open(file_path, "rb") as f:
-        preview = _api("post", f"/import/preview-file?source={broker}&format=csv", files={"file": f})
+        preview = _api("post", f"/import/preview-file?source={broker}&format=csv&member_id={member_id}", files={"file": f})
     result = _api("post", f"/import/commit-file/{preview['preview_id']}")
     _print_import_summary(broker.title(), inserted=result["inserted"], skipped=result["skipped"])
     return result
 
 
-def cmd_import_fidelity_rsu(file_path: str) -> None:
+def cmd_import_fidelity_rsu(file_path: str, member_id: int) -> None:
     """Import Fidelity RSU holding CSV (MARKET_TICKER.csv format).
     Prompts for USD/INR exchange rate per vest month.
     """
@@ -194,7 +205,7 @@ def cmd_import_fidelity_rsu(file_path: str) -> None:
     with open(file_path, "rb") as f:
         preview = _api(
             "post",
-            "/import/preview-file?source=fidelity_rsu&format=csv",
+            f"/import/preview-file?source=fidelity_rsu&format=csv&member_id={member_id}",
             files={"file": (os.path.basename(file_path), f, "text/csv")},
             data={"user_inputs": json.dumps(exchange_rates)},
         )
@@ -219,7 +230,7 @@ def cmd_import_fidelity_rsu(file_path: str) -> None:
     )
 
 
-def cmd_import_fidelity_sale(file_path: str) -> None:
+def cmd_import_fidelity_sale(file_path: str, member_id: int) -> None:
     """Import Fidelity tax-cover SELL transactions from a transaction summary PDF.
     Parses the PDF locally (pdfplumber) to find required month-years, prompts for rates,
     then calls one API endpoint with file + rates.
@@ -257,7 +268,7 @@ def cmd_import_fidelity_sale(file_path: str) -> None:
     with open(file_path, "rb") as f:
         preview = _api(
             "post",
-            "/import/preview-file?source=fidelity_sale&format=pdf",
+            f"/import/preview-file?source=fidelity_sale&format=pdf&member_id={member_id}",
             files={"file": (os.path.basename(file_path), f, "application/pdf")},
             data={"user_inputs": json.dumps(exchange_rates)},
         )
@@ -279,6 +290,14 @@ def cmd_import_fidelity_sale(file_path: str) -> None:
         skipped=result.get("skipped", 0),
         errors=[],
     )
+
+
+# ── Member commands ───────────────────────────────────────────────────────────
+
+def cmd_add_member(pan: str, name: str) -> dict:
+    result = _api("post", "/members", json={"pan": pan, "name": name})
+    print(f"  → created member: {result['name']} (id={result['id']}, PAN={result['pan']})")
+    return result
 
 
 # ── Add commands ──────────────────────────────────────────────────────────────
@@ -665,15 +684,19 @@ def build_parser() -> argparse.ArgumentParser:
     for src in ("ppf", "epf", "cas", "nps"):
         s = import_sub.add_parser(src, help=f"Import {src.upper()} file")
         s.add_argument("file", help="Path to the file")
+        s.add_argument("--pan", required=True, help="PAN of the member this import belongs to")
 
     s = import_sub.add_parser("zerodha", help="Import Zerodha tradebook CSV")
     s.add_argument("file", help="Path to CSV")
+    s.add_argument("--pan", required=True, help="PAN of the member this import belongs to")
 
     s = import_sub.add_parser("fidelity-rsu", help="Import Fidelity RSU holding CSV (MARKET_TICKER.csv)")
     s.add_argument("file", help="Path to CSV file")
+    s.add_argument("--pan", required=True, help="PAN of the member this import belongs to")
 
     s = import_sub.add_parser("fidelity-sale", help="Import Fidelity tax-cover sale PDF")
     s.add_argument("file", help="Path to PDF file")
+    s.add_argument("--pan", required=True, help="PAN of the member this import belongs to")
 
     # ── add ───────────────────────────────────────────────────────────────────
     p_add = sub.add_parser("add", help="Add an asset or transaction manually")
@@ -823,6 +846,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_delete_goal.add_argument("--name", required=True, help="Goal name (fuzzy matched)")
 
     # ── utilities ─────────────────────────────────────────────────────────────
+    # ── add-member ────────────────────────────────────────────────────────────
+    p_add_member = sub.add_parser("add-member", help="Register a household member")
+    p_add_member.add_argument("--pan", required=True, help="PAN card number (e.g. ABCDE1234F)")
+    p_add_member.add_argument("--name", required=True, help="Member name")
+
     sub.add_parser("refresh-prices", help="Trigger price refresh for all assets")
     sub.add_parser("snapshot", help="Take a portfolio snapshot now")
     p_backup = sub.add_parser("backup", help="Backup DB to Google Drive")
@@ -849,20 +877,21 @@ def main():
         if not args.source:
             parser.parse_args(["import", "--help"])
             return
+        member_id = resolve_member_id(args.pan)
         if args.source == "ppf":
-            cmd_import_ppf(args.file)
+            cmd_import_ppf(args.file, member_id)
         elif args.source == "epf":
-            cmd_import_epf(args.file)
+            cmd_import_epf(args.file, member_id)
         elif args.source == "cas":
-            cmd_import_cas(args.file)
+            cmd_import_cas(args.file, member_id)
         elif args.source == "nps":
-            cmd_import_nps(args.file)
+            cmd_import_nps(args.file, member_id)
         elif args.source == "zerodha":
-            cmd_import_broker_csv(args.file, broker="zerodha")
+            cmd_import_broker_csv(args.file, broker="zerodha", member_id=member_id)
         elif args.source == "fidelity-rsu":
-            cmd_import_fidelity_rsu(args.file)
+            cmd_import_fidelity_rsu(args.file, member_id)
         elif args.source == "fidelity-sale":
-            cmd_import_fidelity_sale(args.file)
+            cmd_import_fidelity_sale(args.file, member_id)
 
     elif args.command == "add":
         if not args.kind:
@@ -931,6 +960,9 @@ def main():
 
     elif args.command == "fetch-corp-actions":
         cmd_fetch_corp_actions(args.asset_id)
+
+    elif args.command == "add-member":
+        cmd_add_member(args.pan, args.name)
 
     elif args.command == "refresh-prices":
         cmd_refresh_prices()

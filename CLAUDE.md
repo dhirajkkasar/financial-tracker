@@ -93,6 +93,16 @@ Use native IDs from source systems where available; fall back to SHA-256 hash:
 
 Hash must be **stable across re-imports** — never include internal DB IDs in the hash.
 
+### Members
+- `members` table: PAN-identified household members (`id`, `pan`, `name`, `is_default`, `created_at`)
+- `member_id` FK on `assets`, `important_data`, `portfolio_snapshots` (NOT NULL)
+- **API:** `GET /members`, `POST /members` (PAN validated, 409 on duplicate)
+- Most list endpoints accept optional `?member_ids=1,2` (comma-separated); omit = all members
+- Tax endpoints (`/tax/summary`, `/tax/unrealised`, `/tax/harvest-opportunities`) require `?member_id=<id>` (single, per-PAN)
+- Snapshots are stored per-member; listing returns date-aggregated totals
+- **CLI:** `add-member --pan ABCDE1234F --name "Dhiraj"`; all import commands require `--pan <PAN>`
+- **Frontend:** Global `MemberSelector` multi-select in header (persisted to localStorage); tax page has independent single-select picker
+
 ### Asset Types
 `STOCK_IN`, `STOCK_US`, `MF`, `FD`, `RD`, `PPF`, `EPF`, `NPS`, `GOLD`, `SGB`, `REAL_ESTATE`, `RSU`
 

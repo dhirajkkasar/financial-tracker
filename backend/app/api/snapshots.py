@@ -17,6 +17,8 @@ def take_snapshot(svc: SnapshotService = Depends(get_snapshot_service)):
 def list_snapshots(
     from_date: Optional[date] = Query(None, alias="from"),
     to_date: Optional[date] = Query(None, alias="to"),
+    member_ids: Optional[str] = Query(None, description="Comma-separated member IDs"),
     svc: SnapshotService = Depends(get_snapshot_service),
 ):
-    return svc.list(from_date, to_date)
+    parsed = [int(x.strip()) for x in member_ids.split(",") if x.strip()] if member_ids else None
+    return svc.list(from_date, to_date, member_ids=parsed)

@@ -104,6 +104,13 @@ register_tax_strategy_instance(("FD", "*"), AccruedInterestTaxGainsStrategy())
 register_tax_strategy_instance(("RD", "*"), AccruedInterestTaxGainsStrategy())
 
 
+from app.services.member_service import MemberService
+
+
+def get_member_service(db: Session = Depends(get_db)) -> MemberService:
+    return MemberService(uow_factory=lambda: UnitOfWork(db))
+
+
 def get_asset_service(db: Session = Depends(get_db)) -> AssetService:
     return AssetService(uow_factory=lambda: UnitOfWork(db))
 

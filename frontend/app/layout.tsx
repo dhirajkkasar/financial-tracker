@@ -4,6 +4,7 @@ import './globals.css'
 import { TabNav } from './TabNav'
 import { PrivateModeProvider } from '@/context/PrivateModeContext'
 import { DarkModeProvider } from '@/context/DarkModeContext'
+import { MemberProvider } from '@/context/MemberContext'
 
 const dmSans = DM_Sans({
   subsets: ['latin'],
@@ -36,8 +37,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="font-sans bg-page text-primary min-h-screen">
         <DarkModeProvider>
           <PrivateModeProvider>
-            <TabNav />
-            <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+            <MemberProvider>
+              <TabNav />
+              <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+            </MemberProvider>
           </PrivateModeProvider>
         </DarkModeProvider>
       </body>

@@ -1,6 +1,7 @@
 import enum
 from datetime import datetime
-from sqlalchemy import String, Boolean, Text, Enum as SAEnum
+from typing import Optional
+from sqlalchemy import String, Boolean, Text, Enum as SAEnum, Integer, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
@@ -31,6 +32,7 @@ class Asset(Base):
     __tablename__ = "assets"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    member_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("members.id"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     identifier: Mapped[str | None] = mapped_column(String(100), nullable=True)
     mfapi_scheme_code: Mapped[str | None] = mapped_column(String(20), nullable=True)

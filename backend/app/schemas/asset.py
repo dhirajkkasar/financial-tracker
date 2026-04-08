@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict
 from app.models.asset import AssetType, AssetClass
 
 
+
 class GoalRef(BaseModel):
     id: int
     name: str
@@ -11,6 +12,7 @@ class GoalRef(BaseModel):
 
 class AssetCreate(BaseModel):
     name: str
+    member_id: Optional[int] = None
     identifier: Optional[str] = None
     mfapi_scheme_code: Optional[str] = None
     asset_type: AssetType
@@ -35,6 +37,7 @@ class AssetResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    member_id: Optional[int] = None
     name: str
     identifier: Optional[str] = None
     mfapi_scheme_code: Optional[str] = None

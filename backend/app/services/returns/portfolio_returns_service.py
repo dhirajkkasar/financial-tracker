@@ -122,7 +122,7 @@ class PortfolioReturnsService:
                 "matched_sells": matched_sells,
             }
 
-    def get_breakdown(self) -> dict:
+    def get_breakdown(self, member_ids: Optional[list[int]] = None) -> dict:
         """Portfolio breakdown by asset type with aggregate metrics.
 
         Includes inactive assets (matured FDs, fully-redeemed stocks, etc.) so that
@@ -130,7 +130,7 @@ class PortfolioReturnsService:
         Returns one row per asset_type with aggregated invested/current/pnl/xirr.
         """
         with self._uow_factory() as uow:
-            assets = uow.assets.list(active=None)
+            assets = uow.assets.list(active=None, member_ids=member_ids)
 
             type_data: dict[str, dict] = {}
 
@@ -199,13 +199,13 @@ class PortfolioReturnsService:
             breakdown.sort(key=lambda x: x["total_current_value"] or 0, reverse=True)
             return {"breakdown": breakdown}
 
-    def get_allocation(self) -> dict:
+    def get_allocation(self, member_ids: Optional[list[int]] = None) -> dict:
         """Portfolio allocation by asset class with percentages.
 
         Only contains the 4 canonical classes: EQUITY, DEBT, GOLD, REAL_ESTATE.
         """
         with self._uow_factory() as uow:
-            assets = uow.assets.list(active=True)
+            assets = uow.assets.list(active=True, member_ids=member_ids)
             entries = []
 
             for asset in assets:
@@ -226,10 +226,10 @@ class PortfolioReturnsService:
 
             return compute_allocation(entries)
 
-    def get_gainers(self, n: int = 5) -> dict:
+    def get_gainers(self, n: int = 5, member_ids: Optional[list[int]] = None) -> dict:
         """Return top N gainers and top N losers by absolute return %."""
         with self._uow_factory() as uow:
-            assets = uow.assets.list(active=True)
+            assets = uow.assets.list(active=True, member_ids=member_ids)
             entries = []
 
             for asset in assets:
@@ -262,10 +262,10 @@ class PortfolioReturnsService:
                 "losers": losers,
             }
 
-    def get_overview(self, asset_types: Optional[list[str]] = None) -> dict:
+    def get_overview(self, asset_types: Optional[list[str]] = None, member_ids: Optional[list[int]] = None) -> dict:
         """High-level portfolio metrics across optionally filtered asset types."""
         with self._uow_factory() as uow:
-            assets = uow.assets.list(active=None)
+            assets = uow.assets.list(active=None, member_ids=member_ids)
 
             if asset_types:
                 assets = [a for a in assets if a.asset_type.value in asset_types]

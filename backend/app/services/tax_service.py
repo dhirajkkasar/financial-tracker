@@ -68,12 +68,13 @@ class TaxService:
 
         return lt_tax, exemption_used
 
-    def get_tax_summary(self, fy_label: str) -> dict:
+    def get_tax_summary(self, fy_label: str, member_id: int | None = None) -> dict:
         fy_start, fy_end = parse_fy(fy_label)
         all_results: list[AssetTaxGainsResult] = []
+        member_ids = [member_id] if member_id else None
 
         with self._uow_factory() as uow:
-            for asset in uow.assets.list(active=None):
+            for asset in uow.assets.list(active=None, member_ids=member_ids):
                 atype = asset.asset_type.value
                 if atype in SKIPPED_ASSET_TYPES:
                     continue
@@ -253,10 +254,11 @@ class TaxService:
 
         return open_lots, matched
 
-    def get_unrealised_summary(self) -> dict:
+    def get_unrealised_summary(self, member_id: int | None = None) -> dict:
         all_lots: list[dict] = []
+        member_ids = [member_id] if member_id else None
         with self._uow_factory() as uow:
-            for asset in uow.assets.list(active=True):
+            for asset in uow.assets.list(active=True, member_ids=member_ids):
                 atype = asset.asset_type.value
                 if atype not in LOT_ASSET_TYPES:
                     continue
@@ -316,8 +318,8 @@ class TaxService:
         )
         return fys
 
-    def get_harvest_opportunities(self) -> dict:
-        summary = self.get_unrealised_summary()
+    def get_harvest_opportunities(self, member_id: int | None = None) -> dict:
+        summary = self.get_unrealised_summary(member_id=member_id)
         for lot in summary["lots"]:
             if not isinstance(lot.get("buy_date"), str):
                 lot["buy_date"] = str(lot["buy_date"])

@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 
@@ -19,20 +20,27 @@ def get_fiscal_years(svc: TaxService = Depends(get_tax_service)):
 @router.get("/summary")
 def get_tax_summary(
     fy: str = Query(..., description="Fiscal year label, e.g. '2024-25'"),
+    member_id: Optional[int] = Query(None, description="Member ID — tax is per-PAN"),
     svc: TaxService = Depends(get_tax_service),
 ):
     try:
         parse_fy(fy)
     except ValueError as e:
         raise ValidationError(str(e))
-    return svc.get_tax_summary(fy)
+    return svc.get_tax_summary(fy, member_id=member_id)
 
 
 @router.get("/unrealised")
-def get_unrealised(svc: TaxService = Depends(get_tax_service)):
-    return svc.get_unrealised_summary()
+def get_unrealised(
+    member_id: Optional[int] = Query(None, description="Member ID — tax is per-PAN"),
+    svc: TaxService = Depends(get_tax_service),
+):
+    return svc.get_unrealised_summary(member_id=member_id)
 
 
 @router.get("/harvest-opportunities")
-def get_harvest_opportunities(svc: TaxService = Depends(get_tax_service)):
-    return svc.get_harvest_opportunities()
+def get_harvest_opportunities(
+    member_id: Optional[int] = Query(None, description="Member ID — tax is per-PAN"),
+    svc: TaxService = Depends(get_tax_service),
+):
+    return svc.get_harvest_opportunities(member_id=member_id)

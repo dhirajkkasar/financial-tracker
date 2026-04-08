@@ -29,8 +29,11 @@ class AssetRepository:
         asset_type: Optional[AssetType] = None,
         asset_class: Optional[AssetClass] = None,
         active: Optional[bool] = None,
+        member_ids: Optional[list[int]] = None,
     ) -> list[Asset]:
         q = self.db.query(Asset)
+        if member_ids is not None:
+            q = q.filter(Asset.member_id.in_(member_ids))
         if asset_type is not None:
             q = q.filter(Asset.asset_type == asset_type)
         if asset_class is not None:

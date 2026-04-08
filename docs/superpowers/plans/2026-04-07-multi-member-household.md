@@ -81,7 +81,7 @@
 - Modify: `app/repositories/interfaces.py`
 - Create: `tests/unit/test_member_repo.py`
 
-- [ ] **Step 1: Write failing test for MemberRepository**
+- [x] **Step 1: Write failing test for MemberRepository**
 
 ```python
 # tests/unit/test_member_repo.py
@@ -142,12 +142,12 @@ def test_get_default(repo, db_session):
     assert default.pan == "ABCDE1234F"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/unit/test_member_repo.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'app.repositories.member_repo'`
 
-- [ ] **Step 3: Create Member model**
+- [x] **Step 3: Create Member model**
 
 ```python
 # app/models/member.py
@@ -167,7 +167,7 @@ class Member(Base):
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
 ```
 
-- [ ] **Step 4: Register Member model in `__init__.py`**
+- [x] **Step 4: Register Member model in `__init__.py`**
 
 Add to `app/models/__init__.py`:
 ```python
@@ -175,7 +175,7 @@ from app.models.member import Member
 ```
 And add `"Member"` to the `__all__` list.
 
-- [ ] **Step 5: Create MemberRepository**
+- [x] **Step 5: Create MemberRepository**
 
 ```python
 # app/repositories/member_repo.py
@@ -210,7 +210,7 @@ class MemberRepository:
         return self.db.query(Member).order_by(Member.id).all()
 ```
 
-- [ ] **Step 6: Add IMemberRepository protocol to interfaces.py**
+- [x] **Step 6: Add IMemberRepository protocol to interfaces.py**
 
 Add to `app/repositories/interfaces.py`:
 ```python
@@ -225,7 +225,7 @@ class IMemberRepository(Protocol):
     def list_all(self) -> list[Member]: ...
 ```
 
-- [ ] **Step 7: Add MemberRepository to UnitOfWork**
+- [x] **Step 7: Add MemberRepository to UnitOfWork**
 
 In `app/repositories/unit_of_work.py`, add import:
 ```python
@@ -236,12 +236,12 @@ And in `UnitOfWork.__init__()`, add:
 self.members = MemberRepository(session)
 ```
 
-- [ ] **Step 8: Run tests**
+- [x] **Step 8: Run tests**
 
 Run: `uv run pytest tests/unit/test_member_repo.py -v`
 Expected: All 4 tests PASS
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add app/models/member.py app/repositories/member_repo.py app/repositories/interfaces.py app/repositories/unit_of_work.py app/models/__init__.py tests/unit/test_member_repo.py
@@ -257,7 +257,7 @@ git commit -m "feat: add Member model and MemberRepository"
 - Modify: `app/models/important_data.py:17-27`
 - Modify: `app/models/snapshot.py:7-14`
 
-- [ ] **Step 1: Add `member_id` FK to Asset model**
+- [x] **Step 1: Add `member_id` FK to Asset model**
 
 In `app/models/asset.py`, add import:
 ```python
@@ -269,7 +269,7 @@ Add field to `Asset` class (after `id`):
 member_id: Mapped[int] = mapped_column(Integer, ForeignKey("members.id"), nullable=False, index=True)
 ```
 
-- [ ] **Step 2: Add `member_id` FK to ImportantData model**
+- [x] **Step 2: Add `member_id` FK to ImportantData model**
 
 In `app/models/important_data.py`, add import of `Integer, ForeignKey`:
 ```python
@@ -281,7 +281,7 @@ Add field to `ImportantData` class (after `id`):
 member_id: Mapped[int] = mapped_column(Integer, ForeignKey("members.id"), nullable=False, index=True)
 ```
 
-- [ ] **Step 3: Add `member_id` FK to PortfolioSnapshot model**
+- [x] **Step 3: Add `member_id` FK to PortfolioSnapshot model**
 
 In `app/models/snapshot.py`, add import of `ForeignKey`:
 ```python
@@ -305,12 +305,12 @@ __table_args__ = (
 )
 ```
 
-- [ ] **Step 4: Run existing tests to check nothing is broken structurally**
+- [x] **Step 4: Run existing tests to check nothing is broken structurally**
 
 Run: `uv run pytest tests/unit/test_member_repo.py -v`
 Expected: PASS (confirms models are valid)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/models/asset.py app/models/important_data.py app/models/snapshot.py
@@ -324,11 +324,11 @@ git commit -m "feat: add member_id FK to assets, important_data, portfolio_snaps
 **Files:**
 - Create: `alembic/versions/xxxx_add_members_table.py` (auto-generated)
 
-- [ ] **Step 1: Generate migration**
+- [x] **Step 1: Generate migration**
 
 Run: `cd /Users/dhirajkasar/Documents/workspace/financial-tracker/backend && uv run alembic revision --autogenerate -m "add members table and member_id FKs"`
 
-- [ ] **Step 2: Edit the generated migration to add data backfill**
+- [x] **Step 2: Edit the generated migration to add data backfill**
 
 The auto-generated migration will create the `members` table and add `member_id` columns. Edit it to:
 
@@ -402,17 +402,17 @@ def upgrade() -> None:
 
 Note: The exact `downgrade()` function should reverse all operations. For SQLite, `batch_alter_table` is needed for column alterations.
 
-- [ ] **Step 3: Run the migration**
+- [x] **Step 3: Run the migration**
 
 Run: `DEFAULT_MEMBER_PAN=<your-pan> DEFAULT_MEMBER_NAME=<your-name> uv run alembic upgrade head`
 Expected: Migration completes. All existing assets/important_data/snapshots now have `member_id` pointing to the default member.
 
-- [ ] **Step 4: Verify data**
+- [x] **Step 4: Verify data**
 
 Run: `uv run python -c "from app.database import SessionLocal; s = SessionLocal(); print(s.execute(__import__('sqlalchemy').text('SELECT COUNT(*) FROM members')).scalar())"`
 Expected: `1`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add alembic/versions/
@@ -431,7 +431,7 @@ git commit -m "feat: add Alembic migration for members table and member_id backf
 - Modify: `app/main.py`
 - Create: `tests/integration/test_member_api.py`
 
-- [ ] **Step 1: Write failing integration test**
+- [x] **Step 1: Write failing integration test**
 
 ```python
 # tests/integration/test_member_api.py
@@ -486,12 +486,12 @@ def test_list_members(client):
     assert len(resp.json()) == 2
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/integration/test_member_api.py -v`
 Expected: FAIL — route not found (404)
 
-- [ ] **Step 3: Create Member Pydantic schemas**
+- [x] **Step 3: Create Member Pydantic schemas**
 
 ```python
 # app/schemas/member.py
@@ -523,7 +523,7 @@ class MemberResponse(BaseModel):
     created_at: datetime
 ```
 
-- [ ] **Step 4: Create MemberService**
+- [x] **Step 4: Create MemberService**
 
 ```python
 # app/services/member_service.py
@@ -550,7 +550,7 @@ class MemberService:
             return uow.members.list_all()
 ```
 
-- [ ] **Step 5: Create members API router**
+- [x] **Step 5: Create members API router**
 
 ```python
 # app/api/members.py
@@ -574,7 +574,7 @@ def create_member(body: MemberCreate, service: MemberService = Depends(get_membe
     return service.create(pan=body.pan, name=body.name)
 ```
 
-- [ ] **Step 6: Add dependency factory and register router**
+- [x] **Step 6: Add dependency factory and register router**
 
 In `app/api/dependencies.py`, add:
 ```python
@@ -590,7 +590,7 @@ from app.api.members import router as members_router
 app.include_router(members_router)
 ```
 
-- [ ] **Step 7: Handle duplicate PAN as 409**
+- [x] **Step 7: Handle duplicate PAN as 409**
 
 Check how `ValidationError` is handled in the error middleware. If it doesn't map to 409, add a `ConflictError` or use an `HTTPException(status_code=409)` in the route. Adjust the `create_member` route:
 
@@ -605,12 +605,12 @@ def create_member(body: MemberCreate, service: MemberService = Depends(get_membe
         raise HTTPException(status_code=409, detail=f"Member with PAN {body.pan} already exists")
 ```
 
-- [ ] **Step 8: Run tests**
+- [x] **Step 8: Run tests**
 
 Run: `uv run pytest tests/integration/test_member_api.py -v`
 Expected: All 3 tests PASS
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add app/schemas/member.py app/services/member_service.py app/api/members.py app/api/dependencies.py app/main.py tests/integration/test_member_api.py
@@ -629,7 +629,7 @@ git commit -m "feat: add Member API with GET/POST /members endpoints"
 - Modify: `app/api/assets.py:12-27`
 - Create: `tests/unit/test_asset_member_filter.py`
 
-- [ ] **Step 1: Write failing test for member_ids filtering**
+- [x] **Step 1: Write failing test for member_ids filtering**
 
 ```python
 # tests/unit/test_asset_member_filter.py
@@ -690,12 +690,12 @@ def test_list_filters_by_member_ids(db_session, setup_members):
     assert len(assets) == 3
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/unit/test_asset_member_filter.py -v`
 Expected: FAIL — `list() got an unexpected keyword argument 'member_ids'`
 
-- [ ] **Step 3: Update AssetRepository.list() to accept member_ids**
+- [x] **Step 3: Update AssetRepository.list() to accept member_ids**
 
 In `app/repositories/asset_repo.py`, modify `list()`:
 
@@ -719,7 +719,7 @@ def list(
     return q.order_by(Asset.id).all()
 ```
 
-- [ ] **Step 4: Update IAssetRepository protocol**
+- [x] **Step 4: Update IAssetRepository protocol**
 
 In `app/repositories/interfaces.py`, update `IAssetRepository.list`:
 
@@ -733,7 +733,7 @@ def list(
 ) -> list[Asset]: ...
 ```
 
-- [ ] **Step 5: Update AssetCreate and AssetResponse schemas**
+- [x] **Step 5: Update AssetCreate and AssetResponse schemas**
 
 In `app/schemas/asset.py`, add `member_id` to `AssetCreate`:
 ```python
@@ -755,7 +755,7 @@ class AssetResponse(BaseModel):
     # ... rest unchanged
 ```
 
-- [ ] **Step 6: Update AssetService.list() to accept member_ids**
+- [x] **Step 6: Update AssetService.list() to accept member_ids**
 
 In `app/services/asset_service.py`:
 
@@ -771,7 +771,7 @@ def list(
         return uow.assets.list(asset_type=asset_type, asset_class=asset_class, active=active, member_ids=member_ids)
 ```
 
-- [ ] **Step 7: Update assets API route to accept member_ids**
+- [x] **Step 7: Update assets API route to accept member_ids**
 
 In `app/api/assets.py`:
 
@@ -788,12 +788,12 @@ def list_assets(
     return service.list(asset_type=type, asset_class=asset_class, active=active, member_ids=parsed_member_ids)
 ```
 
-- [ ] **Step 8: Run tests**
+- [x] **Step 8: Run tests**
 
 Run: `uv run pytest tests/unit/test_asset_member_filter.py -v`
 Expected: All PASS
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add app/schemas/asset.py app/repositories/asset_repo.py app/repositories/interfaces.py app/services/asset_service.py app/api/assets.py tests/unit/test_asset_member_filter.py
@@ -808,7 +808,7 @@ git commit -m "feat: add member_ids filtering to asset repository, service, and 
 - Modify: `app/services/returns/portfolio_returns_service.py:45-56, 125-200, 202-228, 229-263, 265-377`
 - Modify: `app/api/returns.py:69-93`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 ```python
 # tests/unit/test_portfolio_returns_member_filter.py
@@ -835,12 +835,12 @@ def test_get_breakdown_passes_member_ids():
         mock_uow.assets.list.assert_called_once_with(active=None, member_ids=[1, 2])
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/unit/test_portfolio_returns_member_filter.py -v`
 Expected: FAIL — `get_breakdown() got an unexpected keyword argument 'member_ids'`
 
-- [ ] **Step 3: Add `member_ids` parameter to all PortfolioReturnsService aggregation methods**
+- [x] **Step 3: Add `member_ids` parameter to all PortfolioReturnsService aggregation methods**
 
 In `app/services/returns/portfolio_returns_service.py`, modify each method:
 
@@ -886,7 +886,7 @@ from typing import Optional
 ```
 (Already imported — just ensure it's there.)
 
-- [ ] **Step 4: Update API routes to parse and forward member_ids**
+- [x] **Step 4: Update API routes to parse and forward member_ids**
 
 In `app/api/returns.py`, create a helper and update endpoints:
 
@@ -932,17 +932,17 @@ def get_returns_overview(
     return svc.get_overview(asset_types=asset_types, member_ids=_parse_member_ids(member_ids))
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `uv run pytest tests/unit/test_portfolio_returns_member_filter.py -v`
 Expected: PASS
 
-- [ ] **Step 6: Run full test suite to check for regressions**
+- [x] **Step 6: Run full test suite to check for regressions**
 
 Run: `uv run pytest tests/ -v --timeout=60`
 Expected: No new failures
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add app/services/returns/portfolio_returns_service.py app/api/returns.py tests/unit/test_portfolio_returns_member_filter.py
@@ -957,7 +957,7 @@ git commit -m "feat: add member_ids filtering to portfolio returns service and A
 - Modify: `app/services/tax_service.py:71-76, 256-259, 319-325`
 - Modify: `app/api/tax.py:19-38`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 ```python
 # tests/unit/test_tax_member_filter.py
@@ -990,12 +990,12 @@ def test_get_unrealised_filters_by_member_id():
     mock_uow.assets.list.assert_called_once_with(active=True, member_ids=[1])
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/unit/test_tax_member_filter.py -v`
 Expected: FAIL — `get_tax_summary() got an unexpected keyword argument 'member_id'`
 
-- [ ] **Step 3: Update TaxService methods**
+- [x] **Step 3: Update TaxService methods**
 
 In `app/services/tax_service.py`:
 
@@ -1028,7 +1028,7 @@ def get_harvest_opportunities(self, member_id: int | None = None) -> dict:
     # ... rest unchanged
 ```
 
-- [ ] **Step 4: Update tax API routes to require member_id**
+- [x] **Step 4: Update tax API routes to require member_id**
 
 In `app/api/tax.py`:
 
@@ -1062,12 +1062,12 @@ def get_harvest_opportunities(
     return svc.get_harvest_opportunities(member_id=member_id)
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `uv run pytest tests/unit/test_tax_member_filter.py -v`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/services/tax_service.py app/api/tax.py tests/unit/test_tax_member_filter.py
@@ -1084,7 +1084,7 @@ git commit -m "feat: add required member_id to tax service and API endpoints"
 - Modify: `app/services/snapshot_service.py:17-56`
 - Modify: `app/api/snapshots.py:1-23`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 ```python
 # tests/unit/test_snapshot_member.py
@@ -1142,12 +1142,12 @@ def test_list_aggregated_by_member_ids(db_session):
     assert result[0]["total_value_paise"] == 1500000
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/unit/test_snapshot_member.py -v`
 Expected: FAIL
 
-- [ ] **Step 3: Update SnapshotRepository**
+- [x] **Step 3: Update SnapshotRepository**
 
 In `app/repositories/snapshot_repo.py`:
 
@@ -1211,7 +1211,7 @@ class SnapshotRepository:
         return [{"date": row.date, "total_value_paise": row.total_value_paise} for row in q.all()]
 ```
 
-- [ ] **Step 4: Update ISnapshotRepository protocol**
+- [x] **Step 4: Update ISnapshotRepository protocol**
 
 In `app/repositories/interfaces.py`:
 
@@ -1224,7 +1224,7 @@ class ISnapshotRepository(Protocol):
     def get_by_date(self, snapshot_date: date) -> Optional[PortfolioSnapshot]: ...
 ```
 
-- [ ] **Step 5: Update SnapshotService**
+- [x] **Step 5: Update SnapshotService**
 
 In `app/services/snapshot_service.py`:
 
@@ -1281,7 +1281,7 @@ class SnapshotService:
         ]
 ```
 
-- [ ] **Step 6: Update snapshots API**
+- [x] **Step 6: Update snapshots API**
 
 In `app/api/snapshots.py`:
 
@@ -1312,12 +1312,12 @@ def list_snapshots(
     return svc.list(from_date, to_date, member_ids=parsed)
 ```
 
-- [ ] **Step 7: Run tests**
+- [x] **Step 7: Run tests**
 
 Run: `uv run pytest tests/unit/test_snapshot_member.py -v`
 Expected: PASS
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add app/repositories/snapshot_repo.py app/repositories/interfaces.py app/services/snapshot_service.py app/api/snapshots.py tests/unit/test_snapshot_member.py
@@ -1332,7 +1332,7 @@ git commit -m "feat: per-member snapshots with aggregated listing"
 - Modify: `app/services/imports/orchestrator.py:72-78, 180-227`
 - Modify: `app/api/imports.py:13-48`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 ```python
 # tests/unit/test_import_member.py
@@ -1375,12 +1375,12 @@ def test_find_or_create_asset_uses_member_id():
     assert kwargs["member_id"] == 42
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/unit/test_import_member.py -v`
 Expected: FAIL — `_find_or_create_asset() got an unexpected keyword argument 'member_id'`
 
-- [ ] **Step 3: Update ImportOrchestrator**
+- [x] **Step 3: Update ImportOrchestrator**
 
 In `app/services/imports/orchestrator.py`:
 
@@ -1437,7 +1437,7 @@ def _find_or_create_asset(self, parsed_txn: ParsedTransaction, uow: UnitOfWork, 
     )
 ```
 
-- [ ] **Step 4: Update import API to accept member_id**
+- [x] **Step 4: Update import API to accept member_id**
 
 In `app/api/imports.py`:
 
@@ -1457,12 +1457,12 @@ async def preview_file_import(
     # ... rest unchanged
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `uv run pytest tests/unit/test_import_member.py -v`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/services/imports/orchestrator.py app/api/imports.py tests/unit/test_import_member.py
@@ -1478,7 +1478,7 @@ git commit -m "feat: thread member_id through import orchestrator and API"
 - Modify: `app/services/important_data_service.py`
 - Modify: `app/api/important_data.py`
 
-- [ ] **Step 1: Update ImportantDataRepository.list_all()**
+- [x] **Step 1: Update ImportantDataRepository.list_all()**
 
 In `app/repositories/important_data_repo.py`:
 
@@ -1492,11 +1492,11 @@ def list_all(self, category: Optional[ImportantDataCategory] = None, member_ids:
     return q.order_by(ImportantData.id).all()
 ```
 
-- [ ] **Step 2: Thread `member_ids` through ImportantDataService**
+- [x] **Step 2: Thread `member_ids` through ImportantDataService**
 
 Find the `list` or `list_all` method in the service and add the `member_ids` parameter, forwarding it to the repo.
 
-- [ ] **Step 3: Add `member_ids` query param to the important_data API route**
+- [x] **Step 3: Add `member_ids` query param to the important_data API route**
 
 In the `GET /important-data` route, add:
 ```python
@@ -1504,12 +1504,12 @@ member_ids: Optional[str] = Query(None, description="Comma-separated member IDs"
 ```
 Parse and forward to service.
 
-- [ ] **Step 4: Run existing tests**
+- [x] **Step 4: Run existing tests**
 
 Run: `uv run pytest tests/integration/test_important_data_api.py -v`
 Expected: PASS (existing tests unaffected since member_ids is optional)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/repositories/important_data_repo.py app/services/important_data_service.py app/api/important_data.py

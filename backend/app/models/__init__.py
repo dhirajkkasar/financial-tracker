@@ -1,3 +1,4 @@
+from app.models.member import Member
 from app.models.asset import Asset, AssetType, AssetClass
 from app.models.transaction import Transaction, TransactionType
 from app.models.valuation import Valuation
@@ -10,6 +11,7 @@ from app.models.snapshot import PortfolioSnapshot
 from app.models.cas_snapshot import CasSnapshot
 
 __all__ = [
+    "Member",
     "Asset", "AssetType", "AssetClass",
     "Transaction", "TransactionType",
     "Valuation",

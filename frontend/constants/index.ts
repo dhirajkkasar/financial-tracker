@@ -1,5 +1,13 @@
 import { AssetType, AssetClass } from '@/types'
 
+export interface Member {
+  id: number
+  pan: string
+  name: string
+  is_default: boolean
+  created_at: string
+}
+
 export const ASSET_TYPE_TO_CLASS: Record<AssetType, AssetClass> = {
   STOCK_IN: 'EQUITY',
   STOCK_US: 'EQUITY',

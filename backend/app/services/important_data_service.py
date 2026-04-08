@@ -10,9 +10,9 @@ class ImportantDataService:
     def __init__(self, uow_factory: IUnitOfWorkFactory):
         self._uow_factory = uow_factory
 
-    def list_all(self, category: Optional[ImportantDataCategory] = None) -> list[ImportantDataResponse]:
+    def list_all(self, category: Optional[ImportantDataCategory] = None, member_ids: Optional[list[int]] = None) -> list[ImportantDataResponse]:
         with self._uow_factory() as uow:
-            items = uow.important_data.list_all(category=category)
+            items = uow.important_data.list_all(category=category, member_ids=member_ids)
             return [ImportantDataResponse.from_orm_convert(i) for i in items]
 
     def create(self, body: ImportantDataCreate) -> ImportantDataResponse:

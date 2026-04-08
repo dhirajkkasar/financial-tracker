@@ -12,9 +12,11 @@ router = APIRouter(prefix="/important-data", tags=["important-data"])
 @router.get("", response_model=list[ImportantDataResponse])
 def list_important_data(
     category: Optional[ImportantDataCategory] = Query(None),
+    member_ids: Optional[str] = Query(None, description="Comma-separated member IDs"),
     svc: ImportantDataService = Depends(get_important_data_service),
 ):
-    return svc.list_all(category=category)
+    parsed_member_ids = [int(x.strip()) for x in member_ids.split(",") if x.strip()] if member_ids else None
+    return svc.list_all(category=category, member_ids=parsed_member_ids)
 
 
 @router.post("", response_model=ImportantDataResponse, status_code=status.HTTP_201_CREATED)

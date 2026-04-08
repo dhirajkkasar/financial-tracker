@@ -1,6 +1,7 @@
 import enum
 from datetime import datetime
-from sqlalchemy import String, Text, Enum as SAEnum
+from typing import Optional
+from sqlalchemy import String, Text, Enum as SAEnum, Integer, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 
@@ -18,6 +19,7 @@ class ImportantData(Base):
     __tablename__ = "important_data"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    member_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("members.id"), nullable=True, index=True)
     category: Mapped[ImportantDataCategory] = mapped_column(
         SAEnum(ImportantDataCategory), nullable=False, index=True
     )

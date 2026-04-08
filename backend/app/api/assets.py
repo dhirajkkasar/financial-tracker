@@ -22,9 +22,11 @@ def list_assets(
     type: Optional[AssetType] = Query(None),
     asset_class: Optional[AssetClass] = Query(None),
     active: Optional[bool] = Query(None),
+    member_ids: Optional[str] = Query(None, description="Comma-separated member IDs"),
     service: AssetService = Depends(get_asset_service),
 ):
-    return service.list(asset_type=type, asset_class=asset_class, active=active)
+    parsed_member_ids = [int(x.strip()) for x in member_ids.split(",") if x.strip()] if member_ids else None
+    return service.list(asset_type=type, asset_class=asset_class, active=active, member_ids=parsed_member_ids)
 
 
 @router.get("/{asset_id}", response_model=AssetResponse)

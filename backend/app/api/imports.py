@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from app.api.dependencies import get_import_orchestrator
@@ -13,6 +14,7 @@ router = APIRouter(prefix="/import", tags=["import"])
 async def preview_file_import(
     source: str = Query(..., description="Importer source: zerodha/cas/nps/ppf/epf/fidelity_rsu/fidelity_sale"),
     format: str = Query(..., description="File format: csv or pdf"),
+    member_id: Optional[int] = Query(None, description="Member ID to associate imported assets with"),
     file: UploadFile = File(...),
     user_inputs: str | None = Form(None, description='JSON object e.g. {"2025-03": 86.5} for fidelity sources'),
     orchestrator: ImportOrchestrator = Depends(get_import_orchestrator),
@@ -26,15 +28,13 @@ async def preview_file_import(
     importer_kwargs = {
         "filename": file.filename or "",
     }
-    
+
     # Pass user_inputs as-is string if provided (will be validated by importer)
     if user_inputs:
         importer_kwargs["user_inputs"] = user_inputs
 
-    print("user_inputs:", user_inputs)
-    print("importer_kwargs:", importer_kwargs)
     try:
-        response = orchestrator.preview(source, format, file_bytes, **importer_kwargs)
+        response = orchestrator.preview(source, format, file_bytes, member_id=member_id, **importer_kwargs)
     except ValueError as exc:
         # Unknown importer returns 400, validation errors return 422
         error_msg = str(exc)

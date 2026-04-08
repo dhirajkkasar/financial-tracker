@@ -110,6 +110,7 @@ async def health():
     return {"status": "ok"}
 
 
+from app.api.members import router as members_router
 from app.api.assets import router as assets_router
 from app.api.transactions import router as transactions_router
 from app.api.fd_detail import router as fd_detail_router
@@ -124,6 +125,7 @@ from app.api.tax import router as tax_router
 from app.api.snapshots import router as snapshots_router
 from app.api.corp_actions import router as corp_actions_router
 
+app.include_router(members_router)
 app.include_router(assets_router)
 app.include_router(transactions_router)
 app.include_router(fd_detail_router)

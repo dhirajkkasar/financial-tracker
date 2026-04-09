@@ -143,16 +143,28 @@ All commands require the backend server to be running. Set `PORTFOLIO_API` to ov
 export PORTFOLIO_API=http://localhost:8000  # optional override
 ```
 
-### Import Data
+### Member Management
+
+Each household member is identified by PAN. A member must exist before any data can be imported for them.
 
 ```bash
-python cli.py import ppf <ppf_csv_file>        # SBI PPF account statement CSV
-python cli.py import epf <epf_pdf_file>        # EPFO member passbook PDF
-python cli.py import cas <cas_pdf_file>        # CAMS/KFintech CAS PDF (mutual funds)
-python cli.py import nps <nps_csv_file>        # NPS transaction CSV
-python cli.py import zerodha <tradebook_csv>   # Zerodha tradebook CSV
-python cli.py import fidelity-rsu <rsu_csv>    # Fidelity RSU holding CSV (prompts for USD/INR rates)
-python cli.py import fidelity-sale <sale_pdf>  # Fidelity tax-cover sale PDF (prompts for USD/INR rates)
+# Add a member (required once per PAN before importing)
+python cli.py add-member --pan ABCDE1234F --name "Dhiraj"
+python cli.py add-member --pan XYZAB5678G --name "Spouse"
+```
+
+### Import Data
+
+All import commands require `--pan` to identify which household member the data belongs to.
+
+```bash
+python cli.py import ppf <ppf_csv_file> --pan ABCDE1234F        # SBI PPF account statement CSV
+python cli.py import epf <epf_pdf_file> --pan ABCDE1234F        # EPFO member passbook PDF
+python cli.py import cas <cas_pdf_file> --pan ABCDE1234F        # CAMS/KFintech CAS PDF (mutual funds)
+python cli.py import nps <nps_csv_file> --pan ABCDE1234F        # NPS transaction CSV
+python cli.py import zerodha <tradebook_csv> --pan ABCDE1234F   # Zerodha tradebook CSV
+python cli.py import fidelity-rsu <rsu_csv> --pan ABCDE1234F    # Fidelity RSU holding CSV (prompts for USD/INR rates)
+python cli.py import fidelity-sale <sale_pdf> --pan ABCDE1234F  # Fidelity tax-cover sale PDF (prompts for USD/INR rates)
 ```
 
 All imports are idempotent — re-importing the same file creates 0 new records.

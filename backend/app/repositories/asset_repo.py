@@ -12,6 +12,7 @@ class AssetRepository:
         self.db = db
 
     def create(self, **kwargs) -> Asset:
+        print(f"Creating asset with kwargs: {kwargs}")
         asset = Asset(**kwargs)
         self.db.add(asset)
         self.db.flush()

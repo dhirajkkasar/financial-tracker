@@ -185,7 +185,7 @@ class TestAddFD:
             name="HDFC FD", bank="HDFC",
             principal=500000.0, rate=7.1,
             start="2024-01-15", maturity="2025-01-15",
-            compounding="QUARTERLY",
+            compounding="QUARTERLY", member_id=1,
         )
 
         assert requests_mock.request_history[0].path == "/assets"
@@ -197,7 +197,7 @@ class TestAddFD:
         requests_mock.post(f"{BASE}/assets/10/fd-detail", json={"id": 1, "asset_id": 10})
         requests_mock.post(f"{BASE}/assets/10/transactions", json={"id": 1, "asset_id": 10, "type": "CONTRIBUTION"})
 
-        cli.cmd_add_fd("SBI FD", "SBI", 200000.0, 6.8, "2024-06-01", "2025-06-01", "MONTHLY")
+        cli.cmd_add_fd("SBI FD", "SBI", 200000.0, 6.8, "2024-06-01", "2025-06-01", "MONTHLY", member_id=1)
 
         body = requests_mock.request_history[0].json()
         assert body["asset_type"] == "FD"
@@ -208,7 +208,7 @@ class TestAddFD:
         requests_mock.post(f"{BASE}/assets/11/fd-detail", json={"id": 2, "asset_id": 11})
         requests_mock.post(f"{BASE}/assets/11/transactions", json={"id": 2, "asset_id": 11, "type": "CONTRIBUTION"})
 
-        cli.cmd_add_fd("ICICI FD", "ICICI", 300000.0, 7.5, "2024-03-01", "2025-03-01", "QUARTERLY")
+        cli.cmd_add_fd("ICICI FD", "ICICI", 300000.0, 7.5, "2024-03-01", "2025-03-01", "QUARTERLY", member_id=1)
 
         body = requests_mock.request_history[1].json()
         assert body["bank"] == "ICICI"
@@ -222,7 +222,7 @@ class TestAddFD:
         requests_mock.post(f"{BASE}/assets/12/fd-detail", json={"id": 3, "asset_id": 12})
         requests_mock.post(f"{BASE}/assets/12/transactions", json={"id": 3, "asset_id": 12, "type": "CONTRIBUTION"})
 
-        cli.cmd_add_fd("Test FD", "HDFC", 100000.0, 7.0, "2024-01-01", "2025-01-01", "QUARTERLY")
+        cli.cmd_add_fd("Test FD", "HDFC", 100000.0, 7.0, "2024-01-01", "2025-01-01", "QUARTERLY", member_id=1)
 
         body = requests_mock.request_history[2].json()
         assert body["amount_inr"] == -100000.0
@@ -238,7 +238,7 @@ class TestAddRD:
         requests_mock.post(f"{BASE}/assets/20/transactions", json={"id": 5, "asset_id": 20, "type": "CONTRIBUTION"})
 
         cli.cmd_add_rd("SBI RD", "SBI", installment=10000.0, rate=6.5,
-                       start="2024-01-01", maturity="2026-01-01", compounding="QUARTERLY")
+                       start="2024-01-01", maturity="2026-01-01", compounding="QUARTERLY", member_id=1)
 
         body = requests_mock.request_history[1].json()
         assert body["fd_type"] == "RD"
@@ -249,7 +249,7 @@ class TestAddRD:
         requests_mock.post(f"{BASE}/assets/21/fd-detail", json={"id": 6, "asset_id": 21})
         requests_mock.post(f"{BASE}/assets/21/transactions", json={"id": 6, "asset_id": 21, "type": "CONTRIBUTION"})
 
-        cli.cmd_add_rd("Post RD", "India Post", 5000.0, 7.0, "2024-06-01", "2026-06-01", "QUARTERLY")
+        cli.cmd_add_rd("Post RD", "India Post", 5000.0, 7.0, "2024-06-01", "2026-06-01", "QUARTERLY", member_id=1)
 
         body = requests_mock.request_history[0].json()
         assert body["asset_type"] == "RD"
@@ -266,7 +266,7 @@ class TestAddRealEstate:
         cli.cmd_add_real_estate(
             name="Venezia Flat",
             purchase_amount=7500000.0, purchase_date="2020-11-09",
-            current_value=12000000.0, value_date="2024-01-01",
+            current_value=12000000.0, value_date="2024-01-01", member_id=1,
         )
 
         assert requests_mock.request_history[0].path == "/assets"
@@ -278,7 +278,7 @@ class TestAddRealEstate:
         requests_mock.post(f"{BASE}/assets/31/transactions", json={"id": 2, "asset_id": 31, "type": "CONTRIBUTION"})
         requests_mock.post(f"{BASE}/assets/31/valuations", json={"id": 2, "asset_id": 31})
 
-        cli.cmd_add_real_estate("VTP Office", 3000000.0, "2024-06-27", 3200000.0, "2025-01-01")
+        cli.cmd_add_real_estate("VTP Office", 3000000.0, "2024-06-27", 3200000.0, "2025-01-01", member_id=1)
 
         txn_body = requests_mock.request_history[1].json()
         assert txn_body["amount_inr"] == -3000000.0
@@ -289,7 +289,7 @@ class TestAddRealEstate:
         requests_mock.post(f"{BASE}/assets/32/transactions", json={"id": 3, "asset_id": 32, "type": "CONTRIBUTION"})
         requests_mock.post(f"{BASE}/assets/32/valuations", json={"id": 3, "asset_id": 32})
 
-        cli.cmd_add_real_estate("Land", 5000000.0, "2021-01-01", 6000000.0, "2025-01-01")
+        cli.cmd_add_real_estate("Land", 5000000.0, "2021-01-01", 6000000.0, "2025-01-01", member_id=1)
 
         val_body = requests_mock.request_history[2].json()
         assert val_body["value_inr"] == 6000000.0
@@ -305,7 +305,7 @@ class TestAddGold:
         requests_mock.post(f"{BASE}/assets", json={"id": 40, "name": "Digital Gold", "asset_type": "GOLD"})
         requests_mock.post(f"{BASE}/assets/40/transactions", json={"id": 1, "asset_id": 40, "type": "BUY"})
 
-        cli.cmd_add_gold("Digital Gold", date="2023-06-01", units=10.0, price=5800.0)
+        cli.cmd_add_gold("Digital Gold", date="2023-06-01", units=10.0, price=5800.0, member_id=1)
 
         assert requests_mock.request_history[1].path == "/assets"
         assert requests_mock.request_history[2].path == "/assets/40/transactions"
@@ -314,7 +314,7 @@ class TestAddGold:
         requests_mock.get(f"{BASE}/assets", json=[{"id": 3, "name": "Digital Gold", "asset_type": "GOLD", "asset_class": "GOLD", "is_active": True}])
         requests_mock.post(f"{BASE}/assets/3/transactions", json={"id": 2, "asset_id": 3, "type": "BUY"})
 
-        cli.cmd_add_gold("Digital Gold", date="2024-01-01", units=5.0, price=6100.0)
+        cli.cmd_add_gold("Digital Gold", date="2024-01-01", units=5.0, price=6100.0, member_id=1)
 
         # No asset creation call
         post_paths = [r.path for r in requests_mock.request_history if r.method == "POST"]
@@ -326,7 +326,7 @@ class TestAddGold:
         requests_mock.post(f"{BASE}/assets", json={"id": 41, "name": "Gold", "asset_type": "GOLD"})
         requests_mock.post(f"{BASE}/assets/41/transactions", json={"id": 3, "asset_id": 41, "type": "BUY"})
 
-        cli.cmd_add_gold("Gold", "2023-01-01", units=8.0, price=5500.0)
+        cli.cmd_add_gold("Gold", "2023-01-01", units=8.0, price=5500.0, member_id=1)
 
         body = requests_mock.request_history[-1].json()
         assert body["amount_inr"] == -(8.0 * 5500.0)
@@ -337,7 +337,7 @@ class TestAddGold:
         requests_mock.post(f"{BASE}/assets", json={"id": 42, "name": "SGB 2023-24 S3", "asset_type": "SGB"})
         requests_mock.post(f"{BASE}/assets/42/transactions", json={"id": 4, "asset_id": 42, "type": "BUY"})
 
-        cli.cmd_add_sgb("SGB 2023-24 S3", date="2023-12-01", units=50.0, price=6200.0)
+        cli.cmd_add_sgb("SGB 2023-24 S3", date="2023-12-01", units=50.0, price=6200.0, member_id=1)
 
         body = requests_mock.request_history[1].json()
         assert body["asset_type"] == "SGB"
@@ -351,7 +351,7 @@ class TestAddRSU:
         requests_mock.post(f"{BASE}/assets", json={"id": 50, "name": "AMZN RSU", "asset_type": "STOCK_US"})
         requests_mock.post(f"{BASE}/assets/50/transactions", json={"id": 1, "asset_id": 50, "type": "VEST"})
 
-        cli.cmd_add_rsu("AMZN RSU", date="2024-03-01", units=10.0, price=180.50, forex=83.5, notes="Q1 vest")
+        cli.cmd_add_rsu("AMZN RSU", date="2024-03-01", units=10.0, price=180.50, forex=83.5, member_id=1, notes="Q1 vest")
 
         txn_body = requests_mock.request_history[-1].json()
         assert txn_body["type"] == "VEST"
@@ -364,7 +364,7 @@ class TestAddRSU:
         requests_mock.post(f"{BASE}/assets", json={"id": 51, "name": "GOOG RSU", "asset_type": "STOCK_US"})
         requests_mock.post(f"{BASE}/assets/51/transactions", json={"id": 2, "asset_id": 51, "type": "VEST"})
 
-        cli.cmd_add_rsu("GOOG RSU", "2024-06-01", units=5.0, price=170.0, forex=84.0)
+        cli.cmd_add_rsu("GOOG RSU", "2024-06-01", units=5.0, price=170.0, forex=84.0, member_id=1)
 
         body = requests_mock.request_history[-1].json()
         assert body["amount_inr"] == -(5.0 * 170.0 * 84.0)
@@ -374,7 +374,7 @@ class TestAddRSU:
         requests_mock.post(f"{BASE}/assets", json={"id": 52, "name": "META RSU", "asset_type": "STOCK_US"})
         requests_mock.post(f"{BASE}/assets/52/transactions", json={"id": 3, "asset_id": 52, "type": "VEST"})
 
-        cli.cmd_add_rsu("META RSU", "2024-09-01", 4.0, 500.0, 84.0, notes="Perquisite tax: ₹80,000")
+        cli.cmd_add_rsu("META RSU", "2024-09-01", 4.0, 500.0, 84.0, member_id=1, notes="Perquisite tax: ₹80,000")
 
         body = requests_mock.request_history[-1].json()
         assert "Perquisite tax" in body["notes"]

@@ -23,6 +23,28 @@ uv sync --all-extras
 
 # Run dev server (on startup: seeds interest rates, auto-matures past-due FDs, backfills missing EPF monthly contributions)
 uvicorn app.main:app --reload
+```
+
+### CLI (requires server running at localhost:8000)
+```bash
+cd backend
+
+# Member management (must exist before any import)
+python cli.py add-member --pan ABCDE1234F --name "Dhiraj"
+
+# All import commands require --pan (resolved to member_id via GET /members)
+python cli.py import ppf <file> --pan ABCDE1234F
+python cli.py import epf <file> --pan ABCDE1234F
+python cli.py import cas <file> --pan ABCDE1234F
+python cli.py import nps <file> --pan ABCDE1234F
+python cli.py import zerodha <file> --pan ABCDE1234F
+python cli.py import fidelity-rsu <file> --pan ABCDE1234F   # RSU holding CSV
+python cli.py import fidelity-sale <file> --pan ABCDE1234F  # tax-lot sale PDF
+```
+
+### Backend (tests)
+```bash
+cd backend
 
 # Run all tests (use uv run — bare pytest/python/python3 are not on PATH)
 uv run pytest
@@ -100,7 +122,7 @@ Hash must be **stable across re-imports** — never include internal DB IDs in t
 - Most list endpoints accept optional `?member_ids=1,2` (comma-separated); omit = all members
 - Tax endpoints (`/tax/summary`, `/tax/unrealised`, `/tax/harvest-opportunities`) require `?member_id=<id>` (single, per-PAN)
 - Snapshots are stored per-member; listing returns date-aggregated totals
-- **CLI:** `add-member --pan ABCDE1234F --name "Dhiraj"`; all import commands require `--pan <PAN>`
+- **CLI:** `add-member --pan ABCDE1234F --name "Dhiraj"`; all import commands require `--pan <PAN>`; `resolve_member_id(pan)` looks up via `GET /members` and exits with a helpful message if not found — **member must exist before first import**
 - **Frontend:** Global `MemberSelector` multi-select in header (persisted to localStorage); tax page has independent single-select picker
 
 ### Asset Types
@@ -117,6 +139,20 @@ Hash must be **stable across re-imports** — never include internal DB IDs in t
 - Asset type: `STOCK_US`
 - Transaction type: `VEST` (distinct from `BUY` to preserve vesting history)
 - Perquisite tax at vest (income tax on FMV) tracked in `notes` field only — no separate tax module
+
+### US Stock Lot Matching (Fidelity)
+Fidelity sale PDFs carry per-row `acquisition_date`, enabling specific-lot tax accounting.
+
+**Pipeline (runs at import commit time):**
+1. `FidelityPDFImporter` emits `SELL`-only `ParsedTransaction` with `acquisition_date` set; no BUY emitted
+2. `FidelityPreCommitProcessor` (`post_processors/fidelity.py`) runs inside `ImportOrchestrator.commit()` before the DB write loop:
+   - Queries existing `BUY`/`VEST` txns for the asset on `acquisition_date` (FIFO among same-date lots)
+   - Splits each SELL into partial-SELLs pinned to specific `lot_id`s
+   - **Sell-to-cover** (acquisition_date == date_sold): synthetic `BUY + SELL` pair on same date
+   - **Orphaned sale** (no matching lots and dates differ): synthetic `BUY + SELL` pair
+3. `match_lots()` in `engine/lot_engine.py`: if `sell.lot_id` found → specific-lot; otherwise FIFO fallback with warning log
+
+**Key invariant:** `FidelityPDFImporter.txn_id` = `SHA-256(ticker|date_sold|date_acquired|quantity)` — stable across re-imports.
 
 ### Returns Engine — Asset Type Routing
 Returns are computed via the **strategy pattern** (`services/returns/strategies/`). Each asset type has a leaf strategy class. The routing table below reflects the strategy hierarchy:
@@ -230,6 +266,7 @@ services/
       mf.py            → persists CAS snapshots
       ppf.py           → creates valuation from PPF CSV import
       epf.py           → ensures EPF asset always is_active=True
+      fidelity.py      → FidelityPreCommitProcessor: resolves SELL lot_ids from acquisition_date before DB write
   tax/
     strategies/
       base.py         → AssetTaxGainsResult dataclass, TaxGainsStrategy ABC, TaxStrategyRegistry

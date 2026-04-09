@@ -2,23 +2,25 @@
 Portfolio CLI — wraps the backend REST API for data loading and updates.
 
 Usage (server must be running):
-  python cli.py add-member --pan ABCDE1234F --name "Dhiraj"
+  # All import/add commands require --pan. Pass --member-name only when creating a new member.
+  python cli.py import ppf <file> --pan ABCDE1234F [--member-name "Dhiraj"]
+  python cli.py import epf <file> --pan ABCDE1234F [--member-name "Dhiraj"]
+  python cli.py import cas <file> --pan ABCDE1234F [--member-name "Dhiraj"]
+  python cli.py import nps <file> --pan ABCDE1234F [--member-name "Dhiraj"]
+  python cli.py import zerodha <file> --pan ABCDE1234F [--member-name "Dhiraj"]
+  python cli.py import fidelity-rsu <file> --pan ABCDE1234F [--member-name "Dhiraj"]
+  python cli.py import fidelity-sale <file> --pan ABCDE1234F [--member-name "Dhiraj"]
 
-  python cli.py import ppf <file> --pan ABCDE1234F
-  python cli.py import epf <file> --pan ABCDE1234F
-  python cli.py import cas <file> --pan ABCDE1234F
-  python cli.py import nps <file> --pan ABCDE1234F
-  python cli.py import zerodha <file> --pan ABCDE1234F
-  python cli.py import fidelity-rsu <file> --pan ABCDE1234F    # Fidelity RSU holding CSV
-  python cli.py import fidelity-sale <file> --pan ABCDE1234F   # Fidelity tax-cover sale PDF
+  # Register a member explicitly (optional — any import/add command can also create one)
+  python cli.py add-member --pan ABCDE1234F --member-name "Dhiraj"
 
-  python cli.py add fd   --name "HDFC FD" --bank HDFC --principal 500000 --rate 7.1 --start 2024-01-15 --maturity 2025-01-15 --compounding QUARTERLY
-  python cli.py add rd   --name "SBI RD"  --bank SBI  --installment 10000 --rate 6.5 --start 2024-01-01 --maturity 2026-01-01 --compounding QUARTERLY
-  python cli.py add real-estate --name "Venezia Flat" --purchase-amount 7500000 --purchase-date 2020-11-09 --current-value 12000000 --value-date 2024-01-01
-  python cli.py add gold  --name "Digital Gold" --date 2023-06-01 --units 10 --price 5800
-  python cli.py add sgb   --name "SGB 2023-24 S3" --date 2023-12-01 --units 50 --price 6200
-  python cli.py add rsu   --name "AMZN RSU" --date 2024-03-01 --units 10 --price 180.50 --forex 83.5 --notes "Perquisite tax: ..."
-  python cli.py add us-stock --name "Apple" --identifier AAPL --date 2023-01-15 --units 5 --price 142.50 --forex 82.0
+  python cli.py add fd   --name "HDFC FD" --pan ABCDE1234F --bank HDFC --principal 500000 --rate 7.1 --start 2024-01-15 --maturity 2025-01-15 --compounding QUARTERLY
+  python cli.py add rd   --name "SBI RD"  --pan ABCDE1234F --bank SBI  --installment 10000 --rate 6.5 --start 2024-01-01 --maturity 2026-01-01 --compounding QUARTERLY
+  python cli.py add real-estate --name "Venezia Flat" --pan ABCDE1234F --purchase-amount 7500000 --purchase-date 2020-11-09 --current-value 12000000 --value-date 2024-01-01
+  python cli.py add gold  --name "Digital Gold" --pan ABCDE1234F --date 2023-06-01 --units 10 --price 5800
+  python cli.py add sgb   --name "SGB 2023-24 S3" --pan ABCDE1234F --date 2023-12-01 --units 50 --price 6200
+  python cli.py add rsu   --name "AMZN RSU" --pan ABCDE1234F --date 2024-03-01 --units 10 --price 180.50 --forex 83.5 --notes "Perquisite tax: ..."
+  python cli.py add us-stock --name "Apple" --pan ABCDE1234F --identifier AAPL --date 2023-01-15 --units 5 --price 142.50 --forex 82.0
 
   python cli.py add valuation --asset "Venezia Flat" --value 13000000 --date 2025-01-01
   python cli.py add txn  --asset "AMZN RSU" --type VEST --date 2024-09-01 --amount -90000 --units 5 --price 215 --forex 84
@@ -94,25 +96,46 @@ def find_goal(name_query: str) -> dict:
     return goal
 
 
-def resolve_member_id(pan: str) -> int:
-    """Look up member by PAN via GET /members. Exit if not found."""
+def resolve_or_create_member(pan: str, member_name: str | None = None) -> int:
+    """Look up member by PAN. Create if not found (prompts for name if --member-name not given)."""
     members = _api("get", "/members")
     for m in members:
         if m["pan"].upper() == pan.upper():
             print(f"  → matched member: {m['name']} (id={m['id']}, PAN={m['pan']})")
             return m["id"]
-    sys.exit(f"No member with PAN '{pan}'. Run 'add-member --pan {pan} --name <name>' first.")
+
+    # Member not found — resolve a name to create one
+    if member_name is None:
+        if sys.stdin.isatty():
+            print(f"No member found with PAN {pan}.")
+            member_name = input("  Create new member — enter name (or Ctrl+C to cancel): ").strip()
+            if not member_name:
+                sys.exit("Aborted: member name cannot be empty.")
+        else:
+            sys.exit(
+                f"No member with PAN '{pan}'.\n"
+                f"  → Run: python cli.py add-member --pan {pan} --member-name \"Your Name\"\n"
+                f"  → Or pass --member-name when running this command."
+            )
+
+    result = _api("post", "/members", json={"pan": pan.upper(), "name": member_name})
+    print(f"  → created member: {result['name']} (id={result['id']}, PAN={result['pan']})")
+    return result["id"]
 
 
 def _find_or_create_asset(name: str, asset_type: str, asset_class: str,
+                           member_id: int,
                            identifier: str | None = None, currency: str = "INR") -> dict:
-    """Return existing asset by exact name, or create a new one."""
-    assets = _api("get", "/assets")
+    """Return existing asset by exact name for this member, or create a new one."""
+    assets = _api("get", f"/assets?member_ids={member_id}")
     for a in assets:
         if a["name"] == name:
             print(f"  → using existing asset: {a['name']} (id={a['id']})")
             return a
-    payload = {"name": name, "asset_type": asset_type, "asset_class": asset_class, "currency": currency}
+    payload = {
+        "name": name, "asset_type": asset_type, "asset_class": asset_class,
+        "currency": currency, "member_id": member_id,
+    }
     if identifier:
         payload["identifier"] = identifier
     asset = _api("post", "/assets", json=payload)
@@ -303,12 +326,14 @@ def cmd_add_member(pan: str, name: str) -> dict:
 # ── Add commands ──────────────────────────────────────────────────────────────
 
 def cmd_add_fd(name: str, bank: str, principal: float, rate: float,
-               start: str, maturity: str, compounding: str, matured: bool = None) -> dict:
+               start: str, maturity: str, compounding: str, member_id: int,
+               matured: bool = None) -> dict:
     from datetime import date as _date
     if matured is None:
         matured = _date.fromisoformat(maturity) < _date.today()
     asset = _api("post", "/assets", json={
         "name": name, "asset_type": "FD", "asset_class": "DEBT", "currency": "INR",
+        "member_id": member_id,
     })
     asset_id = asset["id"]
     _api("post", f"/assets/{asset_id}/fd-detail", json={
@@ -330,9 +355,10 @@ def cmd_add_fd(name: str, bank: str, principal: float, rate: float,
 
 
 def cmd_add_rd(name: str, bank: str, installment: float, rate: float,
-               start: str, maturity: str, compounding: str) -> dict:
+               start: str, maturity: str, compounding: str, member_id: int) -> dict:
     asset = _api("post", "/assets", json={
         "name": name, "asset_type": "RD", "asset_class": "DEBT", "currency": "INR",
+        "member_id": member_id,
     })
     asset_id = asset["id"]
     _api("post", f"/assets/{asset_id}/fd-detail", json={
@@ -352,9 +378,10 @@ def cmd_add_rd(name: str, bank: str, installment: float, rate: float,
 
 
 def cmd_add_real_estate(name: str, purchase_amount: float, purchase_date: str,
-                        current_value: float, value_date: str) -> dict:
+                        current_value: float, value_date: str, member_id: int) -> dict:
     asset = _api("post", "/assets", json={
         "name": name, "asset_type": "REAL_ESTATE", "asset_class": "REAL_ESTATE", "currency": "INR",
+        "member_id": member_id,
     })
     asset_id = asset["id"]
     _api("post", f"/assets/{asset_id}/transactions", json={
@@ -368,8 +395,8 @@ def cmd_add_real_estate(name: str, purchase_amount: float, purchase_date: str,
     return val
 
 
-def cmd_add_gold(name: str, date: str, units: float, price: float) -> dict:
-    asset = _find_or_create_asset(name, "GOLD", "GOLD")
+def cmd_add_gold(name: str, date: str, units: float, price: float, member_id: int) -> dict:
+    asset = _find_or_create_asset(name, "GOLD", "GOLD", member_id, identifier="Gold22k")
     txn = _api("post", f"/assets/{asset['id']}/transactions", json={
         "type": "BUY", "date": date,
         "units": units, "price_per_unit": price,
@@ -379,8 +406,8 @@ def cmd_add_gold(name: str, date: str, units: float, price: float) -> dict:
     return txn
 
 
-def cmd_add_sgb(name: str, date: str, units: float, price: float) -> dict:
-    asset = _find_or_create_asset(name, "SGB", "GOLD")
+def cmd_add_sgb(name: str, date: str, units: float, price: float, member_id: int) -> dict:
+    asset = _find_or_create_asset(name, "SGB", "GOLD", member_id)
     txn = _api("post", f"/assets/{asset['id']}/transactions", json={
         "type": "BUY", "date": date,
         "units": units, "price_per_unit": price,
@@ -391,8 +418,9 @@ def cmd_add_sgb(name: str, date: str, units: float, price: float) -> dict:
 
 
 def cmd_add_rsu(name: str, date: str, units: float, price: float,
-                forex: float, notes: str | None = None, identifier: str | None = None) -> dict:
-    asset = _find_or_create_asset(name, "STOCK_US", "EQUITY", identifier=identifier)
+                forex: float, member_id: int,
+                notes: str | None = None, identifier: str | None = None) -> dict:
+    asset = _find_or_create_asset(name, "STOCK_US", "EQUITY", member_id, identifier=identifier)
     amount = -(units * price * forex)
     txn = _api("post", f"/assets/{asset['id']}/transactions", json={
         "type": "VEST", "date": date,
@@ -405,8 +433,8 @@ def cmd_add_rsu(name: str, date: str, units: float, price: float,
 
 
 def cmd_add_us_stock(name: str, date: str, units: float, price: float,
-                     forex: float, identifier: str | None = None) -> dict:
-    asset = _find_or_create_asset(name, "STOCK_US", "EQUITY", identifier=identifier)
+                     forex: float, member_id: int, identifier: str | None = None) -> dict:
+    asset = _find_or_create_asset(name, "STOCK_US", "EQUITY", member_id, identifier=identifier)
     amount = -(units * price * forex)
     txn = _api("post", f"/assets/{asset['id']}/transactions", json={
         "type": "BUY", "date": date,
@@ -684,19 +712,27 @@ def build_parser() -> argparse.ArgumentParser:
     for src in ("ppf", "epf", "cas", "nps"):
         s = import_sub.add_parser(src, help=f"Import {src.upper()} file")
         s.add_argument("file", help="Path to the file")
-        s.add_argument("--pan", required=True, help="PAN of the member this import belongs to")
+        s.add_argument("--pan", required=True, help="PAN of the member (e.g. ABCDE1234F)")
+        s.add_argument("--member-name", dest="member_name", default=None,
+                       help="Member display name — only used when creating a new member")
 
     s = import_sub.add_parser("zerodha", help="Import Zerodha tradebook CSV")
     s.add_argument("file", help="Path to CSV")
-    s.add_argument("--pan", required=True, help="PAN of the member this import belongs to")
+    s.add_argument("--pan", required=True, help="PAN of the member")
+    s.add_argument("--member-name", dest="member_name", default=None,
+                   help="Member display name — only used when creating a new member")
 
     s = import_sub.add_parser("fidelity-rsu", help="Import Fidelity RSU holding CSV (MARKET_TICKER.csv)")
     s.add_argument("file", help="Path to CSV file")
-    s.add_argument("--pan", required=True, help="PAN of the member this import belongs to")
+    s.add_argument("--pan", required=True, help="PAN of the member")
+    s.add_argument("--member-name", dest="member_name", default=None,
+                   help="Member display name — only used when creating a new member")
 
     s = import_sub.add_parser("fidelity-sale", help="Import Fidelity tax-cover sale PDF")
     s.add_argument("file", help="Path to PDF file")
-    s.add_argument("--pan", required=True, help="PAN of the member this import belongs to")
+    s.add_argument("--pan", required=True, help="PAN of the member")
+    s.add_argument("--member-name", dest="member_name", default=None,
+                   help="Member display name — only used when creating a new member")
 
     # ── add ───────────────────────────────────────────────────────────────────
     p_add = sub.add_parser("add", help="Add an asset or transaction manually")
@@ -714,6 +750,9 @@ def build_parser() -> argparse.ArgumentParser:
                       choices=["MONTHLY", "QUARTERLY", "HALF_YEARLY", "YEARLY"])
     p_fd.add_argument("--matured", action="store_true", default=None,
                       help="Mark as matured (auto-detected from maturity date if omitted)")
+    p_fd.add_argument("--pan", required=True, help="PAN of the member")
+    p_fd.add_argument("--member-name", dest="member_name", default=None,
+                      help="Member display name — only used when creating a new member")
 
     # add rd
     p_rd = add_sub.add_parser("rd", help="Add a Recurring Deposit")
@@ -725,6 +764,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_rd.add_argument("--maturity", required=True, help="Maturity date YYYY-MM-DD")
     p_rd.add_argument("--compounding", default="QUARTERLY",
                       choices=["MONTHLY", "QUARTERLY", "HALF_YEARLY", "YEARLY"])
+    p_rd.add_argument("--pan", required=True, help="PAN of the member")
+    p_rd.add_argument("--member-name", dest="member_name", default=None,
+                      help="Member display name — only used when creating a new member")
 
     # add real-estate
     p_re = add_sub.add_parser("real-estate", help="Add a real estate property")
@@ -733,6 +775,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_re.add_argument("--purchase-date", required=True, help="Purchase date YYYY-MM-DD")
     p_re.add_argument("--current-value", type=float, required=True, help="Current market value in INR")
     p_re.add_argument("--value-date", required=True, help="Date of current value estimate YYYY-MM-DD")
+    p_re.add_argument("--pan", required=True, help="PAN of the member")
+    p_re.add_argument("--member-name", dest="member_name", default=None,
+                      help="Member display name — only used when creating a new member")
 
     # add gold
     p_gold = add_sub.add_parser("gold", help="Add a gold purchase")
@@ -740,6 +785,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_gold.add_argument("--date", required=True, help="Purchase date YYYY-MM-DD")
     p_gold.add_argument("--units", type=float, required=True, help="Grams purchased")
     p_gold.add_argument("--price", type=float, required=True, help="Price per gram in INR")
+    p_gold.add_argument("--pan", required=True, help="PAN of the member")
+    p_gold.add_argument("--member-name", dest="member_name", default=None,
+                        help="Member display name — only used when creating a new member")
 
     # add sgb
     p_sgb = add_sub.add_parser("sgb", help="Add a Sovereign Gold Bond purchase")
@@ -747,6 +795,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_sgb.add_argument("--date", required=True, help="Purchase date YYYY-MM-DD")
     p_sgb.add_argument("--units", type=float, required=True, help="Units (bonds) purchased")
     p_sgb.add_argument("--price", type=float, required=True, help="Price per unit in INR")
+    p_sgb.add_argument("--pan", required=True, help="PAN of the member")
+    p_sgb.add_argument("--member-name", dest="member_name", default=None,
+                       help="Member display name — only used when creating a new member")
 
     # add rsu
     p_rsu = add_sub.add_parser("rsu", help="Add an RSU vest event")
@@ -757,6 +808,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_rsu.add_argument("--price", type=float, required=True, help="Price per share in USD")
     p_rsu.add_argument("--forex", type=float, required=True, help="USD/INR rate on vest date")
     p_rsu.add_argument("--notes", help="e.g. 'Perquisite tax: ₹1,23,000'")
+    p_rsu.add_argument("--pan", required=True, help="PAN of the member")
+    p_rsu.add_argument("--member-name", dest="member_name", default=None,
+                       help="Member display name — only used when creating a new member")
 
     # add us-stock
     p_us = add_sub.add_parser("us-stock", help="Add a US stock purchase")
@@ -766,6 +820,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_us.add_argument("--units", type=float, required=True)
     p_us.add_argument("--price", type=float, required=True, help="Price per share in USD")
     p_us.add_argument("--forex", type=float, required=True, help="USD/INR rate")
+    p_us.add_argument("--pan", required=True, help="PAN of the member")
+    p_us.add_argument("--member-name", dest="member_name", default=None,
+                      help="Member display name — only used when creating a new member")
 
     # add epf-contribution
     p_epf = add_sub.add_parser("epf-contribution", help="Add a monthly EPF contribution (post initial PDF import)")
@@ -816,6 +873,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_txn.add_argument("--forex", type=float, help="Forex rate (for USD assets)")
     p_txn.add_argument("--notes")
 
+    # ── add-member ────────────────────────────────────────────────────────────
+    p_am = sub.add_parser("add-member", help="Register a household member by PAN")
+    p_am.add_argument("--pan", required=True, help="PAN card number (e.g. ABCDE1234F)")
+    p_am.add_argument("--member-name", dest="member_name", required=True,
+                      help="Display name for the member")
+
     # ── list ──────────────────────────────────────────────────────────────────
     p_list = sub.add_parser("list", help="List resources")
     list_sub = p_list.add_subparsers(dest="resource", metavar="RESOURCE")
@@ -846,11 +909,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_delete_goal.add_argument("--name", required=True, help="Goal name (fuzzy matched)")
 
     # ── utilities ─────────────────────────────────────────────────────────────
-    # ── add-member ────────────────────────────────────────────────────────────
-    p_add_member = sub.add_parser("add-member", help="Register a household member")
-    p_add_member.add_argument("--pan", required=True, help="PAN card number (e.g. ABCDE1234F)")
-    p_add_member.add_argument("--name", required=True, help="Member name")
-
     sub.add_parser("refresh-prices", help="Trigger price refresh for all assets")
     sub.add_parser("snapshot", help="Take a portfolio snapshot now")
     p_backup = sub.add_parser("backup", help="Backup DB to Google Drive")
@@ -877,7 +935,7 @@ def main():
         if not args.source:
             parser.parse_args(["import", "--help"])
             return
-        member_id = resolve_member_id(args.pan)
+        member_id = resolve_or_create_member(args.pan, args.member_name)
         if args.source == "ppf":
             cmd_import_ppf(args.file, member_id)
         elif args.source == "epf":
@@ -893,29 +951,39 @@ def main():
         elif args.source == "fidelity-sale":
             cmd_import_fidelity_sale(args.file, member_id)
 
+    elif args.command == "add-member":
+        cmd_add_member(args.pan, args.member_name)
+
     elif args.command == "add":
         if not args.kind:
             parser.parse_args(["add", "--help"])
             return
         if args.kind == "fd":
+            member_id = resolve_or_create_member(args.pan, args.member_name)
             cmd_add_fd(args.name, args.bank, args.principal, args.rate,
-                       args.start, args.maturity, args.compounding, args.matured)
+                       args.start, args.maturity, args.compounding, member_id, args.matured)
         elif args.kind == "rd":
+            member_id = resolve_or_create_member(args.pan, args.member_name)
             cmd_add_rd(args.name, args.bank, args.installment, args.rate,
-                       args.start, args.maturity, args.compounding)
+                       args.start, args.maturity, args.compounding, member_id)
         elif args.kind == "real-estate":
+            member_id = resolve_or_create_member(args.pan, args.member_name)
             cmd_add_real_estate(args.name, args.purchase_amount, args.purchase_date,
-                                args.current_value, args.value_date)
+                                args.current_value, args.value_date, member_id)
         elif args.kind == "gold":
-            cmd_add_gold(args.name, args.date, args.units, args.price)
+            member_id = resolve_or_create_member(args.pan, args.member_name)
+            cmd_add_gold(args.name, args.date, args.units, args.price, member_id)
         elif args.kind == "sgb":
-            cmd_add_sgb(args.name, args.date, args.units, args.price)
+            member_id = resolve_or_create_member(args.pan, args.member_name)
+            cmd_add_sgb(args.name, args.date, args.units, args.price, member_id)
         elif args.kind == "rsu":
+            member_id = resolve_or_create_member(args.pan, args.member_name)
             cmd_add_rsu(args.name, args.date, args.units, args.price, args.forex,
-                        notes=args.notes, identifier=args.identifier)
+                        member_id, notes=args.notes, identifier=args.identifier)
         elif args.kind == "us-stock":
+            member_id = resolve_or_create_member(args.pan, args.member_name)
             cmd_add_us_stock(args.name, args.date, args.units, args.price, args.forex,
-                             identifier=args.identifier)
+                             member_id, identifier=args.identifier)
         elif args.kind == "epf-contribution":
             cmd_add_epf_contribution(
                 args.asset, args.month_year, args.employee_share,
@@ -960,9 +1028,6 @@ def main():
 
     elif args.command == "fetch-corp-actions":
         cmd_fetch_corp_actions(args.asset_id)
-
-    elif args.command == "add-member":
-        cmd_add_member(args.pan, args.name)
 
     elif args.command == "refresh-prices":
         cmd_refresh_prices()

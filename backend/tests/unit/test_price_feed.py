@@ -142,30 +142,148 @@ class TestYFinanceFetcher:
 
 
 class TestGoldFetcher:
-    def test_fetch_gold_converts_to_inr_per_gram(self):
-        asset = make_mock_asset(asset_type=AssetType.GOLD, identifier="GC=F")
-        mock_gold = MagicMock()
-        mock_gold.fast_info.last_price = 3100.0  # USD/troy oz
-        mock_forex = MagicMock()
-        mock_forex.fast_info.last_price = 83.5   # USD/INR
+    def test_fetch_gold_etf_uses_yfinance_nse(self):
+        """Gold ETF (GOLDBEES) should use YFinanceFetcher with NSE suffix."""
+        asset = make_mock_asset(
+            asset_type=AssetType.GOLD,
+            name="GOLDBEES",
+            identifier="GOLDBEES"
+        )
+        mock_ticker = MagicMock()
+        mock_ticker.fast_info.last_price = 6850.50
 
-        def ticker_side_effect(symbol):
-            if symbol == "USDINR=X":
-                return mock_forex
-            return mock_gold
-
-        with patch("app.services.price_feed.yf.Ticker", side_effect=ticker_side_effect):
+        with patch("app.services.price_feed.yf.Ticker", return_value=mock_ticker):
             fetcher = GoldFetcher()
             result = fetcher.fetch(asset)
         assert result is not None
-        expected = 3100.0 * 83.5 / 31.1035
-        assert abs(result.price_inr - expected) < 1.0
-        assert result.source == "yfinance_gold"
+        assert abs(result.price_inr - 6850.50) < 0.01
+        assert result.source == "yfinance"
 
-    def test_fetch_gold_returns_none_on_forex_failure(self):
-        asset = make_mock_asset(asset_type=AssetType.GOLD)
-        with patch("app.services.price_feed.yf.Ticker") as mock_ticker_cls:
-            mock_ticker_cls.return_value.fast_info = {}
+    def test_fetch_sgb_from_nse_api(self):
+        """SGB should fetch from NSE API, not goodreturns.in."""
+        asset = make_mock_asset(
+            asset_type=AssetType.GOLD,
+            name="SGBJUN29II",
+            identifier="SGBJUN29II"
+        )
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "priceInfo": {"lastPrice": 6500.0}
+        }
+
+        with patch("app.services.price_feed.httpx.get", return_value=mock_response):
+            fetcher = GoldFetcher()
+            result = fetcher.fetch(asset)
+        assert result is not None
+        assert abs(result.price_inr - 6500.0) < 0.01
+        assert result.source == "NSE_SGB"
+
+    def test_fetch_physical_gold_22k_from_goodreturns(self):
+        """Physical gold (22K) should scrape goodreturns.in and parse HTML."""
+        asset = make_mock_asset(
+            asset_type=AssetType.GOLD,
+            name="Physical Gold",
+            identifier="Gold22k"
+        )
+        mock_html = """
+        <html>
+            <body>
+                <p>22K Gold /g ₹7,850</p>
+                <p>24K Gold /g ₹8,560</p>
+            </body>
+        </html>
+        """
+        mock_response = MagicMock()
+        mock_response.text = mock_html
+        mock_response.status_code = 200
+
+        with patch("app.services.price_feed.httpx.get", return_value=mock_response):
+            with patch("app.services.price_feed.BeautifulSoup") as mock_bs:
+                mock_soup = MagicMock()
+                mock_soup.get_text.return_value = mock_html
+                mock_bs.return_value = mock_soup
+
+                fetcher = GoldFetcher()
+                result = fetcher.fetch(asset)
+        assert result is not None
+        assert result.price_inr == 7850
+        assert result.source == "GoodReturns_22K"
+
+    def test_fetch_physical_gold_24k_from_goodreturns(self):
+        """Physical gold (24K) should scrape and extract 24K price."""
+        asset = make_mock_asset(
+            asset_type=AssetType.GOLD,
+            name="Physical Gold",
+            identifier="Gold24k"
+        )
+        mock_html = """
+        <html>
+            <body>
+                <p>22K Gold /g ₹7,850</p>
+                <p>24K Gold /g ₹8,560</p>
+            </body>
+        </html>
+        """
+        mock_response = MagicMock()
+        mock_response.text = mock_html
+        mock_response.status_code = 200
+
+        with patch("app.services.price_feed.httpx.get", return_value=mock_response):
+            with patch("app.services.price_feed.BeautifulSoup") as mock_bs:
+                mock_soup = MagicMock()
+                mock_soup.get_text.return_value = mock_html
+                mock_bs.return_value = mock_soup
+
+                fetcher = GoldFetcher()
+                result = fetcher.fetch(asset)
+        assert result is not None
+        assert result.price_inr == 8560
+        assert result.source == "GoodReturns_24K"
+
+    def test_fetch_gold_returns_none_on_sgb_api_failure(self):
+        """SGB fetch should return None on NSE API failure."""
+        asset = make_mock_asset(
+            asset_type=AssetType.GOLD,
+            name="SGBJUN29II",
+            identifier="SGBJUN29II"
+        )
+        with patch("app.services.price_feed.httpx.get") as mock_get:
+            mock_get.side_effect = Exception("API error")
+            fetcher = GoldFetcher()
+            result = fetcher.fetch(asset)
+        assert result is None
+
+    def test_fetch_gold_returns_none_on_goodreturns_parse_failure(self):
+        """Physical gold fetch should return None if regex doesn't match."""
+        asset = make_mock_asset(
+            asset_type=AssetType.GOLD,
+            name="Physical Gold",
+            identifier="Gold22k"
+        )
+        mock_html = "<html><body>No price data here</body></html>"
+        mock_response = MagicMock()
+        mock_response.text = mock_html
+        mock_response.status_code = 200
+
+        with patch("app.services.price_feed.httpx.get", return_value=mock_response):
+            with patch("app.services.price_feed.BeautifulSoup") as mock_bs:
+                mock_soup = MagicMock()
+                mock_soup.get_text.return_value = mock_html
+                mock_bs.return_value = mock_soup
+
+                fetcher = GoldFetcher()
+                result = fetcher.fetch(asset)
+        assert result is None
+
+    def test_fetch_gold_returns_none_on_goodreturns_error(self):
+        """Physical gold fetch should return None on any exception."""
+        asset = make_mock_asset(
+            asset_type=AssetType.GOLD,
+            name="Physical Gold",
+            identifier="Gold22k"
+        )
+        with patch("app.services.price_feed.httpx.get") as mock_get:
+            mock_get.side_effect = Exception("Network error")
             fetcher = GoldFetcher()
             result = fetcher.fetch(asset)
         assert result is None

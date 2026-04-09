@@ -61,7 +61,7 @@ class PriceService:
         if hasattr(asset, "_resolved_nps_scheme_code") and asset._resolved_nps_scheme_code:
             asset.identifier = asset._resolved_nps_scheme_code
             self.db.commit()
-
+        
         price_paise = round(result.price_inr * 100)
         cache = self.cache_repo.upsert(
             asset_id=asset_id,

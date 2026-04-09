@@ -3,10 +3,15 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
+import re
 from typing import ClassVar, Optional, Protocol, runtime_checkable
+from urllib import response
 
 import httpx
+import time
+from sqlalchemy import URL
 import yfinance as yf
+from bs4 import BeautifulSoup
 
 from app.models.asset import Asset, AssetType
 
@@ -177,20 +182,64 @@ class GoldFetcher:
         if ticker_name in self._GOLD_ETF_TICKERS:
             # Use NSE market price for gold ETFs (unit price ≠ 1 gram)
             return YFinanceFetcher(suffix=".NS", use_name_as_ticker=True).fetch(asset)
-        try:
-            gold = yf.Ticker("GC=F")
-            forex = yf.Ticker("USDINR=X")
-            price_usd_oz = YFinanceFetcher._get_price(gold)
-            rate = YFinanceFetcher._get_price(forex)
-            if price_usd_oz is None or rate is None:
-                logger.warning("GoldFetcher: missing price or forex rate")
+        elif "SGB" in ticker_name:
+            try:
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Referer": "https://www.nseindia.com/get-quote/equity/SGBJUN29II",
+                    "Accept": "application/json",
+                    "Connection": "keep-alive",
+                }
+                response = httpx.get(f"https://www.nseindia.com/api/quote-equity?symbol={ticker_name}", timeout=10, headers=headers)
+                data = response.json()
+                price = data["priceInfo"]["lastPrice"]
+                return PriceResult(price_inr=price, source="NSE_SGB")
+            except Exception as e:
+                logger.warning("GoldFetcher: error fetching SGB price: %s", e)
                 return None
-            price_inr_gram = price_usd_oz * rate / TROY_OZ_TO_GRAMS
-            return PriceResult(price_inr=price_inr_gram, source="yfinance_gold")
-        except Exception as e:
-            logger.warning("GoldFetcher: error: %s", e)
-            return None
+        else:
+            try:
+                time.sleep(1)
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                    "Referer": "https://www.google.com/",
+                    "Connection": "keep-alive"
+                }
+                url = "https://www.goodreturns.in/gold-rates/pune.html"
 
+                response = httpx.get(url, headers=headers)
+
+                logger.info(f"GoldFetcher: HTTP {response.status_code} for {url}")
+                
+                soup = BeautifulSoup(response.text, "html.parser")
+
+                # Find all text blocks
+                text = soup.get_text()
+
+                if asset.identifier == "Gold22k":
+                    # Regex to extract 22K price
+                    match = re.search(r"22K\s+Gold\s*/g\s*₹([\d,]+)", text)
+                    source = "GoodReturns_22K"
+                elif asset.identifier == "Gold24k":
+                    # Regex to extract 24K price
+                    match = re.search(r"24K\s+Gold\s*/g\s*₹([\d,]+)", text)
+                    source = "GoodReturns_24K"
+
+                if match:
+                    price = match.group(1)
+                    price = int(price.replace(",", ""))
+                    return PriceResult(price_inr=price, source=source)
+                else:
+                    logger.warning("GoldFetcher: price not found in page for %s", asset.identifier)
+                    return None
+            except Exception as e:
+                logger.warning("GoldFetcher: error: %s", e)
+                return None
 
 @register_fetcher
 class NPSNavFetcher(BasePriceFetcher):

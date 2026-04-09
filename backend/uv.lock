@@ -499,6 +499,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
+    { name = "beautifulsoup4" },
     { name = "fastapi" },
     { name = "fpdf2" },
     { name = "google-api-python-client" },
@@ -534,6 +535,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.13.0" },
+    { name = "beautifulsoup4", specifier = ">=4.14.3" },
     { name = "factory-boy", marker = "extra == 'dev'", specifier = ">=3.3.0" },
     { name = "fastapi", specifier = ">=0.111.0" },
     { name = "fpdf2", specifier = ">=2.7.0" },

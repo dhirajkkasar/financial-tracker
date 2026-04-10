@@ -29,6 +29,9 @@ uvicorn app.main:app --reload
 ```bash
 cd backend
 
+# First-time setup wizard (empty DB only — guides through all asset types interactively)
+python cli.py quick-start
+
 # Member management (must exist before any import)
 python cli.py add-member --pan ABCDE1234F --name "Dhiraj"
 

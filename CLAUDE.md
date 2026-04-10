@@ -29,20 +29,23 @@ uvicorn app.main:app --reload
 ```bash
 cd backend
 
+# fintrack is the installed entry point (registered via pyproject.toml [project.scripts])
+# Available after: uv sync --all-extras
+
 # First-time setup wizard (empty DB only — guides through all asset types interactively)
-python cli.py quick-start
+fintrack quick-start
 
 # Member management (must exist before any import)
-python cli.py add-member --pan ABCDE1234F --name "Dhiraj"
+fintrack add-member --pan ABCDE1234F --name "Dhiraj"
 
 # All import commands require --pan (resolved to member_id via GET /members)
-python cli.py import ppf <file> --pan ABCDE1234F
-python cli.py import epf <file> --pan ABCDE1234F
-python cli.py import cas <file> --pan ABCDE1234F
-python cli.py import nps <file> --pan ABCDE1234F
-python cli.py import zerodha <file> --pan ABCDE1234F
-python cli.py import fidelity-rsu <file> --pan ABCDE1234F   # RSU holding CSV
-python cli.py import fidelity-sale <file> --pan ABCDE1234F  # tax-lot sale PDF
+fintrack import ppf <file> --pan ABCDE1234F
+fintrack import epf <file> --pan ABCDE1234F
+fintrack import cas <file> --pan ABCDE1234F
+fintrack import nps <file> --pan ABCDE1234F
+fintrack import zerodha <file> --pan ABCDE1234F
+fintrack import fidelity-rsu <file> --pan ABCDE1234F   # RSU holding CSV
+fintrack import fidelity-sale <file> --pan ABCDE1234F  # tax-lot sale PDF
 ```
 
 ### Backend (tests)

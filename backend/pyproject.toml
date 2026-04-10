@@ -36,6 +36,12 @@ dev = [
     "factory-boy>=3.3.0",
 ]
 
+[project.scripts]
+fintrack = "cli:main"
+
+[tool.setuptools]
+py-modules = ["cli", "quick_start", "backup"]
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["app*"]

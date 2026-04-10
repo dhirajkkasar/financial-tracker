@@ -123,7 +123,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 FDs are added manually using the CLI — no statement download required:
 
 ```bash
-python cli.py add fd \
+fintrack add fd \
   --name "HDFC FD" \
   --bank HDFC \
   --principal 500000 \
@@ -148,7 +148,7 @@ export PORTFOLIO_API=http://localhost:8000  # optional override
 If your database is empty, run the interactive wizard to import all your investments step by step:
 
 ```bash
-python cli.py quick-start
+fintrack quick-start
 ```
 
 The wizard guides you through PPF, EPF, Mutual Funds, NPS, Indian Stocks (Zerodha), FD, RD, Gold, and Real Estate — one asset type at a time. It auto-detects existing members or helps you create one.
@@ -159,8 +159,8 @@ Each household member is identified by PAN. A member must exist before any data 
 
 ```bash
 # Add a member (required once per PAN before importing)
-python cli.py add-member --pan ABCDE1234F --name "Dhiraj"
-python cli.py add-member --pan XYZAB5678G --name "Spouse"
+fintrack add-member --pan ABCDE1234F --name "Dhiraj"
+fintrack add-member --pan XYZAB5678G --name "Spouse"
 ```
 
 ### Import Data
@@ -168,13 +168,13 @@ python cli.py add-member --pan XYZAB5678G --name "Spouse"
 All import commands require `--pan` to identify which household member the data belongs to.
 
 ```bash
-python cli.py import ppf <ppf_csv_file> --pan ABCDE1234F        # SBI PPF account statement CSV
-python cli.py import epf <epf_pdf_file> --pan ABCDE1234F        # EPFO member passbook PDF
-python cli.py import cas <cas_pdf_file> --pan ABCDE1234F        # CAMS/KFintech CAS PDF (mutual funds)
-python cli.py import nps <nps_csv_file> --pan ABCDE1234F        # NPS transaction CSV
-python cli.py import zerodha <tradebook_csv> --pan ABCDE1234F   # Zerodha tradebook CSV
-python cli.py import fidelity-rsu <rsu_csv> --pan ABCDE1234F    # Fidelity RSU holding CSV (prompts for USD/INR rates)
-python cli.py import fidelity-sale <sale_pdf> --pan ABCDE1234F  # Fidelity tax-cover sale PDF (prompts for USD/INR rates)
+fintrack import ppf <ppf_csv_file> --pan ABCDE1234F        # SBI PPF account statement CSV
+fintrack import epf <epf_pdf_file> --pan ABCDE1234F        # EPFO member passbook PDF
+fintrack import cas <cas_pdf_file> --pan ABCDE1234F        # CAMS/KFintech CAS PDF (mutual funds)
+fintrack import nps <nps_csv_file> --pan ABCDE1234F        # NPS transaction CSV
+fintrack import zerodha <tradebook_csv> --pan ABCDE1234F   # Zerodha tradebook CSV
+fintrack import fidelity-rsu <rsu_csv> --pan ABCDE1234F    # Fidelity RSU holding CSV (prompts for USD/INR rates)
+fintrack import fidelity-sale <sale_pdf> --pan ABCDE1234F  # Fidelity tax-cover sale PDF (prompts for USD/INR rates)
 ```
 
 All imports are idempotent — re-importing the same file creates 0 new records.
@@ -182,53 +182,53 @@ All imports are idempotent — re-importing the same file creates 0 new records.
 ### Add Assets Manually
 
 ```bash
-python cli.py add fd        --name "HDFC FD" --bank HDFC --principal 500000 --rate 7.1 --start 2024-01-15 --maturity 2025-01-15 --compounding QUARTERLY
-python cli.py add rd        --name "SBI RD" --bank SBI --installment 10000 --rate 6.5 --start 2024-01-01 --maturity 2026-01-01 --compounding QUARTERLY
-python cli.py add real-estate --name "Venezia Flat" --purchase-amount 7500000 --purchase-date 2020-11-09 --current-value 12000000 --value-date 2024-01-01
-python cli.py add gold      --name "Digital Gold" --date 2023-06-01 --units 10 --price 5800
-python cli.py add sgb       --name "SGB 2023-24 S3" --date 2023-12-01 --units 50 --price 6200
+fintrack add fd        --name "HDFC FD" --bank HDFC --principal 500000 --rate 7.1 --start 2024-01-15 --maturity 2025-01-15 --compounding QUARTERLY
+fintrack add rd        --name "SBI RD" --bank SBI --installment 10000 --rate 6.5 --start 2024-01-01 --maturity 2026-01-01 --compounding QUARTERLY
+fintrack add real-estate --name "Venezia Flat" --purchase-amount 7500000 --purchase-date 2020-11-09 --current-value 12000000 --value-date 2024-01-01
+fintrack add gold      --name "Digital Gold" --date 2023-06-01 --units 10 --price 5800
+fintrack add sgb       --name "SGB 2023-24 S3" --date 2023-12-01 --units 50 --price 6200
 ```
 
 ### Add Transactions and Valuations
 
 ```bash
 # Manual transaction
-python cli.py add txn --asset "AMZN RSU" --type VEST --date 2024-09-01 --amount -90000 --units 5 --price 215 --forex 84
+fintrack add txn --asset "AMZN RSU" --type VEST --date 2024-09-01 --amount -90000 --units 5 --price 215 --forex 84
 
 # EPF monthly contributions (after initial PDF import)
-python cli.py add epf-contribution --asset "My EPF" --month-year 03/2026 --employee-share 5000
-python cli.py add epf-contribution --asset "My EPF" --month-year 03/2026 --employee-share 5000 --eps-share 1250 --employer-share 3750 --employee-interest 500 --employer-interest 400 --eps-interest 50
+fintrack add epf-contribution --asset "My EPF" --month-year 03/2026 --employee-share 5000
+fintrack add epf-contribution --asset "My EPF" --month-year 03/2026 --employee-share 5000 --eps-share 1250 --employer-share 3750 --employee-interest 500 --employer-interest 400 --eps-interest 50
 
 # Manual valuations for PPF / Real Estate
-python cli.py add valuation --asset "Venezia Flat" --value 13000000 --date 2025-01-01
+fintrack add valuation --asset "Venezia Flat" --value 13000000 --date 2025-01-01
 ```
 
 ### Goal Management
 
 ```bash
-python cli.py add goal --name "Retirement" --target 10000000 --date 2040-01-01 --asset "HDFC MF:50" --asset "PPF SBI:50"
-python cli.py add goal --name "Emergency Fund" --target 500000 --date 2026-12-31
+fintrack add goal --name "Retirement" --target 10000000 --date 2040-01-01 --asset "HDFC MF:50" --asset "PPF SBI:50"
+fintrack add goal --name "Emergency Fund" --target 500000 --date 2026-12-31
 
-python cli.py update goal-allocation --goal "Retirement" --asset "HDFC MF" --pct 30
-python cli.py remove goal-allocation --goal "Retirement" --asset "HDFC MF"
-python cli.py delete goal --name "Retirement"
+fintrack update goal-allocation --goal "Retirement" --asset "HDFC MF" --pct 30
+fintrack remove goal-allocation --goal "Retirement" --asset "HDFC MF"
+fintrack delete goal --name "Retirement"
 ```
 
 ### Data Management
 
 ```bash
-python cli.py list assets      # List all assets
-python cli.py refresh-prices   # Refresh prices for all market assets
-python cli.py snapshot         # Create a portfolio snapshot
-python cli.py backup           # Backup database to Google Drive
-python cli.py backup --folder my-custom-folder
+fintrack list assets      # List all assets
+fintrack refresh-prices   # Refresh prices for all market assets
+fintrack snapshot         # Create a portfolio snapshot
+fintrack backup           # Backup database to Google Drive
+fintrack backup --folder my-custom-folder
 ```
 
 ---
 
 ## Price Feeds
 
-Prices are fetched on-demand via `python cli.py refresh-prices` and also attempted in the background on server startup.
+Prices are fetched on-demand via `fintrack refresh-prices` and also attempted in the background on server startup.
 
 | Asset class | Source | Staleness threshold |
 |---|---|---|

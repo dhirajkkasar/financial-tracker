@@ -19,9 +19,6 @@ Usage (server must be running):
   python cli.py add real-estate --name "Venezia Flat" --pan ABCDE1234F --purchase-amount 7500000 --purchase-date 2020-11-09 --current-value 12000000 --value-date 2024-01-01
   python cli.py add gold  --name "Digital Gold" --pan ABCDE1234F --date 2023-06-01 --units 10 --price 5800
   python cli.py add sgb   --name "SGB 2023-24 S3" --pan ABCDE1234F --date 2023-12-01 --units 50 --price 6200
-  python cli.py add rsu   --name "AMZN RSU" --pan ABCDE1234F --date 2024-03-01 --units 10 --price 180.50 --forex 83.5 --notes "Perquisite tax: ..."
-  python cli.py add us-stock --name "Apple" --pan ABCDE1234F --identifier AAPL --date 2023-01-15 --units 5 --price 142.50 --forex 82.0
-
   python cli.py add valuation --asset "Venezia Flat" --value 13000000 --date 2025-01-01
   python cli.py add txn  --asset "AMZN RSU" --type VEST --date 2024-09-01 --amount -90000 --units 5 --price 215 --forex 84
 
@@ -38,6 +35,7 @@ Usage (server must be running):
   python cli.py delete goal --name "Retirement"
 
   python cli.py list assets
+  python cli.py quick-start
   python cli.py refresh-prices
   python cli.py snapshot
 
@@ -909,6 +907,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_delete_goal.add_argument("--name", required=True, help="Goal name (fuzzy matched)")
 
     # ── utilities ─────────────────────────────────────────────────────────────
+    sub.add_parser("quick-start", help="Interactive first-time setup wizard")
     sub.add_parser("refresh-prices", help="Trigger price refresh for all assets")
     sub.add_parser("snapshot", help="Take a portfolio snapshot now")
     p_backup = sub.add_parser("backup", help="Backup DB to Google Drive")
@@ -1037,6 +1036,10 @@ def main():
 
     elif args.command == "backup":
         cmd_backup(folder=getattr(args, "folder", None))
+
+    elif args.command == "quick-start":
+        from quick_start import run
+        run()
 
     else:
         parser.print_help()

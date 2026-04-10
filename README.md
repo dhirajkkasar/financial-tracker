@@ -143,6 +143,16 @@ All commands require the backend server to be running. Set `PORTFOLIO_API` to ov
 export PORTFOLIO_API=http://localhost:8000  # optional override
 ```
 
+### Quick Start (first-time setup)
+
+If your database is empty, run the interactive wizard to import all your investments step by step:
+
+```bash
+python cli.py quick-start
+```
+
+The wizard guides you through PPF, EPF, Mutual Funds, NPS, Indian Stocks (Zerodha), FD, RD, Gold, and Real Estate — one asset type at a time. It auto-detects existing members or helps you create one.
+
 ### Member Management
 
 Each household member is identified by PAN. A member must exist before any data can be imported for them.
@@ -177,8 +187,6 @@ python cli.py add rd        --name "SBI RD" --bank SBI --installment 10000 --rat
 python cli.py add real-estate --name "Venezia Flat" --purchase-amount 7500000 --purchase-date 2020-11-09 --current-value 12000000 --value-date 2024-01-01
 python cli.py add gold      --name "Digital Gold" --date 2023-06-01 --units 10 --price 5800
 python cli.py add sgb       --name "SGB 2023-24 S3" --date 2023-12-01 --units 50 --price 6200
-python cli.py add rsu       --name "AMZN RSU" --date 2024-03-01 --units 10 --price 180.50 --forex 83.5 --notes "Perquisite tax: ..."
-python cli.py add us-stock  --name "Apple" --identifier AAPL --date 2023-01-15 --units 5 --price 142.50 --forex 82.0
 ```
 
 ### Add Transactions and Valuations

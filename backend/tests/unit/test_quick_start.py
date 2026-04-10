@@ -136,3 +136,105 @@ def test_section_file_prompts_member_when_multi_member():
          patch("os.path.isfile", return_value=True):
         quick_start._section_file("EPF", mock_import, members, None)
     mock_import.assert_called_once_with("/tmp/epf.pdf", 1)
+
+
+# --- _prompt helper ---
+
+def test_prompt_returns_string_by_default():
+    import quick_start
+    with patch("builtins.input", return_value="  HDFC FD  "):
+        result = quick_start._prompt("Name: ")
+    assert result == "HDFC FD"
+
+
+def test_prompt_casts_to_float():
+    import quick_start
+    with patch("builtins.input", return_value="7.5"):
+        result = quick_start._prompt("Rate: ", cast=float)
+    assert result == 7.5
+
+
+def test_prompt_retries_on_invalid_cast():
+    import quick_start
+    with patch("builtins.input", side_effect=["abc", "-1", "500000"]):
+        result = quick_start._prompt("Amount: ", cast=float, validate=lambda x: x > 0)
+    assert result == 500000.0
+
+
+# --- _add_fd_interactive ---
+
+def test_add_fd_interactive_calls_cmd_add_fd():
+    import quick_start
+    inputs = [
+        "HDFC FD 2024",   # name
+        "HDFC",           # bank
+        "500000",         # principal
+        "7.1",            # rate
+        "2024-01-15",     # start
+        "2025-01-15",     # maturity
+        "QUARTERLY",      # compounding
+    ]
+    with patch("builtins.input", side_effect=inputs), \
+         patch("quick_start.cmd_add_fd") as mock_cmd:
+        quick_start._add_fd_interactive(member_id=1)
+    mock_cmd.assert_called_once_with(
+        "HDFC FD 2024", "HDFC", 500000.0, 7.1,
+        "2024-01-15", "2025-01-15", "QUARTERLY", 1
+    )
+
+
+# --- _add_rd_interactive ---
+
+def test_add_rd_interactive_calls_cmd_add_rd():
+    import quick_start
+    inputs = [
+        "SBI RD 2024",   # name
+        "SBI",           # bank
+        "10000",         # installment
+        "6.5",           # rate
+        "2024-01-01",    # start
+        "2026-01-01",    # maturity
+        "QUARTERLY",     # compounding
+    ]
+    with patch("builtins.input", side_effect=inputs), \
+         patch("quick_start.cmd_add_rd") as mock_cmd:
+        quick_start._add_rd_interactive(member_id=2)
+    mock_cmd.assert_called_once_with(
+        "SBI RD 2024", "SBI", 10000.0, 6.5,
+        "2024-01-01", "2026-01-01", "QUARTERLY", 2
+    )
+
+
+# --- _add_gold_interactive ---
+
+def test_add_gold_interactive_calls_cmd_add_gold():
+    import quick_start
+    inputs = [
+        "Digital Gold",  # name
+        "2023-06-01",    # date
+        "10",            # units
+        "5800",          # price
+    ]
+    with patch("builtins.input", side_effect=inputs), \
+         patch("quick_start.cmd_add_gold") as mock_cmd:
+        quick_start._add_gold_interactive(member_id=1)
+    mock_cmd.assert_called_once_with("Digital Gold", "2023-06-01", 10.0, 5800.0, 1)
+
+
+# --- _add_real_estate_interactive ---
+
+def test_add_real_estate_interactive_calls_cmd_add_real_estate():
+    import quick_start
+    inputs = [
+        "Venezia Flat",   # name
+        "7500000",        # purchase amount
+        "2020-11-09",     # purchase date
+        "12000000",       # current value
+        "2024-01-01",     # value date
+    ]
+    with patch("builtins.input", side_effect=inputs), \
+         patch("quick_start.cmd_add_real_estate") as mock_cmd:
+        quick_start._add_real_estate_interactive(member_id=3)
+    mock_cmd.assert_called_once_with(
+        "Venezia Flat", 7500000.0, "2020-11-09", 12000000.0, "2024-01-01", 3
+    )

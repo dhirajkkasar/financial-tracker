@@ -120,24 +120,56 @@ def _section_manual(label, add_fn, members, single_member_id):
     pass
 
 
-def _prompt(prompt_text, cast=str, validate=None):
-    pass
+def _prompt(prompt_text: str, cast=str, validate=None):
+    """Prompt user for input with optional type casting and validation. Retries on bad input."""
+    while True:
+        raw = input(prompt_text).strip()
+        try:
+            value = cast(raw)
+            if validate is not None and not validate(value):
+                raise ValueError
+            return value
+        except (ValueError, TypeError):
+            print("  Invalid input. Please try again.")
 
 
-def _add_fd_interactive(member_id):
-    pass
+def _add_fd_interactive(member_id: int):
+    name = _prompt("Name (e.g. HDFC FD 2024): ")
+    bank = _prompt("Bank: ")
+    principal = _prompt("Principal amount (INR): ", cast=float, validate=lambda x: x > 0)
+    rate = _prompt("Interest rate (%): ", cast=float, validate=lambda x: x > 0)
+    start = _prompt("Start date (YYYY-MM-DD): ")
+    maturity = _prompt("Maturity date (YYYY-MM-DD): ")
+    compounding = _prompt("Compounding [MONTHLY/QUARTERLY/HALF_YEARLY/YEARLY] (default QUARTERLY): ") or "QUARTERLY"
+    cmd_add_fd(name, bank, principal, rate, start, maturity, compounding, member_id)
 
 
-def _add_rd_interactive(member_id):
-    pass
+def _add_rd_interactive(member_id: int):
+    name = _prompt("Name (e.g. SBI RD 2024): ")
+    bank = _prompt("Bank: ")
+    installment = _prompt("Monthly installment (INR): ", cast=float, validate=lambda x: x > 0)
+    rate = _prompt("Interest rate (%): ", cast=float, validate=lambda x: x > 0)
+    start = _prompt("Start date (YYYY-MM-DD): ")
+    maturity = _prompt("Maturity date (YYYY-MM-DD): ")
+    compounding = _prompt("Compounding [MONTHLY/QUARTERLY/HALF_YEARLY/YEARLY] (default QUARTERLY): ") or "QUARTERLY"
+    cmd_add_rd(name, bank, installment, rate, start, maturity, compounding, member_id)
 
 
-def _add_gold_interactive(member_id):
-    pass
+def _add_gold_interactive(member_id: int):
+    name = _prompt("Name (e.g. Digital Gold): ")
+    date = _prompt("Purchase date (YYYY-MM-DD): ")
+    units = _prompt("Units (grams): ", cast=float, validate=lambda x: x > 0)
+    price = _prompt("Price per unit (INR/gram): ", cast=float, validate=lambda x: x > 0)
+    cmd_add_gold(name, date, units, price, member_id)
 
 
-def _add_real_estate_interactive(member_id):
-    pass
+def _add_real_estate_interactive(member_id: int):
+    name = _prompt("Name (e.g. Venezia Flat): ")
+    purchase_amount = _prompt("Purchase amount (INR): ", cast=float, validate=lambda x: x > 0)
+    purchase_date = _prompt("Purchase date (YYYY-MM-DD): ")
+    current_value = _prompt("Current value (INR): ", cast=float, validate=lambda x: x > 0)
+    value_date = _prompt("Value date (YYYY-MM-DD): ")
+    cmd_add_real_estate(name, purchase_amount, purchase_date, current_value, value_date, member_id)
 
 
 def run():

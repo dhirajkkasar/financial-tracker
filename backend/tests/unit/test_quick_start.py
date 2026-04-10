@@ -238,3 +238,42 @@ def test_add_real_estate_interactive_calls_cmd_add_real_estate():
     mock_cmd.assert_called_once_with(
         "Venezia Flat", 7500000.0, "2020-11-09", 12000000.0, "2024-01-01", 3
     )
+
+
+# --- _section_manual ---
+
+def test_section_manual_skips_when_user_says_no():
+    import quick_start
+    mock_add = MagicMock()
+    with patch("builtins.input", return_value="n"):
+        quick_start._section_manual("FD", mock_add, [], 1)
+    mock_add.assert_not_called()
+
+
+def test_section_manual_adds_one_then_stops():
+    import quick_start
+    mock_add = MagicMock()
+    with patch("builtins.input", side_effect=["y", "n"]):
+        quick_start._section_manual("FD", mock_add, [], 1)
+    mock_add.assert_called_once_with(1)
+
+
+def test_section_manual_adds_multiple():
+    import quick_start
+    mock_add = MagicMock()
+    with patch("builtins.input", side_effect=["y", "y", "n"]):
+        quick_start._section_manual("FD", mock_add, [], 1)
+    assert mock_add.call_count == 2
+
+
+def test_section_manual_prompts_member_when_multi_member():
+    import quick_start
+    mock_add = MagicMock()
+    members = [
+        {"id": 1, "pan": "AAAAA1111A", "name": "Dhiraj"},
+        {"id": 2, "pan": "BBBBB2222B", "name": "Priya"},
+    ]
+    # has investments? y, member=2, add another? n
+    with patch("builtins.input", side_effect=["y", "2", "n"]):
+        quick_start._section_manual("FD", mock_add, members, None)
+    mock_add.assert_called_once_with(2)

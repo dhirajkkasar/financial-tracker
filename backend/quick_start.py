@@ -116,8 +116,26 @@ def _section_file(label: str, import_fn, members: list[dict], single_member_id: 
             break
 
 
-def _section_manual(label, add_fn, members, single_member_id):
-    pass
+def _section_manual(label: str, add_fn, members: list[dict], single_member_id: int | None):
+    """Handle one manually-entered asset type — loop until user says no more."""
+    answer = input(f"\nDo you have {label} investments? [y/n]: ").strip().lower()
+    if answer != "y":
+        return
+
+    while True:
+        if single_member_id is None:
+            member_id = _ask_member(members, label)
+        else:
+            member_id = single_member_id
+
+        try:
+            add_fn(member_id)
+        except SystemExit as exc:
+            print(f"  Add failed: {exc}")
+
+        again = input(f"Add another {label}? [y/N]: ").strip().lower()
+        if again != "y":
+            break
 
 
 def _prompt(prompt_text: str, cast=str, validate=None):
@@ -173,4 +191,34 @@ def _add_real_estate_interactive(member_id: int):
 
 
 def run():
-    pass
+    """Entry point for the quick-start wizard. Called from cli.py dispatcher."""
+    print("\n=== Portfolio Quick-Start ===")
+    print("This wizard will guide you through importing all your investments.\n")
+
+    _check_db_empty()
+    members, single_member_id = _resolve_member()
+
+    # File-based asset types
+    _section_file("PPF", cmd_import_ppf, members, single_member_id)
+    _section_file("EPF", cmd_import_epf, members, single_member_id)
+    _section_file(
+        "Mutual Funds (CAS PDF)",
+        cmd_import_cas,
+        members, single_member_id,
+    )
+    _section_file("NPS", cmd_import_nps, members, single_member_id)
+    _section_file(
+        "Indian Stocks (Zerodha CSV)",
+        lambda path, mid: cmd_import_broker_csv(path, "zerodha", mid),
+        members, single_member_id,
+    )
+
+    # Manual asset types
+    _section_manual("FD", _add_fd_interactive, members, single_member_id)
+    _section_manual("RD", _add_rd_interactive, members, single_member_id)
+    _section_manual("Gold", _add_gold_interactive, members, single_member_id)
+    _section_manual("Real Estate", _add_real_estate_interactive, members, single_member_id)
+
+    print("\nQuick-start complete! Next steps:")
+    print("  python cli.py refresh-prices   # fetch current prices for all assets")
+    print("  python cli.py snapshot         # save a portfolio snapshot")

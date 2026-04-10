@@ -82,3 +82,57 @@ def test_ask_member_retries_on_invalid_input():
         import quick_start
         result = quick_start._ask_member(members, "FD")
     assert result == 10
+
+
+# --- _section_file ---
+
+def test_section_file_skips_when_user_says_no(capsys):
+    import quick_start
+    mock_import = MagicMock()
+    with patch("builtins.input", return_value="n"):
+        quick_start._section_file("PPF", mock_import, [], 1)
+    mock_import.assert_not_called()
+
+
+def test_section_file_imports_one_file_then_stops():
+    import quick_start
+    mock_import = MagicMock()
+    with patch("builtins.input", side_effect=["y", "/tmp/ppf.csv", "n"]), \
+         patch("os.path.isfile", return_value=True):
+        quick_start._section_file("PPF", mock_import, [], 1)
+    mock_import.assert_called_once_with("/tmp/ppf.csv", 1)
+
+
+def test_section_file_imports_multiple_files():
+    import quick_start
+    mock_import = MagicMock()
+    with patch("builtins.input", side_effect=["y", "/tmp/a.csv", "y", "/tmp/b.csv", "n"]), \
+         patch("os.path.isfile", return_value=True):
+        quick_start._section_file("EPF", mock_import, [], 1)
+    assert mock_import.call_count == 2
+    mock_import.assert_any_call("/tmp/a.csv", 1)
+    mock_import.assert_any_call("/tmp/b.csv", 1)
+
+
+def test_section_file_retries_on_missing_file():
+    import quick_start
+    mock_import = MagicMock()
+    # First path doesn't exist, second does
+    with patch("builtins.input", side_effect=["y", "/bad/path.csv", "/tmp/good.csv", "n"]), \
+         patch("os.path.isfile", side_effect=[False, True]):
+        quick_start._section_file("PPF", mock_import, [], 1)
+    mock_import.assert_called_once_with("/tmp/good.csv", 1)
+
+
+def test_section_file_prompts_member_when_multi_member():
+    import quick_start
+    mock_import = MagicMock()
+    members = [
+        {"id": 1, "pan": "AAAAA1111A", "name": "Dhiraj"},
+        {"id": 2, "pan": "BBBBB2222B", "name": "Priya"},
+    ]
+    # answers: has investments? y, member=1, file path, another? n
+    with patch("builtins.input", side_effect=["y", "1", "/tmp/epf.pdf", "n"]), \
+         patch("os.path.isfile", return_value=True):
+        quick_start._section_file("EPF", mock_import, members, None)
+    mock_import.assert_called_once_with("/tmp/epf.pdf", 1)

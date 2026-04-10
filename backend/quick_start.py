@@ -88,8 +88,32 @@ def _ask_member(members: list[dict], label: str) -> int:
         print(f"  Please enter a number between 1 and {len(members)}.")
 
 
-def _section_file(label, import_fn, members, single_member_id):
-    pass
+def _section_file(label: str, import_fn, members: list[dict], single_member_id: int | None):
+    """Handle one file-based asset type — loop until user says no more files."""
+    answer = input(f"\nDo you have {label} investments? [y/n]: ").strip().lower()
+    if answer != "y":
+        return
+
+    while True:
+        if single_member_id is None:
+            member_id = _ask_member(members, label)
+        else:
+            member_id = single_member_id
+
+        while True:
+            file_path = os.path.expanduser(input(f"Enter file path for {label}: ").strip())
+            if os.path.isfile(file_path):
+                break
+            print(f"  File not found: {file_path}. Please try again.")
+
+        try:
+            import_fn(file_path, member_id)
+        except SystemExit as exc:
+            print(f"  Import failed: {exc}")
+
+        again = input(f"Import another file for {label}? [y/N]: ").strip().lower()
+        if again != "y":
+            break
 
 
 def _section_manual(label, add_fn, members, single_member_id):

@@ -45,12 +45,47 @@ def _check_db_empty():
         sys.exit(0)
 
 
-def _resolve_member():
-    pass
+def _resolve_member() -> tuple[list[dict], int | None]:
+    """
+    Set up member for the session.
+    Returns (all_members, single_member_id).
+    single_member_id is None when there are 2+ members (caller must prompt per file/entry).
+    """
+    members = _api("get", "/members")
+    if len(members) == 0:
+        print("No members found. Let's create one first.")
+        pan = input("PAN (e.g. ABCDE1234F): ").strip().upper()
+        name = input("Name: ").strip()
+        if not pan or not name:
+            sys.exit("PAN and name are required.")
+        result = _api("post", "/members", json={"pan": pan, "name": name})
+        print(f"  → created member: {result['name']} (PAN: {result['pan']})")
+        return [result], result["id"]
+    elif len(members) == 1:
+        m = members[0]
+        print(f"Using: {m['name']} (PAN: {m['pan']})")
+        return members, m["id"]
+    else:
+        print("Multiple members found:")
+        for i, m in enumerate(members, 1):
+            print(f"  {i}. {m['name']} (PAN: {m['pan']})")
+        return members, None
 
 
-def _ask_member(members, label):
-    pass
+def _ask_member(members: list[dict], label: str) -> int:
+    """Prompt user to pick a member from the list. Returns member_id."""
+    print(f"\nWhich member does this {label} belong to?")
+    for i, m in enumerate(members, 1):
+        print(f"  {i}. {m['name']} (PAN: {m['pan']})")
+    while True:
+        raw = input(f"Enter number [1-{len(members)}]: ").strip()
+        try:
+            idx = int(raw) - 1
+            if 0 <= idx < len(members):
+                return members[idx]["id"]
+        except ValueError:
+            pass
+        print(f"  Please enter a number between 1 and {len(members)}.")
 
 
 def _section_file(label, import_fn, members, single_member_id):

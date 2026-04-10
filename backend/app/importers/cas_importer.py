@@ -35,6 +35,9 @@ class CASImporter(BaseImporter):
         r"\s+Market Value on \d{2}-[A-Za-z]{3}-\d{4}:\s*INR\s*([\d,]+\.?\d*)"
     )
 
+    def __init__(self, **_kwargs):
+        pass
+
     def parse(self, file_bytes: bytes, filename: str = "") -> ImportResult:
         result = ImportResult(source="cas")
         try:

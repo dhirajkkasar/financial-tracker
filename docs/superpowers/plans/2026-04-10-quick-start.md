@@ -812,6 +812,7 @@ In the same docstring, remove these two lines entirely:
   python cli.py add rsu   --name "AMZN RSU" --pan ABCDE1234F --date 2024-03-01 --units 10 --price 180.50 --forex 83.5 --notes "Perquisite tax: ..."
   python cli.py add us-stock --name "Apple" --pan ABCDE1234F --identifier AAPL --date 2023-01-15 --units 5 --price 142.50 --forex 82.0
 ```
+Also check ReadMe.md file and claude.md file if it mentions these commands and remove it.
 
 - [ ] **Step 3: Add `quick-start` subcommand to `build_parser()`**
 
@@ -880,7 +881,11 @@ uv run pytest tests/unit/test_quick_start.py -v
 
 Expected: all tests pass
 
-- [ ] **Step 3: Commit if any cleanup was needed, otherwise done**
+- [ ] **Step 3: Update ReadMe.md and Claude.md**
+
+    Update ReadMe.md file about quick-start command and setting up things quickly to use this app. Update claude's context file (claude.md) about new command (can use claude-md-management skill)
+
+- [ ] **Step 4: Commit if any cleanup was needed, otherwise done**
 
 ```bash
 git add -p  # stage only if there are uncommitted changes

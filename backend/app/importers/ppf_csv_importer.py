@@ -93,6 +93,9 @@ class PPFCSVImporter(BaseImporter):
 
     """Parses SBI PPF Account Statement CSV files."""
 
+    def __init__(self, **_kwargs):
+        pass
+
     def parse(self, file_bytes: bytes, filename: str = "") -> ImportResult:
         result = ImportResult(source="ppf_csv")
 

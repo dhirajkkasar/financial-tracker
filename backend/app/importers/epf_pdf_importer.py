@@ -115,6 +115,9 @@ class EPFPDFImporter(BaseImporter):
 
     """Parses EPFO Member Passbook PDFs (page 1 only)."""
 
+    def __init__(self, **_kwargs):
+        pass
+
     def parse(self, file_bytes: bytes, filename: str = "") -> EPFImportResult:
         result = EPFImportResult(source="epf_pdf")
 

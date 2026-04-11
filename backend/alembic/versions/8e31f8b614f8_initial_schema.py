@@ -28,8 +28,8 @@ def upgrade() -> None:
         sa.Column('id', sa.Integer(), nullable=False, autoincrement=True),
         sa.Column('pan', sa.String(length=10), nullable=False),
         sa.Column('name', sa.String(length=255), nullable=False),
-        sa.Column('is_default', sa.Boolean(), nullable=False, server_default=sa.text('0')),
-        sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.Column('is_default', sa.Boolean(), nullable=False),
+        sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint('id'),
         sa.UniqueConstraint('pan'),
     )
@@ -278,3 +278,12 @@ def downgrade() -> None:
     op.drop_table('assets')
     op.drop_index(op.f('ix_members_id'), table_name='members')
     op.drop_table('members')
+
+    # Drop PostgreSQL ENUM types (no-op on SQLite)
+    op.execute("DROP TYPE IF EXISTS transactiontype")
+    op.execute("DROP TYPE IF EXISTS instrumenttype")
+    op.execute("DROP TYPE IF EXISTS compoundingtype")
+    op.execute("DROP TYPE IF EXISTS fdtype")
+    op.execute("DROP TYPE IF EXISTS importantdatacategory")
+    op.execute("DROP TYPE IF EXISTS assetclass")
+    op.execute("DROP TYPE IF EXISTS assettype")

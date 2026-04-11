@@ -21,7 +21,7 @@ ASSET_LIST = [
     {"id": 4, "name": "HDFC FD",      "asset_type": "FD",           "asset_class": "DEBT",        "is_active": True},
 ]
 
-BASE = "http://localhost:8000"
+BASE = "http://localhost:8000/api"
 
 
 # ── fuzzy asset lookup ────────────────────────────────────────────────────────
@@ -63,7 +63,7 @@ class TestImportPPF:
             "account_number": "32256576916", "errors": []
         })
         result = cli.cmd_import_ppf(str(csv), member_id=1)
-        assert requests_mock.request_history[0].path == "/import/preview-file"
+        assert requests_mock.request_history[0].path == "/api/import/preview-file"
         assert result["inserted"] == 5
 
     def test_prints_summary(self, requests_mock, tmp_path, capsys):
@@ -102,7 +102,7 @@ class TestImportEPF:
             "errors": []
         })
         result = cli.cmd_import_epf(str(pdf), member_id=1)
-        assert requests_mock.request_history[0].path == "/import/preview-file"
+        assert requests_mock.request_history[0].path == "/api/import/preview-file"
         assert result["inserted"] == 10
 
     def test_prints_summary(self, requests_mock, tmp_path, capsys):
@@ -132,7 +132,7 @@ class TestImportCAS:
         result = cli.cmd_import_cas(str(pdf), member_id=1)
         assert result["inserted"] == 12
         # ensure commit was called with correct preview_id
-        assert requests_mock.request_history[-1].path == "/import/commit-file/abc123"
+        assert requests_mock.request_history[-1].path == "/api/import/commit-file/abc123"
 
     def test_prints_summary(self, requests_mock, tmp_path, capsys):
         pdf = tmp_path / "cas.pdf"
@@ -170,7 +170,7 @@ class TestImportBrokerCSV:
         requests_mock.post(f"{BASE}/import/commit-file/n1", json={"inserted": 4, "skipped": 0, "snapshot_count": 0})
         requests_mock.post(f"{BASE}/prices/refresh-all", json={"status": "ok"})
         cli.cmd_import_nps(str(csv), member_id=1)
-        assert requests_mock.request_history[0].path == "/import/preview-file"
+        assert requests_mock.request_history[0].path == "/api/import/preview-file"
 
 
 # ── add fd ────────────────────────────────────────────────────────────────────
@@ -188,9 +188,9 @@ class TestAddFD:
             compounding="QUARTERLY", member_id=1,
         )
 
-        assert requests_mock.request_history[0].path == "/assets"
-        assert requests_mock.request_history[1].path == "/assets/10/fd-detail"
-        assert requests_mock.request_history[2].path == "/assets/10/transactions"
+        assert requests_mock.request_history[0].path == "/api/assets"
+        assert requests_mock.request_history[1].path == "/api/assets/10/fd-detail"
+        assert requests_mock.request_history[2].path == "/api/assets/10/transactions"
 
     def test_asset_payload(self, requests_mock):
         requests_mock.post(f"{BASE}/assets", json={"id": 10, "name": "SBI FD", "asset_type": "FD"})
@@ -269,9 +269,9 @@ class TestAddRealEstate:
             current_value=12000000.0, value_date="2024-01-01", member_id=1,
         )
 
-        assert requests_mock.request_history[0].path == "/assets"
-        assert requests_mock.request_history[1].path == "/assets/30/transactions"
-        assert requests_mock.request_history[2].path == "/assets/30/valuations"
+        assert requests_mock.request_history[0].path == "/api/assets"
+        assert requests_mock.request_history[1].path == "/api/assets/30/transactions"
+        assert requests_mock.request_history[2].path == "/api/assets/30/valuations"
 
     def test_purchase_txn_is_negative(self, requests_mock):
         requests_mock.post(f"{BASE}/assets", json={"id": 31, "name": "VTP Office", "asset_type": "REAL_ESTATE"})
@@ -307,8 +307,8 @@ class TestAddGold:
 
         cli.cmd_add_gold("Digital Gold", date="2023-06-01", units=10.0, price=5800.0, member_id=1)
 
-        assert requests_mock.request_history[1].path == "/assets"
-        assert requests_mock.request_history[2].path == "/assets/40/transactions"
+        assert requests_mock.request_history[1].path == "/api/assets"
+        assert requests_mock.request_history[2].path == "/api/assets/40/transactions"
 
     def test_reuses_existing_asset(self, requests_mock):
         requests_mock.get(f"{BASE}/assets", json=[{"id": 3, "name": "Digital Gold", "asset_type": "GOLD", "asset_class": "GOLD", "is_active": True}])
@@ -318,8 +318,8 @@ class TestAddGold:
 
         # No asset creation call
         post_paths = [r.path for r in requests_mock.request_history if r.method == "POST"]
-        assert "/assets" not in post_paths
-        assert "/assets/3/transactions" in post_paths
+        assert "/api/assets" not in post_paths
+        assert "/api/assets/3/transactions" in post_paths
 
     def test_buy_amount_is_negative(self, requests_mock):
         requests_mock.get(f"{BASE}/assets", json=[])
@@ -389,7 +389,7 @@ class TestAddValuation:
 
         cli.cmd_add_valuation("Venezia Flat", value=13000000.0, date="2025-01-01")
 
-        assert requests_mock.last_request.path == "/assets/1/valuations"
+        assert requests_mock.last_request.path == "/api/assets/1/valuations"
 
     def test_valuation_payload(self, requests_mock):
         requests_mock.get(f"{BASE}/assets", json=ASSET_LIST)
@@ -416,7 +416,7 @@ class TestAddTxn:
             units=10.0, price=180.5, forex=83.5,
         )
 
-        assert requests_mock.last_request.path == "/assets/2/transactions"
+        assert requests_mock.last_request.path == "/api/assets/2/transactions"
 
     def test_payload_passed_correctly(self, requests_mock):
         requests_mock.get(f"{BASE}/assets", json=ASSET_LIST)
@@ -632,7 +632,7 @@ class TestListAssets:
     def test_calls_assets_endpoint(self, requests_mock):
         requests_mock.get(f"{BASE}/assets", json=ASSET_LIST)
         cli.cmd_list_assets()
-        assert requests_mock.last_request.path == "/assets"
+        assert requests_mock.last_request.path == "/api/assets"
 
     def test_prints_asset_names(self, requests_mock, capsys):
         requests_mock.get(f"{BASE}/assets", json=ASSET_LIST)
@@ -649,7 +649,7 @@ class TestRefreshPrices:
     def test_calls_refresh_all_endpoint(self, requests_mock):
         requests_mock.post(f"{BASE}/prices/refresh-all", json={"status": "ok"})
         cli.cmd_refresh_prices()
-        assert requests_mock.last_request.path == "/prices/refresh-all"
+        assert requests_mock.last_request.path == "/api/prices/refresh-all"
 
 
 # ── snapshot ──────────────────────────────────────────────────────────────────
@@ -658,7 +658,7 @@ class TestSnapshot:
     def test_calls_snapshot_endpoint(self, requests_mock):
         requests_mock.post(f"{BASE}/snapshots/take", json={"date": "2025-03-20", "total_value_inr": 5000000.0})
         cli.cmd_snapshot()
-        assert requests_mock.last_request.path == "/snapshots/take"
+        assert requests_mock.last_request.path == "/api/snapshots/take"
 
 
 # ── fetch-corp-actions ────────────────────────────────────────────────────────
@@ -671,12 +671,12 @@ class TestFetchCorpActions:
     def test_calls_fetch_all_when_no_asset_id(self, requests_mock):
         requests_mock.post(f"{BASE}/corp-actions/fetch-all", json=CORP_RESULT)
         cli.cmd_fetch_corp_actions(asset_id=None)
-        assert requests_mock.last_request.path == "/corp-actions/fetch-all"
+        assert requests_mock.last_request.path == "/api/corp-actions/fetch-all"
 
     def test_calls_fetch_asset_when_asset_id_given(self, requests_mock):
         requests_mock.post(f"{BASE}/corp-actions/fetch-asset/5", json=CORP_RESULT)
         cli.cmd_fetch_corp_actions(asset_id=5)
-        assert requests_mock.last_request.path == "/corp-actions/fetch-asset/5"
+        assert requests_mock.last_request.path == "/api/corp-actions/fetch-asset/5"
 
     def test_parser_no_asset_id(self):
         args = cli.build_parser().parse_args(["fetch-corp-actions"])

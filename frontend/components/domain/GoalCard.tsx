@@ -11,7 +11,7 @@ export function GoalCard({ goal }: { goal: Goal }) {
   return (
     <div className="rounded-xl border border-border bg-card p-5 shadow-card">
       <div className="flex items-start justify-between">
-        <Link href={`/goals/${goal.id}`} className="font-medium text-accent hover:underline">
+        <Link href={`/goals/detail?id=${goal.id}`} className="font-medium text-accent hover:underline">
           {goal.name}
         </Link>
         <span className="text-xs text-tertiary">By {formatDate(goal.target_date)}</span>

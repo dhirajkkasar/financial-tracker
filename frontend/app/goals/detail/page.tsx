@@ -1,5 +1,6 @@
 'use client'
-import { useParams } from 'next/navigation'
+import { Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
@@ -14,14 +15,15 @@ const card = 'rounded-xl border border-border bg-card p-5'
 const cardStyle = { boxShadow: 'var(--shadow-card)' }
 const thClass = 'pb-2.5 pr-3 text-left text-[10px] font-semibold uppercase tracking-[0.1em] text-tertiary'
 
-export default function GoalDetailPage() {
+function GoalDetailContent() {
   const { formatINR } = usePrivateMoney()
-  const { id } = useParams<{ id: string }>()
-  const goalId = parseInt(id)
+  const searchParams = useSearchParams()
+  const goalId = parseInt(searchParams.get('id') ?? '0')
   const [goal, setGoal] = useState<Goal | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (!goalId) return
     api.goals.get(goalId)
       .then(setGoal)
       .finally(() => setLoading(false))
@@ -104,7 +106,7 @@ export default function GoalDetailPage() {
                   <tr key={alloc.id} className="border-b border-border last:border-0 hover:bg-accent-subtle/30 transition-colors">
                     <td className="py-2.5 pr-3">
                       <Link
-                        href={`/assets/${alloc.asset_id}`}
+                        href={`/assets/detail?id=${alloc.asset_id}`}
                         className="text-sm text-primary hover:text-indigo-600 hover:underline"
                       >
                         {alloc.asset_name}
@@ -146,5 +148,21 @@ export default function GoalDetailPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function GoalDetailPage() {
+  return (
+    <Suspense fallback={
+      <div className="space-y-6">
+        <Skeleton className="h-8 w-48" />
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          {[1, 2, 3].map(i => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}
+        </div>
+        <Skeleton className="h-48 w-full rounded-xl" />
+      </div>
+    }>
+      <GoalDetailContent />
+    </Suspense>
   )
 }

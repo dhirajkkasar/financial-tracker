@@ -1,0 +1,33 @@
+# Python
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/.pytest_cache/
+backend/*.db
+backend/.coverage
+backend/htmlcov/
+
+# Node
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Environment files (secrets never go in the image)
+**/.env
+**/.env.local
+**/.env.*.local
+
+# Git
+.git/
+.gitignore
+
+# Docs and editor config
+docs/
+*.md
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

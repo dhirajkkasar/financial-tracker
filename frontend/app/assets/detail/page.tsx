@@ -1,6 +1,7 @@
 'use client'
+import { Suspense } from 'react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
 import { Asset, Transaction, ReturnResult, FDDetail, PaginatedTransactions } from '@/types'
@@ -21,10 +22,10 @@ const thClass = 'pb-2.5 pr-3 text-left text-[10px] font-semibold uppercase track
 const LOT_BASED_TYPES = new Set(['STOCK_IN', 'STOCK_US', 'MF', 'GOLD', 'SGB', 'REAL_ESTATE', 'RSU'])
 const FD_TYPES = new Set(['FD', 'RD'])
 
-export default function AssetDetailPage() {
+function AssetDetailContent() {
   const { formatINR, formatINR2 } = usePrivateMoney()
-  const { id } = useParams<{ id: string }>()
-  const assetId = parseInt(id)
+  const searchParams = useSearchParams()
+  const assetId = parseInt(searchParams.get('id') ?? '0')
 
   const [asset, setAsset] = useState<Asset | null>(null)
   const [txnData, setTxnData] = useState<PaginatedTransactions | null>(null)
@@ -43,6 +44,7 @@ export default function AssetDetailPage() {
 
   // Initial load
   useEffect(() => {
+    if (!assetId) return
     Promise.all([
       api.assets.get(assetId),
       api.returns.asset(assetId).catch(() => null),
@@ -62,6 +64,7 @@ export default function AssetDetailPage() {
 
   // Fetch transactions whenever page/pageSize changes
   useEffect(() => {
+    if (!assetId) return
     api.transactions.list(assetId, txnPage, txnPageSize)
       .then(setTxnData)
       .catch(() => setTxnData(null))
@@ -135,7 +138,7 @@ export default function AssetDetailPage() {
               {asset.goals.map((g, i) => (
                 <span key={g.id}>
                   {i > 0 && ', '}
-                  <Link href={`/goals/${g.id}`} className="text-accent hover:underline">
+                  <Link href={`/goals/detail?id=${g.id}`} className="text-accent hover:underline">
                     {g.name}
                   </Link>
                 </span>
@@ -294,5 +297,21 @@ export default function AssetDetailPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function AssetDetailPage() {
+  return (
+    <Suspense fallback={
+      <div className="space-y-6">
+        <Skeleton className="h-8 w-56" />
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}
+        </div>
+        <Skeleton className="h-48 w-full rounded-xl" />
+      </div>
+    }>
+      <AssetDetailContent />
+    </Suspense>
   )
 }

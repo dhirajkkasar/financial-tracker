@@ -42,7 +42,7 @@ export function GoalsWidget() {
             <div key={goal.id}>
               <div className="mb-1.5 flex items-baseline justify-between gap-3">
                 <Link
-                  href={`/goals/${goal.id}`}
+                  href={`/goals/detail?id=${goal.id}`}
                   className="truncate text-sm font-medium text-accent hover:underline"
                 >
                   {goal.name}

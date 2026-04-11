@@ -3,7 +3,7 @@ import { Asset, AssetType, Transaction, Valuation, FDDetail, Goal, GoalAllocatio
 import { Member } from '@/constants'
 
 const client = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
+  baseURL: process.env.NEXT_PUBLIC_API_URL || '/api',
   headers: { 'Content-Type': 'application/json' },
 })
 

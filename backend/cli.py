@@ -58,7 +58,7 @@ BASE = os.getenv("PORTFOLIO_API", "http://localhost:8000")
 
 def _api(method: str, path: str, **kwargs):
     try:
-        r = getattr(requests, method)(f"{BASE}{path}", **kwargs)
+        r = getattr(requests, method)(f"{BASE}/api{path}", **kwargs)
     except requests.ConnectionError:
         sys.exit(f"Cannot connect to {BASE}. Is the server running?")
     if not r.ok:

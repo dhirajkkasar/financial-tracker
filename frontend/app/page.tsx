@@ -160,7 +160,7 @@ export default function OverviewPage() {
                   {gainersData!.gainers.map((g) => (
                     <tr key={g.asset_id} className="border-b border-border last:border-0 transition-colors hover:bg-gain-subtle/40">
                       <td className="py-2.5 pr-3">
-                        <Link href={`/assets/${g.asset_id}`} className="font-medium text-accent hover:underline">
+                        <Link href={`/assets/detail?id=${g.asset_id}`} className="font-medium text-accent hover:underline">
                           {g.name}
                         </Link>
                         <p className="text-[10px] text-tertiary">{ASSET_TYPE_LABELS[g.asset_type]}</p>
@@ -196,7 +196,7 @@ export default function OverviewPage() {
                   {gainersData!.losers.map((g) => (
                     <tr key={g.asset_id} className="border-b border-border last:border-0 transition-colors hover:bg-loss-subtle/40">
                       <td className="py-2.5 pr-3">
-                        <Link href={`/assets/${g.asset_id}`} className="font-medium text-accent hover:underline">
+                        <Link href={`/assets/detail?id=${g.asset_id}`} className="font-medium text-accent hover:underline">
                           {g.name}
                         </Link>
                         <p className="text-[10px] text-tertiary">{ASSET_TYPE_LABELS[g.asset_type]}</p>

@@ -27,7 +27,13 @@ def client(db_session):
     def override_get_db():
         yield db_session
     app.dependency_overrides[get_db] = override_get_db
-    yield TestClient(app)
+    tc = TestClient(app)
+
+    class _W:
+        def get(self, p, **kw): return tc.get(f"/api{p}", **kw)
+        def post(self, p, **kw): return tc.post(f"/api{p}", **kw)
+
+    yield _W()
     app.dependency_overrides.clear()
 
 

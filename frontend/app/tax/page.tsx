@@ -195,7 +195,7 @@ export default function TaxPage() {
               {summary.stcg.assets.map((a) => (
                 <tr key={a.asset_id} className="border-b border-border last:border-0 hover:bg-accent-subtle/30 transition-colors">
                   <td className="py-3 pr-4">
-                    <Link href={`/assets/${a.asset_id}`} className="font-medium text-accent hover:underline">{a.asset_name}</Link>
+                    <Link href={`/assets/detail?id=${a.asset_id}`} className="font-medium text-accent hover:underline">{a.asset_name}</Link>
                     <span className="ml-2 text-[10px] text-tertiary">{ASSET_TYPE_LABELS[a.asset_type as AssetType] ?? a.asset_type}</span>
                   </td>
                   <td className="py-3 pr-4 text-right"><GainAmt value={a.gain} fmt={formatINR} /></td>
@@ -250,7 +250,7 @@ export default function TaxPage() {
               {summary.ltcg.assets.map((a) => (
                 <tr key={a.asset_id} className="border-b border-border last:border-0 hover:bg-accent-subtle/30 transition-colors">
                   <td className="py-3 pr-4">
-                    <Link href={`/assets/${a.asset_id}`} className="font-medium text-accent hover:underline">{a.asset_name}</Link>
+                    <Link href={`/assets/detail?id=${a.asset_id}`} className="font-medium text-accent hover:underline">{a.asset_name}</Link>
                     <span className="ml-2 text-[10px] text-tertiary">{ASSET_TYPE_LABELS[a.asset_type as AssetType] ?? a.asset_type}</span>
                     {a.ltcg_exempt_eligible && (
                       <span className="ml-2 rounded bg-gain/10 px-1.5 py-0.5 text-[9px] font-medium text-gain">112A</span>
@@ -305,7 +305,7 @@ export default function TaxPage() {
               {summary.interest.assets.map((a) => (
                 <tr key={a.asset_id} className="border-b border-border last:border-0 hover:bg-accent-subtle/30 transition-colors">
                   <td className="py-3 pr-4">
-                    <Link href={`/assets/${a.asset_id}`} className="font-medium text-accent hover:underline">{a.asset_name}</Link>
+                    <Link href={`/assets/detail?id=${a.asset_id}`} className="font-medium text-accent hover:underline">{a.asset_name}</Link>
                     <span className="ml-2 text-[10px] text-tertiary">{ASSET_TYPE_LABELS[a.asset_type as AssetType] ?? a.asset_type}</span>
                   </td>
                   <td className="py-3 pr-4 text-right font-mono text-gain">{formatINR(a.interest)}</td>
@@ -393,7 +393,7 @@ export default function TaxPage() {
                 {harvestSlice.map((row) => (
                   <tr key={row.asset_id} className="border-b border-border last:border-0 hover:bg-loss-subtle/30 transition-colors">
                     <td className="py-2.5 pr-4">
-                      <Link href={`/assets/${row.asset_id}`} className="font-medium text-accent hover:underline">
+                      <Link href={`/assets/detail?id=${row.asset_id}`} className="font-medium text-accent hover:underline">
                         {row.asset_name}
                       </Link>
                     </td>

@@ -231,7 +231,7 @@ export function HoldingsTable({ assets, loading, variant = 'default', showUnits 
               <tr key={a.id} className={`border-b border-border last:border-0 transition-colors ${isInactive ? 'bg-border/30 text-tertiary hover:bg-border/50' : 'hover:bg-accent-subtle/40'}`}>
                 <td className="py-3 pr-4 w-[16ch]">
                   <div className="flex items-start gap-2">
-                    <Link href={`/assets/${a.id}`} className="font-medium text-accent hover:underline break-words">
+                    <Link href={`/assets/detail?id=${a.id}`} className="font-medium text-accent hover:underline break-words">
                       {a.name}
                     </Link>
                     {isInactive && (

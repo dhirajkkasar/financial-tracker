@@ -125,17 +125,26 @@ from app.api.tax import router as tax_router
 from app.api.snapshots import router as snapshots_router
 from app.api.corp_actions import router as corp_actions_router
 
-app.include_router(members_router)
-app.include_router(assets_router)
-app.include_router(transactions_router)
-app.include_router(fd_detail_router)
-app.include_router(valuations_router)
-app.include_router(goals_router)
-app.include_router(important_data_router)
-app.include_router(interest_rates_router)
-app.include_router(returns_router)
-app.include_router(prices_router)
-app.include_router(imports_router)
-app.include_router(tax_router)
-app.include_router(snapshots_router)
-app.include_router(corp_actions_router)
+app.include_router(members_router, prefix="/api")
+app.include_router(assets_router, prefix="/api")
+app.include_router(transactions_router, prefix="/api")
+app.include_router(fd_detail_router, prefix="/api")
+app.include_router(valuations_router, prefix="/api")
+app.include_router(goals_router, prefix="/api")
+app.include_router(important_data_router, prefix="/api")
+app.include_router(interest_rates_router, prefix="/api")
+app.include_router(returns_router, prefix="/api")
+app.include_router(prices_router, prefix="/api")
+app.include_router(imports_router, prefix="/api")
+app.include_router(tax_router, prefix="/api")
+app.include_router(snapshots_router, prefix="/api")
+app.include_router(corp_actions_router, prefix="/api")
+
+# Serve frontend static files — must be mounted last so API routes take priority.
+# Only active when the built frontend_static/ directory exists (i.e. inside Docker).
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+
+_frontend_static = Path(__file__).parent.parent / "frontend_static"
+if _frontend_static.exists():
+    app.mount("/", StaticFiles(directory=str(_frontend_static), html=True), name="frontend")

@@ -1,6 +1,6 @@
 import enum
 from datetime import date, datetime
-from sqlalchemy import Integer, Float, Boolean, Date, ForeignKey, Text, String, Enum as SAEnum
+from sqlalchemy import BigInteger, Integer, Float, Boolean, Date, ForeignKey, Text, String, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
@@ -26,12 +26,12 @@ class FDDetail(Base):
     bank: Mapped[str] = mapped_column(String(100), nullable=False)
     fd_type: Mapped[FDType] = mapped_column(SAEnum(FDType), nullable=False)
     # For FD: lump-sum deposit in paise. For RD: monthly installment in paise.
-    principal_amount: Mapped[int] = mapped_column(Integer, nullable=False)  # paise
+    principal_amount: Mapped[int] = mapped_column(BigInteger, nullable=False)  # paise
     interest_rate_pct: Mapped[float] = mapped_column(Float, nullable=False)
     compounding: Mapped[CompoundingType] = mapped_column(SAEnum(CompoundingType), nullable=False)
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     maturity_date: Mapped[date] = mapped_column(Date, nullable=False)
-    maturity_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)  # paise
+    maturity_amount: Mapped[int | None] = mapped_column(BigInteger, nullable=True)  # paise
     is_matured: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     tds_applicable: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -18,7 +18,7 @@ class InterestRate(Base):
     rate_pct: Mapped[float] = mapped_column(Float, nullable=False)
     effective_from: Mapped[date] = mapped_column(Date, nullable=False)
     effective_to: Mapped[date | None] = mapped_column(Date, nullable=True)
-    fy_label: Mapped[str] = mapped_column(String(10), nullable=False)
+    fy_label: Mapped[str] = mapped_column(String(20), nullable=False)
 
     __table_args__ = (
         UniqueConstraint("instrument", "effective_from", name="uq_instrument_effective_from"),

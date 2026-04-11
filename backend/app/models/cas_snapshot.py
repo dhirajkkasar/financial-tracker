@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from sqlalchemy import Integer, Float, Date, DateTime, ForeignKey
+from sqlalchemy import BigInteger, Integer, Float, Date, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
@@ -19,9 +19,9 @@ class CasSnapshot(Base):
     asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id"), nullable=False, index=True)
     date: Mapped[date] = mapped_column(Date, nullable=False)           # NAV date from CAS
     closing_units: Mapped[float] = mapped_column(Float, nullable=False)
-    nav_price_inr: Mapped[int] = mapped_column(Integer, nullable=False)   # paise per unit
-    market_value_inr: Mapped[int] = mapped_column(Integer, nullable=False) # paise total
-    total_cost_inr: Mapped[int] = mapped_column(Integer, nullable=False)   # paise cost basis
+    nav_price_inr: Mapped[int] = mapped_column(BigInteger, nullable=False)   # paise per unit
+    market_value_inr: Mapped[int] = mapped_column(BigInteger, nullable=False) # paise total
+    total_cost_inr: Mapped[int] = mapped_column(BigInteger, nullable=False)   # paise cost basis
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
     asset: Mapped["Asset"] = relationship("Asset", back_populates="cas_snapshots")

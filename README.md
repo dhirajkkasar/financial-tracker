@@ -159,8 +159,8 @@ Each household member is identified by PAN. A member must exist before any data 
 
 ```bash
 # Add a member (required once per PAN before importing)
-fintrack add-member --pan ABCDE1234F --name "Dhiraj"
-fintrack add-member --pan XYZAB5678G --name "Spouse"
+fintrack add-member --pan ABCDE1234F --member-name "Dhiraj"
+fintrack add-member --pan XYZAB5678G --member-name "Spouse"
 ```
 
 ### Import Data
@@ -176,6 +176,8 @@ fintrack import zerodha <tradebook_csv> --pan ABCDE1234F   # Zerodha tradebook C
 fintrack import fidelity-rsu <rsu_csv> --pan ABCDE1234F    # Fidelity RSU holding CSV (prompts for USD/INR rates)
 fintrack import fidelity-sale <sale_pdf> --pan ABCDE1234F  # Fidelity tax-cover sale PDF (prompts for USD/INR rates)
 ```
+
+Optionally pass `--member-name "Name"` to auto-create the member if they don't exist yet.
 
 All imports are idempotent — re-importing the same file creates 0 new records.
 
@@ -239,6 +241,39 @@ Prices are fetched on-demand via `fintrack refresh-prices` and also attempted in
 | Gold | yfinance | 6 hours |
 
 Each fetcher self-registers via `@register_fetcher`. Adding a new price source requires only a new class — no changes to existing files.
+
+---
+
+## Docker (Production / Single-Container)
+
+The included `Dockerfile` builds a single container: the frontend is compiled to static files and served by the FastAPI backend on the same port. No separate frontend server needed.
+
+```bash
+# Build the image
+docker build -t financial-tracker .
+
+# Run with a persistent SQLite volume
+docker run -p 8080:8080 \
+  -v $(pwd)/data:/app/data \
+  -e DATABASE_URL=sqlite:///./data/portfolio.db \
+  -e API_TOKEN=changeme \
+  financial-tracker
+# App at http://localhost:8080
+```
+
+**Run migrations before first start:**
+```bash
+docker run --rm \
+  -v $(pwd)/data:/app/data \
+  -e DATABASE_URL=sqlite:///./data/portfolio.db \
+  financial-tracker \
+  alembic upgrade head
+```
+
+**Notes:**
+- `NEXT_PUBLIC_API_URL` defaults to `/api` (relative, same-origin) at build time — override with `--build-arg NEXT_PUBLIC_API_URL=https://your-domain.com/api` if needed
+- For PostgreSQL, set `DATABASE_URL=postgresql://user:pass@host/db`
+- Port is configurable via the `PORT` environment variable (Cloud Run injects this automatically)
 
 ---
 

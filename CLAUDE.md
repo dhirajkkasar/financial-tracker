@@ -36,9 +36,9 @@ cd backend
 fintrack quick-start
 
 # Member management (must exist before any import)
-fintrack add-member --pan ABCDE1234F --name "Dhiraj"
+fintrack add-member --pan ABCDE1234F --member-name "Dhiraj"
 
-# All import commands require --pan (resolved to member_id via GET /members)
+# All import commands require --pan (resolved to member_id via GET /api/members)
 fintrack import ppf <file> --pan ABCDE1234F
 fintrack import epf <file> --pan ABCDE1234F
 fintrack import cas <file> --pan ABCDE1234F
@@ -78,6 +78,28 @@ npm run dev       # dev server at http://localhost:3000
 npm run build     # production build
 npm run lint      # ESLint
 ```
+
+### Docker (production / single-container)
+```bash
+# Build image (frontend compiled into backend static files; served from same origin)
+docker build -t financial-tracker .
+
+# Run (SQLite — mount a volume to persist the DB)
+docker run -p 8080:8080 \
+  -v $(pwd)/data:/app/data \
+  -e DATABASE_URL=sqlite:///./data/portfolio.db \
+  -e API_TOKEN=changeme \
+  financial-tracker
+
+# Run migrations before first start (or after upgrades)
+docker run --rm \
+  -v $(pwd)/data:/app/data \
+  -e DATABASE_URL=sqlite:///./data/portfolio.db \
+  financial-tracker \
+  alembic upgrade head
+```
+- In Docker: frontend is served as static files by FastAPI from `/frontend_static`; no separate frontend server
+- `NEXT_PUBLIC_API_URL` is baked in at build time as `/api` (relative path, same origin) — override with `--build-arg NEXT_PUBLIC_API_URL=...`
 
 ### Environment Variables
 - **Backend** (`backend/.env`): Always check database url in .env file before querying database directly
@@ -124,11 +146,11 @@ Hash must be **stable across re-imports** — never include internal DB IDs in t
 ### Members
 - `members` table: PAN-identified household members (`id`, `pan`, `name`, `is_default`, `created_at`)
 - `member_id` FK on `assets`, `important_data`, `portfolio_snapshots` (NOT NULL)
-- **API:** `GET /members`, `POST /members` (PAN validated, 409 on duplicate)
+- **API:** `GET /api/members`, `POST /api/members` (PAN validated, 409 on duplicate)
 - Most list endpoints accept optional `?member_ids=1,2` (comma-separated); omit = all members
-- Tax endpoints (`/tax/summary`, `/tax/unrealised`, `/tax/harvest-opportunities`) require `?member_id=<id>` (single, per-PAN)
+- Tax endpoints (`/api/tax/summary`, `/api/tax/unrealised`, `/api/tax/harvest-opportunities`) require `?member_id=<id>` (single, per-PAN)
 - Snapshots are stored per-member; listing returns date-aggregated totals
-- **CLI:** `add-member --pan ABCDE1234F --name "Dhiraj"`; all import commands require `--pan <PAN>`; `resolve_member_id(pan)` looks up via `GET /members` and exits with a helpful message if not found — **member must exist before first import**
+- **CLI:** `add-member --pan ABCDE1234F --member-name "Dhiraj"`; all import commands require `--pan <PAN>`; `resolve_or_create_member(pan)` looks up via `GET /api/members` and prompts for a name to create one if not found
 - **Frontend:** Global `MemberSelector` multi-select in header (persisted to localStorage); tax page has independent single-select picker
 
 ### Asset Types
@@ -217,9 +239,9 @@ Adding a new asset type: create a 3-line leaf class in `services/returns/strateg
 
 ### Tax Module
 - **Rates are config-driven:** `config/tax_rates/2024-25.yaml`, `config/tax_rates/2025-26.yaml`
-- **API endpoints:** `GET /tax/summary?fy=2024-25`, `GET /tax/unrealised`, `GET /tax/harvest-opportunities`
+- **API endpoints:** `GET /api/tax/summary?fy=2024-25`, `GET /api/tax/unrealised`, `GET /api/tax/harvest-opportunities`
 - **Slab rate:** injected via `SLAB_RATE` env var (default 30%); read in `dependencies.py` → `TaxService`
-- **Response shape:** `GET /tax/summary` returns `entries` grouped by `asset_class` (EQUITY/DEBT/GOLD/REAL_ESTATE), each with `asset_breakdown[]` per asset and `slab_rate_pct` label
+- **Response shape:** `GET /api/tax/summary` returns `entries` grouped by `asset_class` (EQUITY/DEBT/GOLD/REAL_ESTATE), each with `asset_breakdown[]` per asset and `slab_rate_pct` label
 - **Strategy hierarchy** (`services/tax/strategies/`): mirrors returns strategies — `TaxGainsStrategy` ABC, `FifoTaxGainsStrategy` base, leaf classes registered via `@register_tax_strategy`
   - Adding a new asset type: create a 3-line leaf in `services/tax/strategies/` with `@register_tax_strategy(("TYPE", "*"))`
   - Auto-import in `services/tax/strategies/__init__.py` populates registry on startup

@@ -1,11 +1,13 @@
 'use client'
 import { useGoals } from '@/hooks/useGoals'
+import { useOverview } from '@/hooks/useOverview'
 import { GoalCard } from '@/components/domain/GoalCard'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { usePrivateMoney } from '@/hooks/usePrivateMoney'
 
 export default function GoalsPage() {
   const { goals, loading } = useGoals()
+  const { data: overview } = useOverview()
   const { formatINR } = usePrivateMoney()
 
   const totalTarget = goals.reduce((s, g) => s + g.target_amount_inr, 0)
@@ -13,6 +15,9 @@ export default function GoalsPage() {
   const overallPct = totalTarget > 0 ? Math.min(100, (totalCurrent / totalTarget) * 100) : 0
   const totalRemaining = Math.max(0, totalTarget - totalCurrent)
   const barColor = overallPct >= 80 ? 'bg-green-500' : overallPct >= 50 ? 'bg-amber-400' : 'bg-indigo-500'
+
+  const portfolioTotal = overview?.total_current_value ?? 0
+  const unallocated = portfolioTotal > 0 ? Math.max(0, portfolioTotal - totalCurrent) : 0
 
   return (
     <div className="space-y-4">
@@ -33,10 +38,16 @@ export default function GoalsPage() {
             />
           </div>
           <div className="mt-3 flex items-center justify-between text-xs text-secondary">
-            <span>{formatINR(totalCurrent)} accumulated</span>
+            <span>{formatINR(totalCurrent)} toward goals</span>
             <span className="text-tertiary">{goals.length} goal{goals.length !== 1 ? 's' : ''} · {formatINR(totalRemaining)} remaining</span>
             <span>{formatINR(totalTarget)} target</span>
           </div>
+          {unallocated > 0 && (
+            <div className="mt-2 border-t border-border pt-2 text-xs text-tertiary flex items-center justify-between">
+              <span>Portfolio total: {formatINR(portfolioTotal)}</span>
+              <span>{formatINR(unallocated)} not assigned to any goal</span>
+            </div>
+          )}
         </div>
       ) : null}
 

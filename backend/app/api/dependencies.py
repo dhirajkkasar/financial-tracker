@@ -90,6 +90,10 @@ from app.services.tax.strategies.base import register_tax_strategy_instance
 from app.services.tax.strategies.fifo_base import FifoTaxGainsStrategy
 from app.services.tax.strategies.real_estate import RealEstateTaxGainsStrategy
 from app.services.tax.strategies.accrued_interest import AccruedInterestTaxGainsStrategy
+from app.services.tax.strategies.sgb import SGBTaxGainsStrategy
+from app.services.tax.strategies.rsu import RSUTaxGainsStrategy
+from app.services.tax.strategies.nps import NPSTaxGainsStrategy
+from app.services.tax.strategies.epf import EPFTaxGainsStrategy
 
 _tax_resolver = TaxRuleResolver(Path("app/config/tax_rates"))
 
@@ -97,6 +101,15 @@ _tax_resolver = TaxRuleResolver(Path("app/config/tax_rates"))
 _fifo_strategy = FifoTaxGainsStrategy(_tax_resolver)
 for _key in [("STOCK_IN", "*"), ("STOCK_US", "*"), ("MF", "*"), ("GOLD", "*")]:
     register_tax_strategy_instance(_key, _fifo_strategy)
+
+# SGB secondary sales + RSU post-vest gains use dedicated strategies
+# (RBI-maturity exemption, RSU perquisite). Both resolve rates from YAML.
+register_tax_strategy_instance(("SGB", "*"), SGBTaxGainsStrategy(_tax_resolver))
+register_tax_strategy_instance(("RSU", "*"), RSUTaxGainsStrategy(_tax_resolver))
+
+# NPS (Tier I 60%-exempt / Tier II slab) and EPF excess-interest (Rule 9D)
+register_tax_strategy_instance(("NPS", "*"), NPSTaxGainsStrategy())
+register_tax_strategy_instance(("EPF", "*"), EPFTaxGainsStrategy())
 
 # Non-FIFO strategies
 register_tax_strategy_instance(("REAL_ESTATE", "*"), RealEstateTaxGainsStrategy(_tax_resolver))

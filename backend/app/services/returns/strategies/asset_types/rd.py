@@ -6,7 +6,7 @@ import calendar
 from datetime import date as date_cls
 from typing import Optional
 
-from app.engine.fd_engine import compute_rd_maturity
+from app.engine.fd_engine import compute_rd_maturity, _calendar_months
 from app.engine.returns import compute_xirr
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas.responses.returns import AssetReturnsResponse
@@ -21,8 +21,8 @@ class RDStrategy(ValuationBasedStrategy):
         fd_detail = uow.fd.get_by_asset_id(asset.id)
         if fd_detail is None:
             return super().get_invested_value(asset, uow)
-        total_months = round((fd_detail.maturity_date - fd_detail.start_date).days / 30.44)
-        elapsed = round((date_cls.today() - fd_detail.start_date).days / 30.44)
+        total_months = _calendar_months(fd_detail.start_date, fd_detail.maturity_date)
+        elapsed = _calendar_months(fd_detail.start_date, date_cls.today())
         elapsed = max(0, min(elapsed, total_months))
         return elapsed * (fd_detail.principal_amount / 100.0)
 
@@ -33,8 +33,8 @@ class RDStrategy(ValuationBasedStrategy):
         if fd_detail.is_matured and fd_detail.maturity_amount is not None:
             return fd_detail.maturity_amount / 100.0
         principal_inr = fd_detail.principal_amount / 100.0
-        total_months = round((fd_detail.maturity_date - fd_detail.start_date).days / 30.44)
-        elapsed = round((date_cls.today() - fd_detail.start_date).days / 30.44)
+        total_months = _calendar_months(fd_detail.start_date, fd_detail.maturity_date)
+        elapsed = _calendar_months(fd_detail.start_date, date_cls.today())
         elapsed = max(0, min(elapsed, total_months))
         return compute_rd_maturity(principal_inr, fd_detail.interest_rate_pct, elapsed)
 
@@ -54,7 +54,7 @@ class RDStrategy(ValuationBasedStrategy):
 
         if fd is not None:
             principal_inr = fd.principal_amount / 100.0
-            total_months = round((fd.maturity_date - fd.start_date).days / 30.44)
+            total_months = _calendar_months(fd.start_date, fd.maturity_date)
 
             # One outflow per month on the same day-of-month as start_date
             start = fd.start_date

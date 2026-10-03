@@ -33,6 +33,18 @@ def compute_rd_maturity(monthly_installment: float, rate_pct: float, months: int
     return total
 
 
+def _calendar_months(start: date, end: date) -> int:
+    """Whole calendar months from start (inclusive) to end (exclusive of partial).
+
+    Banks quote RD tenure in whole months; day-count division (days/30.44)
+    drifts by ±1 month around month boundaries.
+    """
+    months = (end.year - start.year) * 12 + (end.month - start.month)
+    if end.day < start.day:
+        months -= 1
+    return max(0, months)
+
+
 def compute_maturity_paise(fd) -> int:
     """Compute maturity amount in paise from an FDDetail model instance."""
     principal_inr = fd.principal_amount / 100.0
@@ -42,7 +54,7 @@ def compute_maturity_paise(fd) -> int:
             principal_inr, fd.interest_rate_pct, fd.compounding.value, tenure_years
         )
     else:  # RD
-        months = round((fd.maturity_date - fd.start_date).days / 30.44)
+        months = _calendar_months(fd.start_date, fd.maturity_date)
         maturity_inr = compute_rd_maturity(principal_inr, fd.interest_rate_pct, months)
     return round(maturity_inr * 100)
 

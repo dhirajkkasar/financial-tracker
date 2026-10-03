@@ -1,6 +1,10 @@
-# FY 2025-26 capital gains tax rules
-# Only assets with capital gains: STOCK_IN, STOCK_US, GOLD, REAL_ESTATE, MF
-# FD/RD (interest income), PPF/EPF/NPS/SGB (exempt/special) are not here.
+# FY 2025-26 capital gains tax rules (as amended by Finance Act 2024 w.e.f. 23-Jul-2024)
+# Holding periods: listed equity 12 months; nearly all other assets 24 months.
+# Rates: equity STCG 20% / LTCG 12.5% above Rs 1.25L (112A); others LTCG 12.5%
+# without indexation; STCG at slab. Specified MF units (<=35% equity) bought
+# on/after 01-Apr-2023 are deemed short-term (slab) irrespective of holding.
+# SGB RBI-redemption exemption: pre-Budget-2026 rule (any RBI redemption exempt).
+# Budget 2026 primary-only + 8y rule applies from FY 2026-27 (see 2026-27.yaml).
 #
 # stcg_rate_pct / ltcg_rate_pct: null = slab rate
 # overrides: ordered list — all matching overrides merge top-to-bottom
@@ -17,10 +21,24 @@ STOCK_US:
   ltcg_rate_pct: 12.5
   stcg_days: 730
 
+RSU:
+  stcg_rate_pct: null
+  ltcg_rate_pct: 12.5
+  stcg_days: 730
+  ltcg_exemption_inr: 0
+  ltcg_exempt_eligible: false
+
 GOLD:
   stcg_rate_pct: null
   ltcg_rate_pct: 12.5
-  stcg_days: 1095
+  stcg_days: 730
+
+SGB:
+  stcg_rate_pct: null
+  ltcg_rate_pct: 12.5
+  stcg_days: 365
+  ltcg_exemption_inr: 0
+  ltcg_exempt_eligible: false
 
 REAL_ESTATE:
   stcg_rate_pct: null
@@ -57,3 +75,17 @@ MF:
           isins: ["INF247L01AG2", "INF959L01FV0"]
           bought_on_or_after: "2023-04-01"
         ltcg_rate_pct: null
+
+NPS:
+  stcg_rate_pct: null
+  ltcg_rate_pct: null
+  stcg_days: 730
+  ltcg_exemption_inr: 0
+  ltcg_exempt_eligible: false
+
+EPF:
+  stcg_rate_pct: null
+  ltcg_rate_pct: null
+  stcg_days: 365
+  ltcg_exemption_inr: 0
+  ltcg_exempt_eligible: false

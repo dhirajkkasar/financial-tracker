@@ -17,8 +17,8 @@ from app.services.tax.strategies.base import AssetTaxGainsResult, TaxStrategyReg
 
 logger = logging.getLogger(__name__)
 
-SKIPPED_ASSET_TYPES = {"EPF", "PPF", "NPS", "SGB", "RSU"}
-LOT_ASSET_TYPES = {"STOCK_IN", "STOCK_US", "MF", "GOLD"}   # FIFO-tracked for unrealised
+SKIPPED_ASSET_TYPES = {"PPF"}
+LOT_ASSET_TYPES = {"STOCK_IN", "STOCK_US", "MF", "GOLD", "SGB", "RSU", "NPS"}
 ASSET_CLASS_ORDER = ["EQUITY", "DEBT", "GOLD", "REAL_ESTATE"]
 
 LTCG_NEAR_THRESHOLD = 125_000.0

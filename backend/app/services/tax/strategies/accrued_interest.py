@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from app.engine.fd_engine import compute_fd_current_value, compute_rd_maturity
+from app.engine.fd_engine import (
+    compute_fd_current_value,
+    compute_rd_maturity,
+    _calendar_months,
+)
 from app.repositories.unit_of_work import UnitOfWork
 from app.services.tax.strategies.base import (
     AssetTaxGainsResult,
@@ -28,17 +32,20 @@ def _rd_interest_in_window(fd, window_start: date, window_end: date) -> float:
     RD interest accrued in [window_start, window_end] using linear proration
     of total interest across the RD tenure.
     """
-    total_months = round((fd.maturity_date - fd.start_date).days / 30.44)
+    total_months = _calendar_months(fd.start_date, fd.maturity_date)
     if total_months == 0:
         return 0.0
     monthly_inr = fd.principal_amount / 100.0
     maturity_inr = compute_rd_maturity(monthly_inr, fd.interest_rate_pct, total_months)
     total_principal = monthly_inr * total_months
     total_interest = max(0.0, maturity_inr - total_principal)
-    total_days = (fd.maturity_date - fd.start_date).days
-    if total_days == 0:
+    # Inclusive day counts: a window covering the full FY must span 365/366
+    # days, not 364/365. (FD exact-value path is unaffected — it differences
+    # end-of-day values, where prior=fy_start-1d is the correct convention.)
+    total_days = (fd.maturity_date - fd.start_date).days + 1
+    if total_days <= 0:
         return 0.0
-    window_days = (window_end - window_start).days
+    window_days = (window_end - window_start).days + 1
     return total_interest * (window_days / total_days)
 
 

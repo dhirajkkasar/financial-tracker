@@ -42,7 +42,10 @@ def compute_xirr(cashflows: list[tuple[date, float]], asset_name="unknown") -> f
     try:
         dates = [cf[0] for cf in cashflows]
         result = _pyxirr(dates, amounts)
-        if result is None or not (-1 < result < 100):
+        # Bounds are decimal (1.0 = 100%). -1.0 (total loss) is valid;
+        # cap at 1000 (100000% p.a.) — genuine multi-baggers can exceed the
+        # old 100x cap, anything beyond is almost certainly bad data.
+        if result is None or not (-1 <= result <= 1000):
             logger.warning(f"XIRR out of range for {asset_name}: {result}")
             return None
         return round(result, 6)

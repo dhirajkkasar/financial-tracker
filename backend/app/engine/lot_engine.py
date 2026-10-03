@@ -15,9 +15,9 @@ from typing import Optional, Protocol
 # ---------------------------------------------------------------------------
 # ST/LT holding thresholds (days) — FY2024-25 rules
 # ---------------------------------------------------------------------------
-EQUITY_STCG_DAYS = 365          # STOCK_IN, MF equity
+EQUITY_STCG_DAYS = 365          # STOCK_IN, MF equity, listed SGBs use 365 via map
 STOCK_US_STCG_DAYS = 730        # STOCK_US, RSU (2 years)
-GOLD_STCG_DAYS = 1095           # GOLD, SGB (3 years)
+GOLD_STCG_DAYS = 730            # GOLD physical (Finance Act 2024: 24 months, was 36)
 REAL_ESTATE_STCG_DAYS = 730     # REAL_ESTATE (2 years)
 
 GRANDFATHERING_CUTOFF = date(2018, 1, 31)
@@ -28,7 +28,7 @@ _STCG_DAYS: dict[str, int] = {
     "RSU":      STOCK_US_STCG_DAYS,
     "STOCK_US": STOCK_US_STCG_DAYS,
     "GOLD":     GOLD_STCG_DAYS,
-    "SGB":      GOLD_STCG_DAYS,
+    "SGB":      EQUITY_STCG_DAYS,  # listed SGBs: 12-month threshold
     "REAL_ESTATE": REAL_ESTATE_STCG_DAYS,
 }
 

@@ -162,14 +162,14 @@ class TestComputeLotUnrealised:
         )
         assert result["is_short_term"] is False
 
-    def test_gold_short_term_under_3_years(self):
+    def test_gold_short_term_under_2_years(self):
         result = compute_lot_unrealised(
-            self._lot(date(2022, 1, 1), 10, 100.0),
+            self._lot(date(2023, 1, 1), 10, 100.0),
             current_price=120.0, asset_type="GOLD", as_of=date(2024, 6, 1)
         )
         assert result["is_short_term"] is True
 
-    def test_gold_long_term_over_3_years(self):
+    def test_gold_long_term_over_2_years(self):
         result = compute_lot_unrealised(
             self._lot(date(2020, 1, 1), 10, 100.0),
             current_price=150.0, asset_type="GOLD", as_of=date(2024, 1, 1)
@@ -223,7 +223,7 @@ class TestGetTaxCostBasis:
 def test_stcg_thresholds():
     assert EQUITY_STCG_DAYS == 365
     assert STOCK_US_STCG_DAYS == 730
-    assert GOLD_STCG_DAYS == 1095
+    assert GOLD_STCG_DAYS == 730
 
 
 # ---------------------------------------------------------------------------

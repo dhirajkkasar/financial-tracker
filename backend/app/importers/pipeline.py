@@ -5,10 +5,14 @@ Stateless: creates a fresh run each call. Receives dependencies via constructor.
 """
 from __future__ import annotations
 
+import logging
+
 from app.importers.base import ImportResult
 from app.importers.registry import ImporterRegistry
 from app.services.imports.deduplicator import IDeduplicator
 from app.middleware.error_handler import ValidationError
+
+logger = logging.getLogger(__name__)
 
 
 class ImportPipeline:
@@ -43,16 +47,34 @@ class ImportPipeline:
         Raises:
             ValidationError: If importer.validate() fails
         """
-        print("kwargs received by ImportPipeline.run:", importer_kwargs)
+        logger.debug("kwargs received by ImportPipeline.run: %s", importer_kwargs)
         importer = self._registry.get(source, fmt, **importer_kwargs)
-        print(f"Using importer: {importer.__class__.__name__} for source={source} format={fmt}")
+        logger.debug("Using importer: %s for source=%s format=%s", importer.__class__.__name__, source, fmt)
         result = importer.parse(file_bytes)
-        print("calling validate")
+        logger.debug("calling validate")
         validation_result = importer.validate(result)
-        if not validation_result.is_valid:
-            # Raise ValidationError with first error message and structured details
-            error_msg = validation_result.errors[0] if validation_result.errors else "Validation failed"
-            raise ValidationError(error_msg)
+        # Parse errors must block preview even when validate() is the default (always-valid).
+        combined_errors = list(validation_result.errors)
+        for e in result.errors:
+            if e not in combined_errors:
+                combined_errors.append(e)
+        if not validation_result.is_valid or combined_errors:
+            # Preserve all validation errors + required_inputs hints in the message.
+            error_msg = "; ".join(combined_errors) if combined_errors else "Validation failed"
+            required_inputs = dict(validation_result.required_inputs or {})
+            if required_inputs:
+                required_months = required_inputs.get("required_months", [])
+                provided_months = required_inputs.get("provided_months", [])
+                error_msg += (
+                    f" (required_months: {', '.join(required_months) if required_months else 'none'}; "
+                    f"provided_months: {', '.join(provided_months) if provided_months else 'none'})"
+                )
+            exc = ValidationError(error_msg)
+            # Attach structured detail for API consumers without changing the error schema.
+            exc.detail = error_msg  # type: ignore[attr-defined]
+            exc.required_inputs = required_inputs  # type: ignore[attr-defined]
+            exc.errors = combined_errors  # type: ignore[attr-defined]
+            raise exc
         
         result = self._deduplicator.filter_duplicates(result)
         return result

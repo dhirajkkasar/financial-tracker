@@ -115,10 +115,21 @@ class NPSImporter(BaseImporter):
         reader = csv.reader(io.StringIO(line))
         return next(reader, [])
 
+    @staticmethod
+    def _parse_date(s: str):
+        """Accept %d-%b-%Y, %Y-%m-%d, and %d/%m/%Y."""
+        s = (s or "").strip()
+        for fmt in ("%d-%b-%Y", "%Y-%m-%d", "%d/%m/%Y"):
+            try:
+                return datetime.strptime(s, fmt).date()
+            except ValueError:
+                continue
+        return None
+
     def _parse_amount(self, s: str) -> Optional[float]:
         if not s:
             return None
-        s = s.strip()
+        s = s.strip().replace(",", "")
         negative = s.startswith("(") and s.endswith(")")
         if negative:
             s = s[1:-1]
@@ -196,10 +207,9 @@ class NPSImporter(BaseImporter):
         if "opening balance" in desc_lower or "closing balance" in desc_lower:
             return None
 
-        # Parse date
-        try:
-            txn_date = datetime.strptime(row["date"], "%d-%b-%Y").date()
-        except ValueError:
+        # Parse date (accept %d-%b-%Y, %Y-%m-%d, and %d/%m/%Y)
+        txn_date = self._parse_date(row["date"])
+        if txn_date is None:
             return None
 
         amount = self._parse_amount(row["amount"])

@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { Asset } from '@/types'
-import { formatPct, formatMFCategory } from '@/lib/formatters'
+import { formatPct, formatMFCategory, formatXIRR } from '@/lib/formatters'
 import { usePrivateMoney } from '@/hooks/usePrivateMoney'
 import { Skeleton } from '@/components/ui/Skeleton'
 
@@ -281,7 +281,7 @@ export function HoldingsTable({ assets, loading, variant = 'default', showUnits 
                       <PnlCell amount={allTimePnl} dim={isInactive} fmt={formatINR} />
                     </td>
                     <td className="py-3 pr-4 text-right font-mono">
-                      {a.xirr != null ? `${(a.xirr * 100).toFixed(2)}%` : '—'}
+                      {formatXIRR(a.xirr ?? null)}
                     </td>
                   </>
                 )}

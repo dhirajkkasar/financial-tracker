@@ -86,12 +86,14 @@ class TestPPFCSVImporter:
         assert len(ids) == len(set(ids))
 
     def test_txn_id_is_stable(self):
-        expected = _make_txn_id("32256576916", "INTEREST", date(2013, 3, 31), 54300)
+        expected = _make_txn_id("32256576916", "INTEREST", date(2013, 3, 31), 54300,
+                                12543.0, "INTEREST CREDIT - WITHIN SBI")
         interest = next(t for t in self.result.transactions if t.txn_type == "INTEREST")
         assert interest.txn_id == expected
 
     def test_contribution_txn_id_stable(self):
-        expected = _make_txn_id("32256576916", "CONTRIBUTION", date(2012, 3, 29), 200000)
+        expected = _make_txn_id("32256576916", "CONTRIBUTION", date(2012, 3, 29), 200000,
+                                2000.0, "CASH DEPOSIT SELF AT 13547 SUS ROAD PASHAN - CASH")
         march_txn = next(
             t for t in self.result.transactions
             if t.txn_type == "CONTRIBUTION" and t.date == date(2012, 3, 29)

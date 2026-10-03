@@ -14,6 +14,7 @@ import { useLots } from '@/hooks/useLots'
 import { formatXIRR, formatDate, formatPct } from '@/lib/formatters'
 import { usePrivateMoney } from '@/hooks/usePrivateMoney'
 import { ASSET_TYPE_LABELS } from '@/constants'
+import { ErrorBanner } from '@/components/ui/ErrorBanner'
 
 const card = 'rounded-xl border border-border bg-card p-5'
 const cardStyle = { boxShadow: 'var(--shadow-card)' }
@@ -25,7 +26,10 @@ const FD_TYPES = new Set(['FD', 'RD'])
 function AssetDetailContent() {
   const { formatINR, formatINR2 } = usePrivateMoney()
   const searchParams = useSearchParams()
-  const assetId = parseInt(searchParams.get('id') ?? '0')
+  const rawId = searchParams.get('id')
+  const parsedId = rawId != null ? parseInt(rawId, 10) : NaN
+  const assetId = Number.isInteger(parsedId) && (parsedId as number) > 0 ? (parsedId as number) : null
+  const invalidLink = assetId === null
 
   const [asset, setAsset] = useState<Asset | null>(null)
   const [txnData, setTxnData] = useState<PaginatedTransactions | null>(null)
@@ -34,41 +38,53 @@ function AssetDetailContent() {
   const [returns, setReturns] = useState<ReturnResult | null>(null)
   const [fdDetail, setFdDetail] = useState<FDDetail | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   // Lot pagination state
   const [openPage, setOpenPage] = useState(1)
   const [matchedPage, setMatchedPage] = useState(1)
   const [lotsPageSize, setLotsPageSize] = useState(10)
 
-  const { data: lots, loading: lotsLoading } = useLots(assetId, openPage, matchedPage, lotsPageSize)
+  const { data: lots, loading: lotsLoading, error: lotsError } = useLots(assetId ?? 0, openPage, matchedPage, lotsPageSize)
 
-  // Initial load
+  // Initial load (assetId null = invalid ?id= → fires a harmless 404 into
+  // error state; the page renders "Invalid link" without reading it)
   useEffect(() => {
-    if (!assetId) return
+    const id = assetId ?? 0
     Promise.all([
-      api.assets.get(assetId),
-      api.returns.asset(assetId).catch(() => null),
+      api.assets.get(id),
+      api.returns.asset(id).catch(() => null),
     ]).then(async ([a, ret]) => {
       setAsset(a)
       setReturns(ret)
+      setError(null)
       if (FD_TYPES.has(a.asset_type)) {
         try {
-          const fd = await api.fdDetail.get(assetId)
+          const fd = await api.fdDetail.get(id)
           setFdDetail(fd)
         } catch {
           // no FD detail yet
         }
       }
-    }).finally(() => setLoading(false))
+    }).catch((e: Error) => setError(e.message)).finally(() => setLoading(false))
   }, [assetId])
 
-  // Fetch transactions whenever page/pageSize changes
+  // Fetch transactions — always with a clamped page so we never request
+  // beyond the last page after totals shrink (e.g. after deletions).
+  const txnTotalPages = Math.max(1, txnData?.total_pages ?? 1)
+  const safeTxnPage = Math.min(Math.max(1, txnPage), txnTotalPages)
+  const openLotsTotalPages = Math.max(1, lots?.open_lots.total_pages ?? 1)
+  const matchedLotsTotalPages = Math.max(1, lots?.matched_sells.total_pages ?? 1)
   useEffect(() => {
-    if (!assetId) return
-    api.transactions.list(assetId, txnPage, txnPageSize)
-      .then(setTxnData)
-      .catch(() => setTxnData(null))
-  }, [assetId, txnPage, txnPageSize])
+    if (assetId === null) return
+    api.transactions.list(assetId, safeTxnPage, txnPageSize)
+      .then((data) => { setTxnData(data); setError(null) })
+      .catch((e: Error) => { setTxnData(null); setError(e.message) })
+  }, [assetId, safeTxnPage, txnPageSize])
+
+  if (invalidLink) {
+    return <p className="text-loss">Invalid link — missing or malformed asset id.</p>
+  }
 
   if (loading) {
     return (
@@ -82,7 +98,12 @@ function AssetDetailContent() {
     )
   }
 
-  if (!asset) return <p className="text-loss">Asset not found</p>
+  if (!asset) return (
+    <div className="space-y-6">
+      {(error ?? lotsError) && <ErrorBanner message={(error ?? lotsError)!} />}
+      <p className="text-loss">Asset not found</p>
+    </div>
+  )
 
   const invested = returns?.total_invested ?? null
   // Fully closed: any inactive lot-based asset where position is fully unwound
@@ -108,10 +129,9 @@ function AssetDetailContent() {
 
   const transactions = txnData?.items ?? []
   const txnTotal = txnData?.total ?? 0
-  const txnTotalPages = txnData?.total_pages ?? 1
 
   const emptyLots = {
-    items: [] as any[],
+    items: [] as never[],
     total: 0,
     page: 1,
     page_size: lotsPageSize,
@@ -120,6 +140,7 @@ function AssetDetailContent() {
 
   return (
     <div className="space-y-6">
+      {(error ?? lotsError) && <ErrorBanner message={(error ?? lotsError)!} />}
       {/* Header */}
       <div>
         <h1 className="text-2xl text-primary">{asset.name}</h1>
@@ -221,8 +242,8 @@ function AssetDetailContent() {
             openLots={lots?.open_lots ?? emptyLots}
             matchedSells={lots?.matched_sells ?? emptyLots}
             loading={lotsLoading}
-            onOpenPageChange={setOpenPage}
-            onMatchedPageChange={setMatchedPage}
+            onOpenPageChange={(p) => setOpenPage(Math.min(Math.max(1, p), openLotsTotalPages))}
+            onMatchedPageChange={(p) => setMatchedPage(Math.min(Math.max(1, p), matchedLotsTotalPages))}
             onPageSizeChange={(size) => {
               setLotsPageSize(size)
               setOpenPage(1)
@@ -283,11 +304,11 @@ function AssetDetailContent() {
               </table>
             </div>
             <Pagination
-              page={txnPage}
+              page={safeTxnPage}
               pageSize={txnPageSize}
               total={txnTotal}
               totalPages={txnTotalPages}
-              onPageChange={setTxnPage}
+              onPageChange={(p) => setTxnPage(Math.min(Math.max(1, p), txnTotalPages))}
               onPageSizeChange={(size) => {
                 setTxnPageSize(size)
                 setTxnPage(1)

@@ -10,11 +10,12 @@ export function useOverview(types?: AssetType[]) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const typeKey = types?.join(',') ?? ''
+  const typeKey = types ? [...types].sort().join(',') : ''
   const memberKey = selectedMemberIds.join(',')
 
   useEffect(() => {
     setLoading(true)
+    setError(null)
     api.returns.overview(types, selectedMemberIds)
       .then(setData)
       .catch((e: Error) => setError(e.message))

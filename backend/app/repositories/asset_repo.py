@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 from datetime import date
 from typing import Optional
 from sqlalchemy.orm import Session
 from app.models.asset import Asset, AssetType, AssetClass
 from app.models.fd_detail import FDDetail
+
+logger = logging.getLogger(__name__)
 
 
 class AssetRepository:
@@ -12,7 +15,7 @@ class AssetRepository:
         self.db = db
 
     def create(self, **kwargs) -> Asset:
-        print(f"Creating asset with kwargs: {kwargs}")
+        logger.debug("Creating asset with kwargs: %s", kwargs)
         asset = Asset(**kwargs)
         self.db.add(asset)
         self.db.flush()

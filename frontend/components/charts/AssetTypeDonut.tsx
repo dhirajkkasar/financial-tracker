@@ -5,17 +5,15 @@ import { ASSET_TYPE_COLORS, ASSET_TYPE_LABELS } from '@/constants'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { usePrivateMode } from '@/context/PrivateModeContext'
 import { useDarkMode } from '@/context/DarkModeContext'
+import { formatINRCompact } from '@/lib/formatters'
 
 interface AssetTypeDonutProps {
   data: AssetTypeBreakdownEntry[]
   loading?: boolean
 }
 
-function formatINRCompact(n: number) {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n)
-}
-
-function DonutTooltip({ active, payload, total }: { active?: boolean; payload?: { name: string; value: number }[]; total: number }) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function DonutTooltip({ active, payload, total }: any) {
   const { isPrivate } = usePrivateMode()
   if (!active || !payload?.length) return null
   const { name, value } = payload[0]

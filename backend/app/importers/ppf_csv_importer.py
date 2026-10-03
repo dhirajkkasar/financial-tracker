@@ -52,12 +52,40 @@ IFSC_BANK_MAP = {
 
 
 def _parse_inr_amount(s: str) -> Optional[float]:
-    """Parse Indian number format like '1,50,000.00', '543.00', or '10,73,203.00CR'."""
+    """Parse Indian number format like '1,50,000.00', '543.00', '10,73,203.00CR',
+    debit markers ('Dr'/'DB' suffix), parenthesised negatives, or leading '-'."""
     if not s or not s.strip() or s.strip() == "-":
         return None
-    cleaned = s.replace(",", "").replace("CR", "").strip()
+    raw = s.strip()
+    negative = False
+    upper = raw.upper()
+    # Parenthesised negatives: (1,000.00)
+    if raw.startswith("(") and raw.endswith(")"):
+        negative = True
+        raw = raw[1:-1].strip()
+    # Trailing/leading debit markers and CR/DB indicators
+    upper_raw = raw.upper()
+    if upper_raw.endswith("DR") or upper_raw.endswith("DB"):
+        negative = True
+        raw = raw[:-2].strip()
+    elif upper_raw.startswith("DR") or upper_raw.startswith("DB"):
+        negative = True
+        raw = raw[2:].strip()
+    # Leading minus
+    if raw.startswith("-"):
+        negative = True
+        raw = raw[1:].strip()
+    cleaned = raw.replace(",", "").replace("CR", "").replace("Cr", "").replace("cr", "").replace("$", "").replace("₹", "").strip()
+    # Trailing Dr/Db possibly separated by space already handled; catch leftovers
+    cleaned_upper = cleaned.upper()
+    if cleaned_upper.endswith("DR") or cleaned_upper.endswith("DB"):
+        negative = True
+        cleaned = cleaned[:-2].strip()
+    if not cleaned or cleaned == "-":
+        return None
     try:
-        return float(cleaned)
+        val = float(cleaned)
+        return -val if negative else val
     except ValueError:
         return None
 
@@ -80,8 +108,9 @@ def _extract_after_colon(cell: str) -> Optional[str]:
     return cell.split(":")[-1].strip()
 
 
-def _make_txn_id(account_number: str, txn_type: str, txn_date: date, amount_paise: int) -> str:
-    raw = f"{account_number}|{txn_type}|{txn_date.isoformat()}|{amount_paise}"
+def _make_txn_id(account_number: str, txn_type: str, txn_date: date, amount_paise: int,
+                 balance: Optional[float] = None, desc: str = "") -> str:
+    raw = f"{account_number}|{txn_type}|{txn_date.isoformat()}|{amount_paise}|{balance}|{desc}"
     return "ppf_csv_" + hashlib.sha256(raw.encode()).hexdigest()
 
 
@@ -166,19 +195,28 @@ class PPFCSVImporter(BaseImporter):
         # ── Phase 2: parse transaction rows ─────────────────────────────────
         transactions = []
         for row in rows[header_row_idx + 1:]:
-            if not row or not row[0].strip():
-                break  # blank row marks end of data
+            if not row or not any((c or "").strip() for c in row):
+                continue  # skip blank rows (do not break — data may resume after gaps)
 
-            txn_date = _parse_date_dmy(row[0])
+            txn_date = _parse_date_dmy(row[0]) if row[0] else None
             if not txn_date:
                 continue
 
             details = row[1].strip() if len(row) > 1 else ""
             debit_str = row[5].strip() if len(row) > 5 else ""
             credit_str = row[6].strip() if len(row) > 6 else ""
+            # Balance column (col 7 in SBI format) disambiguates same-day same-amount rows
+            balance_str = row[7].strip() if len(row) > 7 else ""
+            balance_amt = _parse_inr_amount(balance_str)
 
             credit_amt = _parse_inr_amount(credit_str)
             debit_amt = _parse_inr_amount(debit_str)
+            # Normalise sign: column position determines direction (Dr/DB/()/negative
+            # markers are already folded into abs here).
+            if credit_amt is not None:
+                credit_amt = abs(credit_amt)
+            if debit_amt is not None:
+                debit_amt = abs(debit_amt)
 
             is_interest = "INTEREST" in details.upper()
 
@@ -196,7 +234,8 @@ class PPFCSVImporter(BaseImporter):
                 continue
 
             amount_paise = round(abs(amount_inr) * 100)
-            txn_id = _make_txn_id(account_number, txn_type, txn_date, amount_paise)
+            txn_id = _make_txn_id(account_number, txn_type, txn_date, amount_paise,
+                                  balance_amt, details)
 
             transactions.append(ParsedTransaction(
                 source="ppf_csv",
@@ -218,11 +257,13 @@ class PPFCSVImporter(BaseImporter):
         #     result.closing_balance_date = transactions[0].date
 
         # Populate base ImportResult fields for orchestrator valuation creation
-        result.closing_valuation_inr = closing_balance_inr or 0.0
+        result.closing_valuation_inr = closing_balance_inr if closing_balance_inr is not None else None
         result.closing_valuation_date = closing_balance_date
         result.closing_valuation_source = "ppf_csv"
         result.closing_valuation_notes = f"Closing balance from CSV import (account {account_number})"
         balance_str = f"₹{closing_balance_inr:,.2f}" if closing_balance_inr is not None else "N/A"
-        print(f"Parsed PPF CSV: account {account_number}, bank {bank_name}, "
-              f"{len(transactions)} transactions, closing balance {balance_str} on {closing_balance_date}, errors: {result.errors}")
+        logger.info("Parsed PPF CSV: account %s, bank %s, "
+              "%d transactions, closing balance %s on %s, errors: %s",
+              account_number, bank_name, len(transactions), balance_str,
+              closing_balance_date, result.errors)
         return result

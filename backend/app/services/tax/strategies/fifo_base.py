@@ -69,6 +69,7 @@ class FifoTaxGainsStrategy(TaxGainsStrategy):
         st_gain, lt_gain = 0.0, 0.0
         st_tax, lt_tax = 0.0, 0.0
         has_slab = False
+        ltcg_slab = False
         ltcg_exempt_eligible = False
 
         for m in matched:
@@ -103,7 +104,7 @@ class FifoTaxGainsStrategy(TaxGainsStrategy):
                 if gain > 0:
                     lt_tax += gain * rate / 100.0
                 if rule.ltcg_rate_pct is None:
-                    has_slab = True
+                    ltcg_slab = True
 
             if rule.ltcg_exempt_eligible:
                 ltcg_exempt_eligible = True
@@ -120,5 +121,5 @@ class FifoTaxGainsStrategy(TaxGainsStrategy):
             ltcg_exemption_used=0.0,
             has_slab=has_slab,
             ltcg_exempt_eligible=ltcg_exempt_eligible,
-            ltcg_slab=False,
+            ltcg_slab=ltcg_slab,
         )

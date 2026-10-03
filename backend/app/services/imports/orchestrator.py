@@ -185,27 +185,43 @@ class ImportOrchestrator:
 
         For MF assets the scheme_code and scheme_category are resolved from the
         bundled CSV only when the asset is new or its mfapi_scheme_code is empty.
+
+        Scoped by member_id when available: member assets are searched first,
+        falling back to the global list only if no member match is found.
         """
         if parsed_txn is None:
             return None
-            
-        assets = uow.assets.list(active=None)
 
-        # Match by identifier (ISIN / scheme code)
-        if parsed_txn.asset_identifier:
-            for a in assets:
-                if a.identifier == parsed_txn.asset_identifier:
-                    # Backfill scheme_code/category if missing on existing MF asset
+        effective_member_id = member_id if member_id is not None else getattr(parsed_txn, "member_id", None)
+
+        def _match(candidates: list[Asset]) -> Asset | None:
+            # Match by identifier (ISIN / scheme code)
+            if parsed_txn.asset_identifier:
+                for a in candidates:
+                    if a.identifier == parsed_txn.asset_identifier:
+                        # Backfill scheme_code/category if missing on existing MF asset
+                        if parsed_txn.asset_type == "MF" and not a.mfapi_scheme_code:
+                            self._apply_mf_scheme(a, parsed_txn.asset_identifier)
+                        return a
+
+            # Match by name
+            for a in candidates:
+                if a.name == parsed_txn.asset_name:
                     if parsed_txn.asset_type == "MF" and not a.mfapi_scheme_code:
                         self._apply_mf_scheme(a, parsed_txn.asset_identifier)
                     return a
+            return None
 
-        # Match by name
-        for a in assets:
-            if a.name == parsed_txn.asset_name:
-                if parsed_txn.asset_type == "MF" and not a.mfapi_scheme_code:
-                    self._apply_mf_scheme(a, parsed_txn.asset_identifier)
-                return a
+        if effective_member_id is not None:
+            member_assets = uow.assets.list(active=None, member_ids=[effective_member_id])
+            found = _match(member_assets)
+            if found is not None:
+                return found
+
+        assets = uow.assets.list(active=None)
+        found = _match(assets)
+        if found is not None:
+            return found
 
         # Create new asset
         asset_type_enum = AssetType[parsed_txn.asset_type]
@@ -227,7 +243,7 @@ class ImportOrchestrator:
             asset_class=asset_class,
             currency="USD" if parsed_txn.asset_type in ("STOCK_US", "RSU") else "INR",
             is_active=True,
-            member_id=member_id,
+            member_id=effective_member_id,
         )
 
     def _apply_mf_scheme(self, asset: Asset, isin: str | None) -> None:

@@ -48,21 +48,36 @@ from app.importers.registry import register_importer
 
 logger = logging.getLogger(__name__)
 
+# Fixed sentinel used whenever a deterministic date is unavailable (print date
+# missing and no interest date seen). Never use date.today() — txn_ids must be
+# stable across re-imports.
+_SENTINEL_DATE = date(1970, 1, 1)
+
 
 def _sha256_id(prefix: str, *parts) -> str:
     raw = "|".join(str(p) for p in parts)
     return prefix + "_" + hashlib.sha256(raw.encode()).hexdigest()
 
 
-def _parse_amount(s: str) -> float:
-    """Parse '2,114' or '-660' or '0' → float."""
-    if not s:
-        return 0.0
-    cleaned = s.replace(",", "").strip()
+def _parse_amount(s: str) -> Optional[float]:
+    """Parse '2,114' or '-660' or '0' → float. Returns None on failure."""
+    if s is None:
+        return None
+    cleaned = str(s).replace(",", "").strip()
+    if not cleaned:
+        return None
     try:
         return float(cleaned)
     except ValueError:
+        return None
+
+
+def _amount_or_zero(value: Optional[float], errors: list[str], ctx: str) -> float:
+    """Coerce a parsed amount to float, recording an error when unparseable."""
+    if value is None:
+        errors.append(f"Unparseable amount for {ctx}")
         return 0.0
+    return value
 
 
 def _last_day_of_month(mm: int, yyyy: int) -> date:
@@ -144,9 +159,10 @@ class EPFPDFImporter(BaseImporter):
             result.establishment_name = establishment_name or ""
             result.print_date = print_date
 
-            transactions, grand_total_emp, grand_total_er = self._parse_transactions(
+            transactions, grand_total_emp, grand_total_er, parse_errors = self._parse_transactions(
                 all_lines, member_id, establishment_name or "", print_date
             )
+            result.errors.extend(parse_errors)
 
             result.transactions = transactions
             result.grand_total_emp_deposit = grand_total_emp
@@ -216,19 +232,23 @@ class EPFPDFImporter(BaseImporter):
         member_id: str,
         establishment_name: str,
         print_date: Optional[date],
-    ) -> tuple[list[ParsedTransaction], float, float]:
+    ) -> tuple[list[ParsedTransaction], float, float, list[str]]:
         """
         Parse all transaction rows from page 1 of the passbook.
 
-        Returns (transactions, grand_total_emp_deposit, grand_total_er_deposit).
+        Returns (transactions, grand_total_emp_deposit, grand_total_er_deposit, errors).
 
         Interest rows produce 3 separate INTEREST transactions (employee, employer, EPS).
         Transfer-in rows (from old employer) produce CONTRIBUTION transactions.
         TDS deduction rows produce negative INTEREST transactions.
         """
         transactions = []
+        errors: list[str] = []
         grand_total_emp = 0.0
         grand_total_er = 0.0
+        # Sequence counters disambiguate repeated sentinel-dated rows so txn_ids
+        # stay unique without resorting to date.today().
+        sentinel_seq = 0
 
         # Track the last interest date for associating TDS deductions with a year
         last_interest_date: Optional[date] = None
@@ -244,8 +264,8 @@ class EPFPDFImporter(BaseImporter):
             if re.match(r"Grand Total\b", line):
                 gt_m = re.match(r"Grand Total\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)", line)
                 if gt_m:
-                    grand_total_emp = _parse_amount(gt_m.group(1))
-                    grand_total_er = _parse_amount(gt_m.group(2))
+                    grand_total_emp = _amount_or_zero(_parse_amount(gt_m.group(1)), errors, "Grand Total employee deposit")
+                    grand_total_er = _amount_or_zero(_parse_amount(gt_m.group(2)), errors, "Grand Total employer deposit")
                 continue
 
             # --- Skip summary/total rows ---
@@ -261,9 +281,9 @@ class EPFPDFImporter(BaseImporter):
             if cont_m:
                 mmyyyy = cont_m.group(1)
                 # groups 2,3 are wages (emp/er) — skip; groups 4,5,6 are EPF emp, EPF er, EPS
-                emp_amt = _parse_amount(cont_m.group(4))
-                er_amt = _parse_amount(cont_m.group(5))
-                eps_amt = _parse_amount(cont_m.group(6))
+                emp_amt = _amount_or_zero(_parse_amount(cont_m.group(4)), errors, f"contribution {mmyyyy} employee")
+                er_amt = _amount_or_zero(_parse_amount(cont_m.group(5)), errors, f"contribution {mmyyyy} employer")
+                eps_amt = _amount_or_zero(_parse_amount(cont_m.group(6)), errors, f"contribution {mmyyyy} EPS")
                 txn_date = _parse_mmyyyy(mmyyyy)
                 if txn_date is None:
                     continue
@@ -326,9 +346,9 @@ class EPFPDFImporter(BaseImporter):
                 if int_date is None:
                     continue
 
-                emp_int = _parse_amount(int_m.group(2))
-                er_int = _parse_amount(int_m.group(3))
-                eps_int = _parse_amount(int_m.group(4))
+                emp_int = _amount_or_zero(_parse_amount(int_m.group(2)), errors, f"interest {int_m.group(1)} employee")
+                er_int = _amount_or_zero(_parse_amount(int_m.group(3)), errors, f"interest {int_m.group(1)} employer")
+                eps_int = _amount_or_zero(_parse_amount(int_m.group(4)), errors, f"interest {int_m.group(1)} EPS")
 
                 # Skip if all zero (interest not yet credited / N/A)
                 if emp_int == 0 and er_int == 0 and eps_int == 0:
@@ -380,11 +400,19 @@ class EPFPDFImporter(BaseImporter):
             # Only on page 1; appears after the interest row for that year.
             tds_m = re.match(r"Deduction of TDS\b.*?([-\d,]+)\s+([-\d,]+)\s+([-\d,]+)\s*$", line)
             if tds_m:
-                emp_tds = _parse_amount(tds_m.group(1))
-                er_tds = _parse_amount(tds_m.group(2))
-                eps_tds = _parse_amount(tds_m.group(3))
-                use_date = last_interest_date or print_date or date.today()
+                emp_tds_raw = _parse_amount(tds_m.group(1))
+                er_tds_raw = _parse_amount(tds_m.group(2))
+                eps_tds_raw = _parse_amount(tds_m.group(3))
+                if emp_tds_raw is None and er_tds_raw is None and eps_tds_raw is None:
+                    errors.append(f"Unparseable TDS amounts for line: {line}")
+                    continue
+                emp_tds = emp_tds_raw if emp_tds_raw is not None else 0.0
+                er_tds = er_tds_raw if er_tds_raw is not None else 0.0
+                use_date = last_interest_date or print_date or _SENTINEL_DATE
+                if use_date is _SENTINEL_DATE:
+                    sentinel_seq += 1
                 year_key = use_date.strftime("%Y-%m-%d")
+                seq_suffix = f"|{sentinel_seq}" if use_date is _SENTINEL_DATE else ""
 
                 if emp_tds != 0:
                     transactions.append(ParsedTransaction(
@@ -395,7 +423,7 @@ class EPFPDFImporter(BaseImporter):
                         txn_type="INTEREST",
                         date=use_date,
                         amount_inr=emp_tds,  # negative = reduces current value
-                        txn_id=_sha256_id("epf", member_id, "TDS_EMP", year_key, round(abs(emp_tds) * 100)),
+                        txn_id=_sha256_id("epf", member_id, "TDS_EMP", year_key, round(abs(emp_tds) * 100), seq_suffix),
                         notes="TDS Deduction",
                     ))
                 if er_tds != 0:
@@ -407,7 +435,7 @@ class EPFPDFImporter(BaseImporter):
                         txn_type="INTEREST",
                         date=use_date,
                         amount_inr=er_tds,
-                        txn_id=_sha256_id("epf", member_id, "TDS_ER", year_key, round(abs(er_tds) * 100)),
+                        txn_id=_sha256_id("epf", member_id, "TDS_ER", year_key, round(abs(er_tds) * 100), seq_suffix),
                         notes="TDS Deduction",
                     ))
                 continue
@@ -415,14 +443,24 @@ class EPFPDFImporter(BaseImporter):
             # --- Transfer/Claim withdrawal row: "Claim: Against PARA 57(1) emp_wd er_wd" ---
             claim_m = re.match(r"Claim:\s+Against PARA 57\(1\)\s+([\d,]+)\s+([\d,]+)", line)
             if claim_m:
-                emp_wd = _parse_amount(claim_m.group(1))
-                er_wd = _parse_amount(claim_m.group(2))
+                emp_wd_raw = _parse_amount(claim_m.group(1))
+                er_wd_raw = _parse_amount(claim_m.group(2))
+                if emp_wd_raw is None and er_wd_raw is None:
+                    errors.append(f"Unparseable claim amounts for line: {line}")
+                    continue
+                emp_wd = emp_wd_raw if emp_wd_raw is not None else 0.0
+                er_wd = er_wd_raw if er_wd_raw is not None else 0.0
                 total_wd = emp_wd + er_wd
-                use_date = print_date or date.today()
+                use_date = print_date or _SENTINEL_DATE
+                if use_date is _SENTINEL_DATE:
+                    sentinel_seq += 1
+                    seq_suffix = f"|{sentinel_seq}"
+                else:
+                    seq_suffix = ""
                 emp_paise = round(emp_wd * 100)
                 er_paise = round(er_wd * 100)
                 txn_id = _sha256_id(
-                    "epf", member_id, "TRANSFER", use_date.isoformat(), emp_paise, er_paise
+                    "epf", member_id, "TRANSFER", use_date.isoformat(), emp_paise, er_paise, seq_suffix
                 )
                 transactions.append(ParsedTransaction(
                     source="epf_pdf",
@@ -452,9 +490,15 @@ class EPFPDFImporter(BaseImporter):
                     continue  # not enough numbers (e.g. a label-only CR line)
 
                 last5 = tokens[-5:]
-                emp_epf = _parse_amount(last5[2])
-                er_epf = _parse_amount(last5[3])
-                eps_epf = _parse_amount(last5[4])
+                emp_epf_raw = _parse_amount(last5[2])
+                er_epf_raw = _parse_amount(last5[3])
+                eps_epf_raw = _parse_amount(last5[4])
+                if emp_epf_raw is None and er_epf_raw is None and eps_epf_raw is None:
+                    errors.append(f"Unparseable transfer-in amounts for line: {line}")
+                    continue
+                emp_epf = emp_epf_raw if emp_epf_raw is not None else 0.0
+                er_epf = er_epf_raw if er_epf_raw is not None else 0.0
+                eps_epf = eps_epf_raw if eps_epf_raw is not None else 0.0
 
                 if emp_epf == 0 and er_epf == 0 and eps_epf == 0:
                     continue
@@ -504,4 +548,4 @@ class EPFPDFImporter(BaseImporter):
                     ))
                 continue
 
-        return transactions, grand_total_emp, grand_total_er
+        return transactions, grand_total_emp, grand_total_er, errors

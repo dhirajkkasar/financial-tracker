@@ -10,6 +10,7 @@ import {
   UnrealisedResponse, UnrealisedLot, HarvestResponse, HarvestOpportunity, AssetType,
 } from '@/types'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { Pagination } from '@/components/ui/Pagination'
 
 function inferCurrentFy(): string {
@@ -96,6 +97,10 @@ export default function TaxPage() {
   const [loadingSummary, setLoadingSummary] = useState(true)
   const [loadingUnrealised, setLoadingUnrealised] = useState(true)
   const [loadingHarvest, setLoadingHarvest] = useState(true)
+  const [fyError, setFyError] = useState<string | null>(null)
+  const [summaryError, setSummaryError] = useState<string | null>(null)
+  const [unrealisedError, setUnrealisedError] = useState<string | null>(null)
+  const [harvestError, setHarvestError] = useState<string | null>(null)
 
   const [harvestPage, setHarvestPage] = useState(1)
   const [harvestPageSize, setHarvestPageSize] = useState(10)
@@ -111,15 +116,18 @@ export default function TaxPage() {
     api.tax.fiscalYears().then(({ fiscal_years }) => {
       setFyOptions(fiscal_years)
       setFy(pickDefaultFy(fiscal_years))
-    })
+      setFyError(null)
+    }).catch((e: Error) => setFyError(e.message))
   }, [])
 
   useEffect(() => {
     if (taxMemberId === null) return
     setLoadingUnrealised(true)
     setLoadingHarvest(true)
-    api.tax.unrealised(taxMemberId).then(setUnrealised).finally(() => setLoadingUnrealised(false))
-    api.tax.harvestOpportunities(taxMemberId).then(setHarvest).finally(() => setLoadingHarvest(false))
+    setUnrealisedError(null)
+    setHarvestError(null)
+    api.tax.unrealised(taxMemberId).then(setUnrealised).catch((e: Error) => setUnrealisedError(e.message)).finally(() => setLoadingUnrealised(false))
+    api.tax.harvestOpportunities(taxMemberId).then(setHarvest).catch((e: Error) => setHarvestError(e.message)).finally(() => setLoadingHarvest(false))
   }, [taxMemberId])
 
   useEffect(() => {
@@ -127,9 +135,12 @@ export default function TaxPage() {
     void (async () => {
       setLoadingSummary(true)
       setSummary(null)
+      setSummaryError(null)
       try {
         const data = await api.tax.summary(fy, taxMemberId)
         setSummary(data)
+      } catch (e) {
+        setSummaryError(e instanceof Error ? e.message : 'Failed to load tax summary')
       } finally {
         setLoadingSummary(false)
       }
@@ -141,10 +152,16 @@ export default function TaxPage() {
 
   const harvestTotal = harvestRows.length
   const harvestTotalPages = Math.max(1, Math.ceil(harvestTotal / harvestPageSize))
-  const harvestSlice = harvestRows.slice((harvestPage - 1) * harvestPageSize, harvestPage * harvestPageSize)
+  // Render-time clamp: when rows shrink or page size grows, show the last
+  // valid page instead of an empty one. Handlers below clamp on change too.
+  const safeHarvestPage = Math.min(Math.max(1, harvestPage), harvestTotalPages)
+  const harvestSlice = harvestRows.slice((safeHarvestPage - 1) * harvestPageSize, safeHarvestPage * harvestPageSize)
 
   return (
     <div className="space-y-8">
+      {(fyError ?? summaryError ?? unrealisedError ?? harvestError) && (
+        <ErrorBanner message={(fyError ?? summaryError ?? unrealisedError ?? harvestError)!} />
+      )}
       {/* Header + member + FY selector */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-2xl text-primary">Tax Summary</h1>
@@ -412,11 +429,11 @@ export default function TaxPage() {
               </tbody>
             </table>
             <Pagination
-              page={harvestPage}
+              page={safeHarvestPage}
               pageSize={harvestPageSize}
               total={harvestTotal}
               totalPages={harvestTotalPages}
-              onPageChange={setHarvestPage}
+              onPageChange={(p) => setHarvestPage(Math.min(Math.max(1, p), harvestTotalPages))}
               onPageSizeChange={(s) => { setHarvestPageSize(s); setHarvestPage(1) }}
             />
           </>

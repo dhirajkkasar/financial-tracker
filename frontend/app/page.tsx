@@ -11,11 +11,12 @@ import { AllocationDonut } from '@/components/charts/AllocationDonut'
 import { AssetTypeDonut } from '@/components/charts/AssetTypeDonut'
 import { NetWorthChart } from '@/components/charts/NetWorthChart'
 import { GoalsWidget } from '@/components/domain/GoalsWidget'
-import { formatXIRR, formatPct } from '@/lib/formatters'
+import { formatXIRR, formatPct, formatAbsolutePct } from '@/lib/formatters'
 import { usePrivateMoney } from '@/hooks/usePrivateMoney'
 import { ASSET_TYPE_LABELS } from '@/constants'
 import Link from 'next/link'
 import MemberSelector from '@/components/ui/MemberSelector'
+import { ErrorBanner } from '@/components/ui/ErrorBanner'
 
 const card = 'rounded-xl border border-border bg-card p-5'
 const cardStyle = { boxShadow: 'var(--shadow-card)' }
@@ -23,11 +24,12 @@ const thClass = 'pb-3 text-left text-[10px] font-semibold uppercase tracking-[0.
 
 export default function OverviewPage() {
   const { formatINR } = usePrivateMoney()
-  const { data: overview, loading: overviewLoading } = useOverview()
-  const { breakdown, loading: breakdownLoading } = useBreakdown()
-  const { data: allocation, loading: allocLoading } = useAllocation()
-  const { data: gainersData, loading: gainersLoading } = useGainers(5)
-  const { data: snapshots, loading: snapshotsLoading } = useSnapshots()
+  const { data: overview, loading: overviewLoading, error: overviewError } = useOverview()
+  const { breakdown, loading: breakdownLoading, error: breakdownError } = useBreakdown()
+  const { data: allocation, loading: allocLoading, error: allocError } = useAllocation()
+  const { data: gainersData, loading: gainersLoading, error: gainersError } = useGainers(5)
+  const { data: snapshots, loading: snapshotsLoading, error: snapshotsError } = useSnapshots()
+  const pageError = overviewError ?? breakdownError ?? allocError ?? gainersError ?? snapshotsError
 
   const gain = overview ? overview.total_current_value - overview.total_invested : null
   const gainHighlight = gain === null ? 'neutral' : gain >= 0 ? 'positive' : 'negative'
@@ -92,6 +94,7 @@ export default function OverviewPage() {
   return (
     <div className="space-y-8">
       <MemberSelector />
+      {pageError && <ErrorBanner message={pageError} />}
       <h1 className="text-2xl text-primary">Overview</h1>
 
       {/* Portfolio stat cards */}
@@ -131,7 +134,7 @@ export default function OverviewPage() {
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <div className={card} style={cardStyle}>
           <h2 className="mb-4 text-[10px] font-semibold uppercase tracking-[0.12em] text-tertiary">By Asset Class</h2>
-          <AllocationDonut data={allocationChartData} />
+          <AllocationDonut data={allocationChartData} loading={allocLoading} />
         </div>
         <div className={card} style={cardStyle}>
           <h2 className="mb-4 text-[10px] font-semibold uppercase tracking-[0.12em] text-tertiary">By Asset Type</h2>
@@ -140,7 +143,20 @@ export default function OverviewPage() {
       </div>
 
       {/* Gainers / Losers */}
-      {!gainersLoading && ((gainersData?.gainers.length ?? 0) > 0 || (gainersData?.losers.length ?? 0) > 0) && (
+      {gainersLoading ? (
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          {[1, 2].map((i) => (
+            <div key={i} className={card} style={cardStyle}>
+              <div className="mb-4 animate-pulse h-3 w-24 rounded bg-border" />
+              <div className="space-y-3">
+                {[1, 2, 3].map((j) => (
+                  <div key={j} className="animate-pulse h-10 rounded bg-border" />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : ((gainersData?.gainers.length ?? 0) > 0 || (gainersData?.losers.length ?? 0) > 0) && (
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           {/* Top Gainers */}
           <div className={card} style={cardStyle}>
@@ -166,7 +182,7 @@ export default function OverviewPage() {
                         <p className="text-[10px] text-tertiary">{ASSET_TYPE_LABELS[g.asset_type]}</p>
                       </td>
                       <td className="py-2.5 pr-3 text-right font-mono text-gain">
-                        +{g.absolute_return_pct?.toFixed(2)}%
+                        {formatAbsolutePct(g.absolute_return_pct)}
                       </td>
                       <td className="py-2.5 text-right font-mono text-secondary">
                         {formatXIRR(g.xirr)}
@@ -202,7 +218,7 @@ export default function OverviewPage() {
                         <p className="text-[10px] text-tertiary">{ASSET_TYPE_LABELS[g.asset_type]}</p>
                       </td>
                       <td className="py-2.5 pr-3 text-right font-mono text-loss">
-                        {g.absolute_return_pct?.toFixed(2)}%
+                        {formatAbsolutePct(g.absolute_return_pct, false)}
                       </td>
                       <td className="py-2.5 text-right font-mono text-secondary">
                         {formatXIRR(g.xirr)}

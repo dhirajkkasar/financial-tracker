@@ -28,14 +28,22 @@ export function useAssetsWithReturns(type?: AssetType | AssetType[], activeOnly 
   const { selectedMemberIds } = useMembers()
   const memberKey = selectedMemberIds.join(',')
 
+  // Stable key: inline array literals (e.g. ['FD', 'RD']) get a new identity
+  // every render — joining + sorting keeps the effect from refetching in a loop.
+  const typeKey = Array.isArray(type) ? [...type].sort().join(',') : (type ?? '')
+
   // activeOnly=true → send active=true (filter to active only)
   // activeOnly=false → omit active param (backend returns all assets)
   const activeParam = activeOnly ? true : undefined
 
   useEffect(() => {
     setLoading(true)
+    setError(null)
     const types = Array.isArray(type) ? type : type ? [type] : [undefined as AssetType | undefined]
 
+    // N+1 note: assets are listed per type, then one bulk /returns/bulk call
+    // covers all assets — no per-asset round trips. Promise.all fans out the
+    // per-type list calls concurrently; no backend change needed.
     Promise.all(types.map((t) => api.assets.list({ type: t, active: activeParam, member_ids: selectedMemberIds })))
       .then((results) => results.flat())
       .then(async (assetList) => {
@@ -76,7 +84,8 @@ export function useAssetsWithReturns(type?: AssetType | AssetType[], activeOnly 
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [type, activeParam, memberKey])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typeKey, activeParam, memberKey])
 
   return { assets, loading, error }
 }

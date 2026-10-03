@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import { formatDate } from '@/lib/formatters'
 import { usePrivateMoney } from '@/hooks/usePrivateMoney'
 import { ASSET_TYPE_LABELS } from '@/constants'
+import { ErrorBanner } from '@/components/ui/ErrorBanner'
 
 const card = 'rounded-xl border border-border bg-card p-5'
 const cardStyle = { boxShadow: 'var(--shadow-card)' }
@@ -18,16 +19,24 @@ const thClass = 'pb-2.5 pr-3 text-left text-[10px] font-semibold uppercase track
 function GoalDetailContent() {
   const { formatINR } = usePrivateMoney()
   const searchParams = useSearchParams()
-  const goalId = parseInt(searchParams.get('id') ?? '0')
+  const rawId = searchParams.get('id')
+  const parsedId = rawId != null ? parseInt(rawId, 10) : NaN
+  const goalId = Number.isInteger(parsedId) && (parsedId as number) > 0 ? (parsedId as number) : null
   const [goal, setGoal] = useState<Goal | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!goalId) return
+    if (goalId === null) return
     api.goals.get(goalId)
-      .then(setGoal)
+      .then((data) => { setGoal(data); setError(null) })
+      .catch((e: Error) => { setGoal(null); setError(e.message) })
       .finally(() => setLoading(false))
   }, [goalId])
+
+  if (goalId === null) {
+    return <p className="text-loss">Invalid link — missing or malformed goal id.</p>
+  }
 
   if (loading) {
     return (
@@ -41,7 +50,12 @@ function GoalDetailContent() {
     )
   }
 
-  if (!goal) return <p className="text-loss">Goal not found</p>
+  if (!goal) return (
+    <div className="space-y-6">
+      {error && <ErrorBanner message={error} />}
+      <p className="text-loss">Goal not found</p>
+    </div>
+  )
 
   const pct = goal.progress_pct
 

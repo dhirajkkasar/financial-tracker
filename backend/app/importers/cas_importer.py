@@ -9,6 +9,7 @@ import pdfplumber
 
 from app.importers.base import ParsedTransaction, ParsedFundSnapshot, ImportResult, BaseImporter
 from app.importers.registry import register_importer
+from app.middleware.error_handler import ValidationError
 from app.engine.mf_scheme_lookup import lookup_by_isin
 from app.engine.mf_classifier import classify_mf
 
@@ -22,17 +23,17 @@ class CASImporter(BaseImporter):
     format = "pdf"
     """Parses CAMS/KFintech Consolidated Account Statement PDFs."""
 
-    FOLIO_PATTERN = re.compile(r"Folio No:\s*([\d\s/]+)")
+    FOLIO_PATTERN = re.compile(r"Folio No:\s*([A-Za-z0-9\s/]+)")
     ISIN_PATTERN = re.compile(r"ISIN:\s*(\w+)")
-    DATE_LINE_PATTERN = re.compile(r"^(\d{2}-[A-Za-z]{3}-\d{4})\s+(.+)")
+    DATE_LINE_PATTERN = re.compile(r"^(\d{2}-[A-Za-z]+-\d{4})\s+(.+)")
     NUMBER_TOKEN = re.compile(r"[\d,]+\.\d+")
     STAMP_DUTY_PATTERN = re.compile(r"\*\*\*\s*Stamp Duty\s*\*\*\*")
     SCHEME_PREFIX_PATTERN = re.compile(r"^[A-Z0-9]+[A-Z]-")
     CLOSING_BALANCE_PATTERN = re.compile(
         r"Closing Unit Balance:\s*([\d,]+\.?\d*)"
-        r"\s+NAV on (\d{2}-[A-Za-z]{3}-\d{4}):\s*INR\s*([\d,]+\.?\d*)"
+        r"\s+NAV on (\d{2}-[A-Za-z]+-\d{4}):\s*INR\s*([\d,]+\.?\d*)"
         r"\s+Total Cost Value:\s*([\d,]+\.?\d*)"
-        r"\s+Market Value on \d{2}-[A-Za-z]{3}-\d{4}:\s*INR\s*([\d,]+\.?\d*)"
+        r"\s+Market Value on \d{2}-[A-Za-z]+-\d{4}:\s*INR\s*([\d,]+\.?\d*)"
     )
 
     def __init__(self, **_kwargs):
@@ -44,6 +45,9 @@ class CASImporter(BaseImporter):
             text = self._extract_text(file_bytes)
             lines = text.split("\n")
             self._parse_lines(lines, result)
+        except ValidationError as e:
+            result.errors.append(str(e))
+            logger.warning("CAS parse error: %s", e)
         except Exception as e:
             result.errors.append(f"Failed to parse CAS PDF: {e}")
             logger.warning("CAS parse error: %s", e)
@@ -51,11 +55,19 @@ class CASImporter(BaseImporter):
 
     def _extract_text(self, file_bytes: bytes) -> str:
         all_text = []
-        with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-            for page in pdf.pages:
-                text = page.extract_text()
-                if text:
-                    all_text.append(text)
+        try:
+            with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+                for page in pdf.pages:
+                    text = page.extract_text()
+                    if text:
+                        all_text.append(text)
+        except Exception as e:
+            msg = str(e).lower()
+            if "encrypt" in msg or "password" in msg:
+                raise ValidationError(
+                    "CAS PDF is password-protected – remove password (PAN+DOB) before import"
+                )
+            raise
         return "\n".join(all_text)
 
     def _parse_lines(self, lines: list[str], result: ImportResult):
@@ -158,8 +170,10 @@ class CASImporter(BaseImporter):
             return None
 
         try:
-            txn_date = datetime.strptime(date_match.group(1), "%d-%b-%Y").date()
+            txn_date = self._parse_cas_date(date_match.group(1))
         except ValueError:
+            return None
+        if txn_date is None:
             return None
 
         remainder = date_match.group(2)
@@ -195,9 +209,10 @@ class CASImporter(BaseImporter):
         else:
             amount_inr = -amount  # default outflow
 
-        # Stable txn_id via SHA-256
+        # Stable txn_id via SHA-256 (includes description to avoid split-SIP collisions
+        # where the same folio/ISIN/date/amount/units repeat with different instalment text)
         amount_paise = round(amount * 100)
-        hash_input = f"{folio}|{isin}|{txn_date}|{amount_paise}|{units}|{txn_type}"
+        hash_input = f"{folio}|{isin}|{txn_date}|{amount_paise}|{units}|{txn_type}|{description}"
         txn_hash = hashlib.sha256(hash_input.encode()).hexdigest()
         txn_id = f"cas_{txn_hash}"
 
@@ -231,20 +246,22 @@ class CASImporter(BaseImporter):
         self, line: str, isin: Optional[str], scheme_name: Optional[str]
     ) -> Optional[ParsedFundSnapshot]:
         if not isin:
-            print(f"Cannot parse closing balance without ISIN for line: {line}")
+            logger.warning("Cannot parse closing balance without ISIN for line: %s", line)
             return None
         m = self.CLOSING_BALANCE_PATTERN.search(line)
         if not m:
-            print(f"Closing balance pattern not matched for line: {line}")
+            logger.warning("Closing balance pattern not matched for line: %s", line)
             return None
         try:
             closing_units = float(m.group(1).replace(",", ""))
-            nav_date = datetime.strptime(m.group(2), "%d-%b-%Y").date()
+            nav_date = self._parse_cas_date(m.group(2))
+            if nav_date is None:
+                raise ValueError(f"Unparseable NAV date: {m.group(2)}")
             nav_price = float(m.group(3).replace(",", ""))
             total_cost = float(m.group(4).replace(",", ""))
             market_value = float(m.group(5).replace(",", ""))
         except (ValueError, IndexError) as e:
-            print(f"Error parsing closing balance: {e}")
+            logger.warning("Error parsing closing balance: %s", e)
             return None
         return ParsedFundSnapshot(
             isin=isin,
@@ -256,14 +273,39 @@ class CASImporter(BaseImporter):
             total_cost_inr=total_cost,
         )
 
+    @staticmethod
+    def _parse_cas_date(s: str):
+        """Accept both abbreviated (%d-%b-%Y) and full (%d-%B-%Y) English month names."""
+        s = s.strip()
+        for fmt in ("%d-%b-%Y", "%d-%B-%Y"):
+            try:
+                return datetime.strptime(s, fmt).date()
+            except ValueError:
+                continue
+        # Case-insensitive fallback: normalise month token case (e.g. "JAN" → "Jan")
+        try:
+            parts = s.split("-")
+            if len(parts) == 3:
+                day, mon, year = parts
+                mon_norm = mon[:1].upper() + mon[1:].lower()
+                for fmt in ("%d-%b-%Y", "%d-%B-%Y"):
+                    try:
+                        return datetime.strptime(f"{day}-{mon_norm}-{year}", fmt).date()
+                    except ValueError:
+                        continue
+        except Exception:
+            pass
+        return None
+
     def _map_transaction_type(self, description: str) -> str:
         desc_upper = description.upper()
-        # SIP / Systematic must be checked before generic "PURCHASE"
-        if "SIP" in desc_upper:
+        # SYSTEMATIC must be checked before generic SIP/"PURCHASE" so that
+        # "PURCHASE SYSTEMATIC" maps to SIP (it contains neither bare "SIP" first).
+        if "PURCHASE SYSTEMATIC" in desc_upper:
             return "SIP"
         if "SYSTEMATIC" in desc_upper:
             return "SIP"
-        if "PURCHASE SYSTEMATIC" in desc_upper:
+        if "SIP" in desc_upper:
             return "SIP"
         if "REDEMPTION" in desc_upper:
             return "REDEMPTION"

@@ -4,15 +4,18 @@ import { useAssetsWithReturns } from '@/hooks/useAssetsWithReturns'
 import { useOverview } from '@/hooks/useOverview'
 import { HoldingsTable } from '@/components/domain/HoldingsTable'
 import { AssetSummaryCards } from '@/components/ui/AssetSummaryCards'
+import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import MemberSelector from '@/components/ui/MemberSelector'
 
 export default function StocksPage() {
   const [activeOnly, setActiveOnly] = useState(true)
-  const { assets, loading } = useAssetsWithReturns('STOCK_IN', activeOnly)
-  const { data: summary, loading: summaryLoading } = useOverview(['STOCK_IN'])
+  const { assets, loading, error } = useAssetsWithReturns('STOCK_IN', activeOnly)
+  const { data: summary, loading: summaryLoading, error: summaryError } = useOverview(['STOCK_IN'])
+  const pageError = error ?? summaryError
   return (
     <div className="space-y-6">
       <MemberSelector />
+      {pageError && <ErrorBanner message={pageError} />}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-primary">Indian Stocks</h1>
         <button

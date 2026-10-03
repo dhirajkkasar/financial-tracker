@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { api } from '@/lib/api'
 import { ImportantData } from '@/types'
+import { ErrorBanner } from '@/components/ui/ErrorBanner'
 
 // Display order for top-level sections
 const SECTION_ORDER = ['IDENTITY', 'BANK', 'ACCOUNT', 'MF_FOLIO', 'INSURANCE', 'OTHER'] as const
@@ -49,9 +50,10 @@ function Section({ title, entries }: { title: string; entries: ImportantData[] }
 export default function PersonalInfoPage() {
   const [items, setItems] = useState<ImportantData[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    api.importantData.list().then(setItems).finally(() => setLoading(false))
+    api.importantData.list().then((data) => { setItems(data); setError(null) }).catch((e: Error) => setError(e.message)).finally(() => setLoading(false))
   }, [])
 
   const groups: Partial<Record<string, ImportantData[]>> = {}
@@ -62,6 +64,7 @@ export default function PersonalInfoPage() {
   return (
     <div className="space-y-8">
       <h1 className="text-xl font-semibold text-primary">Personal Info</h1>
+      {error && <ErrorBanner message={error} />}
       {loading ? (
         <p className="text-sm text-tertiary">Loading...</p>
       ) : Object.keys(groups).length === 0 ? (

@@ -84,10 +84,16 @@ class FidelityPDFImporter(BaseImporter):
             exchange_rates = self.exchange_rates
 
         if exchange_rates is None:
+            required_months = sorted({t.date.strftime("%Y-%m") for t in result.transactions})
+            months_hint = ", ".join(required_months) if required_months else "none"
             return ValidationResult(
                 is_valid=False,
-                errors=["exchange_rates is required. Provide a JSON string like {\"2025-03\": 86.5}"],
-                required_inputs={},
+                errors=[f"exchange_rates is required for months: {months_hint}. "
+                        'Provide a JSON string like {"2025-03": 86.5}'],
+                required_inputs={
+                    "required_months": required_months,
+                    "provided_months": [],
+                },
             )
 
         return ExchangeRateValidationHelper.validate_exchange_rates(result, exchange_rates)
@@ -117,7 +123,7 @@ class FidelityPDFImporter(BaseImporter):
 
     def parse(self, file_bytes: bytes, filename: str = "") -> ImportResult:
         result = ImportResult(source="fidelity_sale")
-        ticker: str | None = None
+        current_ticker: str | None = None
         in_sales = False
 
         with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
@@ -128,21 +134,28 @@ class FidelityPDFImporter(BaseImporter):
                     if "Stock sales" in line:
                         in_sales = True
                         continue
-                    if in_sales and not ticker:
-                        m = _TICKER_RE.match(line)
-                        if m:
-                            ticker = m.group(1)
-                    if in_sales and ticker:
-                        m = _SALE_ROW_RE.search(line)
-                        if m:
-                            try:
-                                sell_txn = self._parse_match(m, ticker)
-                                result.transactions.append(sell_txn)
-                            except ValueError as e:
-                                print(f"ERROR parsing row for ticker {ticker}: {e}")
-                                result.errors.append(f"Row parse error: {e}")
+                    if not in_sales:
+                        continue
+                    # Track the current ticker per row: every "TICK: Company" line
+                    # updates it, so multi-ticker PDFs don't leak the first ticker
+                    # onto later sections' rows.
+                    tm = _TICKER_RE.match(line)
+                    if tm:
+                        current_ticker = tm.group(1)
+                        continue
+                    m = _SALE_ROW_RE.search(line)
+                    if m:
+                        if not current_ticker:
+                            result.errors.append("Sale row found before ticker line (expected 'TICK: Company Name')")
+                            continue
+                        try:
+                            sell_txn = self._parse_match(m, current_ticker)
+                            result.transactions.append(sell_txn)
+                        except ValueError as e:
+                            logger.warning("ERROR parsing row for ticker %s: %s", current_ticker, e)
+                            result.errors.append(f"Row parse error: {e}")
 
-        if not ticker:
+        if not current_ticker:
             result.errors.append("Could not find ticker in PDF (expected 'TICK: Company Name' line)")
         return result
 
@@ -195,4 +208,4 @@ class FidelityPDFImporter(BaseImporter):
     def _make_txn_id(ticker: str, date_sold: str, date_acquired: str, quantity: float) -> str:
         q_int = round(quantity * 10000)
         raw = f"fidelity_sale|{ticker}|{date_sold}|{date_acquired}|{q_int}"
-        return "fidelity_sale_" + hashlib.sha256(raw.encode()).hexdigest()[:16]
+        return "fidelity_sale_" + hashlib.sha256(raw.encode()).hexdigest()

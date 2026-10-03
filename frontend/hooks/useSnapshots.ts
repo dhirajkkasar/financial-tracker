@@ -14,6 +14,7 @@ export function useSnapshots(from?: string, to?: string) {
 
   useEffect(() => {
     setLoading(true)
+    setError(null)
     api.snapshots
       .list(from, to, selectedMemberIds)
       .then(setData)

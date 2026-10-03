@@ -1,8 +1,9 @@
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 
@@ -64,21 +65,23 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Startup FD maturity check failed: %s", e)
 
-    # Auto-fill missing EPF monthly contributions using the last known amounts
-    try:
-        db = SessionLocal()
+    # Auto-fill missing EPF monthly contributions using the last known amounts.
+    # Disabled by default; enable explicitly via EPF_AUTOFILL_ON_STARTUP=1.
+    if os.getenv("EPF_AUTOFILL_ON_STARTUP", "0") == "1":
         try:
-            result = EPFAutoContribService(db).backfill_missing_contributions()
-            if result["months_inserted"]:
-                logger.info(
-                    "Startup: EPF auto-contrib filled %d month(s) across %d asset(s)",
-                    result["months_inserted"],
-                    result["assets_updated"],
-                )
-        finally:
-            db.close()
-    except Exception as e:
-        logger.warning("Startup EPF auto-contrib failed: %s", e)
+            db = SessionLocal()
+            try:
+                result = EPFAutoContribService(db).backfill_missing_contributions()
+                if result["months_inserted"]:
+                    logger.info(
+                        "Startup: EPF auto-contrib filled %d month(s) across %d asset(s)",
+                        result["months_inserted"],
+                        result["assets_updated"],
+                    )
+            finally:
+                db.close()
+        except Exception as e:
+            logger.warning("Startup EPF auto-contrib failed: %s", e)
 
     # Price refresh is on-demand only (via CLI: python cli.py refresh-prices)
     yield
@@ -91,11 +94,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow all origins for development
+# CORS — explicit origins from env; wildcard disables credentials
+_cors_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_cors_origins,
+    allow_credentials=_cors_origins != ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -124,21 +128,24 @@ from app.api.imports import router as imports_router
 from app.api.tax import router as tax_router
 from app.api.snapshots import router as snapshots_router
 from app.api.corp_actions import router as corp_actions_router
+from app.api.auth import verify_token
 
-app.include_router(members_router, prefix="/api")
-app.include_router(assets_router, prefix="/api")
-app.include_router(transactions_router, prefix="/api")
-app.include_router(fd_detail_router, prefix="/api")
-app.include_router(valuations_router, prefix="/api")
-app.include_router(goals_router, prefix="/api")
-app.include_router(important_data_router, prefix="/api")
-app.include_router(interest_rates_router, prefix="/api")
-app.include_router(returns_router, prefix="/api")
-app.include_router(prices_router, prefix="/api")
-app.include_router(imports_router, prefix="/api")
-app.include_router(tax_router, prefix="/api")
-app.include_router(snapshots_router, prefix="/api")
-app.include_router(corp_actions_router, prefix="/api")
+_auth = [Depends(verify_token)]
+
+app.include_router(members_router, prefix="/api", dependencies=_auth)
+app.include_router(assets_router, prefix="/api", dependencies=_auth)
+app.include_router(transactions_router, prefix="/api", dependencies=_auth)
+app.include_router(fd_detail_router, prefix="/api", dependencies=_auth)
+app.include_router(valuations_router, prefix="/api", dependencies=_auth)
+app.include_router(goals_router, prefix="/api", dependencies=_auth)
+app.include_router(important_data_router, prefix="/api", dependencies=_auth)
+app.include_router(interest_rates_router, prefix="/api", dependencies=_auth)
+app.include_router(returns_router, prefix="/api", dependencies=_auth)
+app.include_router(prices_router, prefix="/api", dependencies=_auth)
+app.include_router(imports_router, prefix="/api", dependencies=_auth)
+app.include_router(tax_router, prefix="/api", dependencies=_auth)
+app.include_router(snapshots_router, prefix="/api", dependencies=_auth)
+app.include_router(corp_actions_router, prefix="/api", dependencies=_auth)
 
 # Serve frontend static files — must be mounted last so API routes take priority.
 # Only active when the built frontend_static/ directory exists (i.e. inside Docker).

@@ -14,6 +14,7 @@ export function useAssets(type?: AssetType, active = true) {
 
   useEffect(() => {
     setLoading(true)
+    setError(null)
     api.assets.list({ type, active, member_ids: selectedMemberIds })
       .then(setAssets)
       .catch((e: Error) => setError(e.message))

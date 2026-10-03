@@ -32,7 +32,7 @@ class _Sell:
     lot_id: Optional[str] = None  # set for specific-lot sells (Fidelity PDF path)
 
 
-LOT_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST", "BONUS", "SWITCH_IN", "BILLING"}
+LOT_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST", "BONUS", "SWITCH_IN"}
 SELL_TYPES = {"SELL", "REDEMPTION", "WITHDRAWAL", "SWITCH_OUT"}
 
 

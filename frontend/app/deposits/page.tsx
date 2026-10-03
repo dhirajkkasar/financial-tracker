@@ -4,14 +4,15 @@ import { useAssetsWithReturns } from '@/hooks/useAssetsWithReturns'
 import { useOverview } from '@/hooks/useOverview'
 import { HoldingsTable } from '@/components/domain/HoldingsTable'
 import { AssetSummaryCards } from '@/components/ui/AssetSummaryCards'
+import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import MemberSelector from '@/components/ui/MemberSelector'
 import { api } from '@/lib/api'
 import type { AssetWithReturns } from '@/hooks/useAssetsWithReturns'
 
 export default function DepositsPage() {
   const [activeOnly, setActiveOnly] = useState(true)
-  const { assets, loading } = useAssetsWithReturns(['FD', 'RD'] as any, activeOnly)
-  const { data: summary, loading: summaryLoading } = useOverview(['FD', 'RD'])
+  const { assets, loading, error } = useAssetsWithReturns(['FD', 'RD'], activeOnly)
+  const { data: summary, loading: summaryLoading, error: summaryError } = useOverview(['FD', 'RD'])
 
   const [enriched, setEnriched] = useState<(AssetWithReturns & {
     start_date?: string
@@ -22,9 +23,13 @@ export default function DepositsPage() {
 
   useEffect(() => {
     if (assets.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clear stale enrichment when the asset list empties
       setEnriched([])
       return
     }
+    // Batch N+1: one fd-detail request per asset, fanned out concurrently via
+    // Promise.all. Volumes here are small (tens of deposits); if this ever
+    // grows, add a backend bulk fd-detail endpoint instead.
     Promise.all(
       assets.map((a) =>
         api.fdDetail.get(a.id).then((fd) => ({
@@ -38,9 +43,12 @@ export default function DepositsPage() {
     ).then(setEnriched)
   }, [assets])
 
+  const pageError = error ?? summaryError
+
   return (
     <div className="space-y-6">
       <MemberSelector />
+      {pageError && <ErrorBanner message={pageError} />}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-primary">Deposits</h1>
         <button

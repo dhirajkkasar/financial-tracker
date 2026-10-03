@@ -9,6 +9,7 @@ interface MemberContextType {
   selectedMemberIds: number[]
   setSelectedMemberIds: (ids: number[]) => void
   loading: boolean
+  error: string | null
 }
 
 const MemberContext = createContext<MemberContextType>({
@@ -16,6 +17,7 @@ const MemberContext = createContext<MemberContextType>({
   selectedMemberIds: [],
   setSelectedMemberIds: () => {},
   loading: true,
+  error: null,
 })
 
 const STORAGE_KEY = 'selectedMemberIds'
@@ -24,12 +26,14 @@ export function MemberProvider({ children }: { children: ReactNode }) {
   const [members, setMembers] = useState<Member[]>([])
   const [selectedMemberIds, setSelectedMemberIdsState] = useState<number[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     api.members
       .list()
       .then((data) => {
         setMembers(data)
+        setError(null)
         const stored = localStorage.getItem(STORAGE_KEY)
         if (stored) {
           try {
@@ -43,7 +47,7 @@ export function MemberProvider({ children }: { children: ReactNode }) {
           setSelectedMemberIdsState(data.map((m) => m.id))
         }
       })
-      .catch(() => {})
+      .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }, [])
 
@@ -53,7 +57,20 @@ export function MemberProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <MemberContext.Provider value={{ members, selectedMemberIds, setSelectedMemberIds, loading }}>
+    <MemberContext.Provider value={{ members, selectedMemberIds, setSelectedMemberIds, loading, error }}>
+      {error && !loading && (
+        <div className="mx-auto max-w-7xl px-4 pt-4">
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-loss/30 bg-loss-subtle/40 px-4 py-3 text-sm">
+            <p className="text-loss">Couldn&apos;t load members: {error}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="shrink-0 rounded-lg border border-loss/40 px-3 py-1 text-xs font-medium text-loss hover:bg-loss/10 transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
       {children}
     </MemberContext.Provider>
   )

@@ -11,20 +11,15 @@ import {
 import { PortfolioSnapshot } from '@/types'
 import { usePrivateMode } from '@/context/PrivateModeContext'
 import { useDarkMode } from '@/context/DarkModeContext'
-
-function formatINRCompact(n: number) {
-  if (n >= 1_00_00_000) return `₹${(n / 1_00_00_000).toFixed(2)}Cr`
-  if (n >= 1_00_000) return `₹${(n / 1_00_000).toFixed(2)}L`
-  if (n >= 1_000) return `₹${(n / 1_000).toFixed(1)}K`
-  return `₹${n.toFixed(0)}`
-}
+import { formatINRCompact } from '@/lib/formatters'
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr)
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
 }
 
-function NetWorthTooltip({ active, payload, label }: { active?: boolean; payload?: { value: number }[]; label?: string }) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function NetWorthTooltip({ active, payload, label }: any) {
   const { isPrivate } = usePrivateMode()
   if (!active || !payload?.length) return null
   const value = payload[0].value

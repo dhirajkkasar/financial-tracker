@@ -26,11 +26,17 @@ def _zero_result(asset) -> AssetTaxGainsResult:
 
 class RealEstateTaxGainsStrategy(TaxGainsStrategy):
     """
-    Real estate: SELL/WITHDRAWAL transactions in FY → gain = proceeds − total invested.
-    STCG (< stcg_days from earliest purchase) at slab; LTCG (≥ stcg_days) at ltcg_rate from config.
+    Real estate: SELL/WITHDRAWAL transactions in FY → gain = FY proceeds − pro-rata cost.
 
-    Not FIFO — real estate is not unit-tracked. Gain = all proceeds in FY minus
-    total cost basis across all purchase transactions for this asset.
+    Not FIFO — real estate is not unit-tracked. Cost is allocated pro-rata:
+    cost_basis_for_FY = total_invested × (FY_proceeds / lifetime_proceeds_all_time).
+    Holding is checked per FY sale against the earliest buy: if ANY sale in the FY
+    is long-term (sale_date − earliest_buy ≥ stcg_days) its pro-rata gain is treated
+    as LT, otherwise ST.
+
+    Limitation: with multiple buys at different dates, the earliest-buy reference
+    may classify a sale as LT even though some cost tranches are short-term.
+    Per-tranche FIFO matching would require unit tracking, which real estate lacks.
     """
 
     def __init__(self, resolver: TaxRuleResolver | None = None):
@@ -64,12 +70,19 @@ class RealEstateTaxGainsStrategy(TaxGainsStrategy):
         if total_invested == 0:
             return _zero_result(asset)
 
-        total_proceeds = sum(abs(t.amount_inr / 100.0) for t in sell_txns_in_fy)
-        gain = total_proceeds - total_invested
+        fy_proceeds = sum(abs(t.amount_inr / 100.0) for t in sell_txns_in_fy)
+        lifetime_proceeds = sum(
+            abs(t.amount_inr / 100.0)
+            for t in txns
+            if (t.type.value if hasattr(t.type, "value") else str(t.type)) in SELL_TXNS
+        )
+        if lifetime_proceeds > 0:
+            allocated_cost = total_invested * (fy_proceeds / lifetime_proceeds)
+        else:
+            allocated_cost = total_invested
+        gain = fy_proceeds - allocated_cost
 
         earliest_buy_date = min(t.date for t in buy_txns)
-        latest_sell_date = max(t.date for t in sell_txns_in_fy)
-        holding_days = (latest_sell_date - earliest_buy_date).days
 
         # Resolve rule from config or use fallback defaults
         if self._resolver is not None:
@@ -80,14 +93,21 @@ class RealEstateTaxGainsStrategy(TaxGainsStrategy):
             stcg_days = 730
             ltcg_rate = 12.5
 
-        is_short_term = holding_days < stcg_days
-
-        st_gain = gain if is_short_term else 0.0
-        lt_gain = 0.0 if is_short_term else gain
+        # Per-sale holding check: each FY sale's pro-rata gain is classified by
+        # (sale_date − earliest_buy). If ANY sale in the FY is LT, LT gain results.
+        st_gain, lt_gain = 0.0, 0.0
+        for t in sell_txns_in_fy:
+            proceeds = abs(t.amount_inr / 100.0)
+            share = proceeds / fy_proceeds if fy_proceeds else 0.0
+            sale_gain = proceeds - allocated_cost * share
+            if (t.date - earliest_buy_date).days < stcg_days:
+                st_gain += sale_gain
+            else:
+                lt_gain += sale_gain
 
         st_tax = max(0.0, st_gain) * slab_rate_pct / 100.0
         lt_tax = max(0.0, lt_gain) * ltcg_rate / 100.0
-        has_slab = is_short_term and gain > 0
+        has_slab = st_gain > 0
 
         return AssetTaxGainsResult(
             asset_id=asset.id, asset_name=asset.name,

@@ -14,6 +14,7 @@ export function useBreakdown() {
 
   useEffect(() => {
     setLoading(true)
+    setError(null)
     api.returns.breakdown(selectedMemberIds)
       .then((r) => setBreakdown(r.breakdown))
       .catch((e: Error) => setError(e.message))

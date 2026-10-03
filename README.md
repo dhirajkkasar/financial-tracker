@@ -22,7 +22,7 @@ A personal, local-first investment portfolio tracker for Indian investors. Track
 | Returns engine | scipy (XIRR), numpy-financial (SIP/PMT), custom FIFO lot engine |
 | Price feeds | httpx + mfapi.in, npsnav.in, yfinance |
 | Frontend | Next.js 15 App Router, TypeScript, Tailwind CSS, Recharts |
-| Testing | pytest, pytest-cov (248 tests, 84% coverage) |
+| Testing | pytest, pytest-cov (718 tests, 78% coverage) |
 
 ---
 

@@ -1,6 +1,7 @@
 """
 EPFStrategy — invested = sum of all CONTRIBUTION outflows (employee + employer + EPS).
-              current_value = invested + sum of all INTEREST inflows − TDS.
+              current_value = invested + interest − withdrawals, clamped ≥ 0.
+              Withdrawals = abs sum of WITHDRAWAL/TRANSFER outflows.
 """
 from typing import Optional
 
@@ -24,7 +25,12 @@ class EPFStrategy(ValuationBasedStrategy):
             return None  # no contributions — can't compute current value
         txns = uow.transactions.list_by_asset(asset.id)
         interest = sum(t.amount_inr / 100 for t in txns if t.type.value == "INTEREST")
-        return round(invested + interest, 2)
+        withdrawals = sum(
+            abs(t.amount_inr / 100)
+            for t in txns
+            if t.type.value in ("WITHDRAWAL", "TRANSFER")
+        )
+        return round(max(0.0, invested + interest - withdrawals), 2)
 
     def build_cashflows(self, asset, uow: UnitOfWork):
         """

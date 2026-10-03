@@ -106,7 +106,8 @@ class FidelityPreCommitProcessor:
                 remaining, sell.asset_identifier, sell.acquisition_date,
             )
             gap_sell = replace(sell, units=remaining, amount_inr=round(sell_price_per_unit * remaining, 4))
-            partials.extend(self._create_buy_sell_pair(gap_sell))
+            is_stc_gap = bool(gap_sell.acquisition_date and gap_sell.acquisition_date == gap_sell.date)
+            partials.extend(self._create_buy_sell_pair(is_stc_gap, gap_sell))
 
         return partials
 

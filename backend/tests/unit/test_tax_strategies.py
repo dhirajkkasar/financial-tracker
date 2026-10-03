@@ -206,7 +206,8 @@ def test_fifo_config_debt_mf_post2023_all_slab(resolver):
     # stcg_days is 730 and holding is 1644 days → classified as LT
     assert result.lt_gain == pytest.approx(2000.0)
     assert result.lt_tax_estimate == pytest.approx(600.0)   # 2000 * 30% slab
-    assert result.has_slab is True
+    assert result.ltcg_slab is True
+    assert result.has_slab is False
 
 
 def test_fifo_config_sell_outside_fy_excluded(resolver):

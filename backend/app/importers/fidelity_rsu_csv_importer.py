@@ -64,10 +64,16 @@ class FidelityRSUImporter(BaseImporter):
                     errors=['exchange_rates must be valid JSON, e.g. {"2025-03": 86.5}'],
                     required_inputs={},
                 )
+            required_months = sorted({t.date.strftime("%Y-%m") for t in result.transactions})
+            months_hint = ", ".join(required_months) if required_months else "none"
             return ValidationResult(
                 is_valid=False,
-                errors=["exchange_rates is required. Provide a JSON string like {\"2025-03\": 86.5}"],
-                required_inputs={},
+                errors=[f"exchange_rates is required for months: {months_hint}. "
+                        'Provide a JSON string like {"2025-03": 86.5}'],
+                required_inputs={
+                    "required_months": required_months,
+                    "provided_months": [],
+                },
             )
 
         return ExchangeRateValidationHelper.validate_exchange_rates(result, self.exchange_rates)
@@ -131,13 +137,16 @@ class FidelityRSUImporter(BaseImporter):
         month_year = vest_date.strftime("%Y-%m")
         forex_rate = self.exchange_rates.get(month_year) if self.exchange_rates else None
         if forex_rate is None and self.exchange_rates:
-            # Exchange_rates provided but missing this month
+            # Exchange_rates provided but missing this month → row error.
+            # (When exchange_rates is None entirely, parse keeps a 0.0 placeholder
+            # so validate() can report the full required-months list; the pipeline
+            # blocks preview so the placeholder is never committed.)
             raise ValueError(f"No exchange rate provided for {month_year}")
-        
+
         if forex_rate:
             amount_inr = -(cost_basis_total * forex_rate)  # VEST = outflow (negative)
         else:
-            amount_inr = 0.0  # Placeholder
+            amount_inr = 0.0  # Placeholder — blocked at validate() when rates are missing
         
         txn_id = self._make_txn_id(ticker, vest_date.isoformat(), quantity, cost_basis_per_share)
 
@@ -158,8 +167,8 @@ class FidelityRSUImporter(BaseImporter):
 
     @staticmethod
     def _make_txn_id(ticker: str, date_iso: str, quantity: float, cost_per_share: float) -> str:
-        """Stable txn_id: SHA-256 of pipe-delimited key fields."""
+        """Stable txn_id: SHA-256 of pipe-delimited key fields (full hex to avoid collisions)."""
         q_int = round(quantity * 10000)   # avoid float formatting variance
         c_int = round(cost_per_share * 100)
         raw = f"fidelity_rsu|{ticker}|{date_iso}|{q_int}|{c_int}"
-        return "fidelity_rsu_" + hashlib.sha256(raw.encode()).hexdigest()[:16]
+        return "fidelity_rsu_" + hashlib.sha256(raw.encode()).hexdigest()

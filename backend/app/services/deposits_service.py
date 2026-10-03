@@ -17,7 +17,8 @@ class DepositsService:
     def mark_matured_fds(self) -> int:
         """Mark FDs/RDs whose maturity date has passed as matured and inactive.
 
-        Always recomputes maturity_amount to keep it in sync with current fd_detail params.
+        Computes maturity_amount only when not already set, so a previously
+        recorded (e.g. bank-confirmed) maturity value is never overwritten.
         Returns the number of assets updated.
         """
         assets = self.asset_repo.list_unmatured_past_maturity()
@@ -27,7 +28,8 @@ class DepositsService:
             if fd is None:
                 continue
 
-            fd.maturity_amount = compute_maturity_paise(fd)
+            if fd.maturity_amount is None:
+                fd.maturity_amount = compute_maturity_paise(fd)
             fd.is_matured = True
             asset.is_active = False
             logger.info(

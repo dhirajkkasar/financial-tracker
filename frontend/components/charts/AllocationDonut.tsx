@@ -4,6 +4,8 @@ import { ASSET_CLASS_COLORS } from '@/constants'
 import { AssetClass } from '@/types'
 import { usePrivateMode } from '@/context/PrivateModeContext'
 import { useDarkMode } from '@/context/DarkModeContext'
+import { Skeleton } from '@/components/ui/Skeleton'
+import { formatINRCompact } from '@/lib/formatters'
 
 interface AllocationEntry {
   name: string
@@ -11,11 +13,8 @@ interface AllocationEntry {
   asset_class: AssetClass
 }
 
-function formatINRCompact(n: number) {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n)
-}
-
-function DonutTooltip({ active, payload, total }: { active?: boolean; payload?: { name: string; value: number }[]; total: number }) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function DonutTooltip({ active, payload, total }: any) {
   const { isPrivate } = usePrivateMode()
   if (!active || !payload?.length) return null
   const { name, value } = payload[0]
@@ -29,10 +28,13 @@ function DonutTooltip({ active, payload, total }: { active?: boolean; payload?: 
   )
 }
 
-export function AllocationDonut({ data }: { data: AllocationEntry[] }) {
+export function AllocationDonut({ data, loading }: { data: AllocationEntry[]; loading?: boolean }) {
   const { isDark } = useDarkMode()
   const legendColor = isDark ? '#9a9a96' : '#6b6b67'
 
+  if (loading) {
+    return <Skeleton className="mx-auto h-48 w-48 rounded-full" />
+  }
   if (!data || data.length === 0) {
     return <div className="flex h-48 items-center justify-center text-sm text-tertiary">No allocation data</div>
   }

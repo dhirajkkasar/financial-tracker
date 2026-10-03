@@ -108,6 +108,26 @@ class TaxService:
         total_lt_tax_post_exemption = max(0.0, total_lt_tax_post_exemption)
         lt_has_slab = any(r.ltcg_slab for r in cg_results)
 
+        # Per-asset LTCG rows: pro-rate the 112A exemption across exempt-eligible
+        # assets proportionally to lt_gain so the rows sum to the post-exemption total.
+        ltcg_assets = []
+        for r in cg_results:
+            if r.lt_gain == 0:
+                continue
+            tax = r.lt_tax_estimate
+            if r.ltcg_exempt_eligible and exemption_used > 0 and exempt_eligible_lt_gain > 0:
+                share = exemption_used * (max(0.0, r.lt_gain) / exempt_eligible_lt_gain)
+                tax = max(0.0, tax - share * 12.5 / 100.0)
+            ltcg_assets.append({
+                "asset_id": r.asset_id,
+                "asset_name": r.asset_name,
+                "asset_type": r.asset_type,
+                "gain": r.lt_gain,
+                "tax_estimate": tax,
+                "is_slab": r.ltcg_slab,
+                "tax_rate_pct": None if r.ltcg_slab else (tax / r.lt_gain * 100 if r.lt_gain > 0 else None),
+                "ltcg_exempt_eligible": r.ltcg_exempt_eligible,
+            })
         # Interest totals
         total_interest = sum(r.st_gain for r in interest_results if r.st_gain != 0.0)
         interest_tax = sum(r.st_tax_estimate for r in interest_results)
@@ -136,19 +156,7 @@ class TaxService:
                 "total_tax": total_lt_tax_post_exemption,
                 "ltcg_exemption_used": exemption_used,
                 "has_slab_items": lt_has_slab,
-                "assets": [
-                    {
-                        "asset_id": r.asset_id,
-                        "asset_name": r.asset_name,
-                        "asset_type": r.asset_type,
-                        "gain": r.lt_gain,
-                        "tax_estimate": r.lt_tax_estimate,
-                        "is_slab": r.ltcg_slab,
-                        "tax_rate_pct": None if r.ltcg_slab else (r.lt_tax_estimate / r.lt_gain * 100 if r.lt_gain > 0 else None),
-                        "ltcg_exempt_eligible": r.ltcg_exempt_eligible,
-                    }
-                    for r in cg_results if r.lt_gain != 0
-                ],
+                "assets": ltcg_assets,
             },
             "interest": {
                 "total_interest": total_interest,
@@ -283,7 +291,8 @@ class TaxService:
             is_st = lot.get("is_short_term", True)
             atype = lot["asset_type"]
             near_threshold = (
-                not is_st and gain > 0
+                not is_st
+                and 0 < gain <= LTCG_NEAR_THRESHOLD
                 and atype in {"STOCK_IN", "MF"}
                 and (LTCG_NEAR_THRESHOLD - gain) <= LTCG_NEAR_THRESHOLD * LTCG_NEAR_PCT
             )

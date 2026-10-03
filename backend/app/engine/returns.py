@@ -7,9 +7,11 @@ from app.models.asset import Asset
 
 logger = logging.getLogger(__name__)
 
-OUTFLOW_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST", "BILLING", "SWITCH_IN"}
+OUTFLOW_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST", "SWITCH_IN"}
 INFLOW_TYPES = {"SELL", "REDEMPTION", "DIVIDEND", "INTEREST", "WITHDRAWAL", "BONUS", "SWITCH_OUT"}
-EXCLUDED_TYPES = {"SPLIT"}
+# BILLING is an internal fee drag, not an investor cashflow: excluded from XIRR
+# cashflows (terminal value is already reduced via UNIT_SUB unit deduction).
+EXCLUDED_TYPES = {"SPLIT", "BILLING"}
 
 # Types that ADD units to a holding. BONUS is in INFLOW_TYPES for cashflow purposes
 # (amount_inr=0 so numerically neutral for XIRR), but must also ADD to unit count.
@@ -20,7 +22,9 @@ UNIT_ADD_TYPES = {"BUY", "SIP", "CONTRIBUTION", "VEST", "BONUS", "SWITCH_IN"}
 # Types that REMOVE units from a holding.
 # SWITCH_OUT transfers units to another scheme — excluded from XIRR but must decrease unit count.
 # BILLING deducts units from NPS account as intermediary fee payment.
-UNIT_SUB_TYPES = {"SELL", "REDEMPTION", "SWITCH_OUT", "BILLING"}
+# WITHDRAWAL removes units (e.g. partial EPF/NPS withdrawal) — kept in INFLOW_TYPES
+# for cashflow purposes but must also decrease unit count.
+UNIT_SUB_TYPES = {"SELL", "REDEMPTION", "SWITCH_OUT", "BILLING", "WITHDRAWAL"}
 
 
 def compute_xirr(cashflows: list[tuple[date, float]], asset_name="unknown") -> float | None:

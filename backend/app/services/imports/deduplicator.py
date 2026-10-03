@@ -26,10 +26,14 @@ class InMemoryDeduplicator:
     def filter_duplicates(self, result: ImportResult) -> ImportResult:
         new_txns = []
         duplicate_count = 0
+        seen: set[str] = set()
         for txn in result.transactions:
-            if txn.txn_id in self._existing:
+            # Skip DB-known duplicates and intra-file duplicates (same txn_id
+            # twice in one file, e.g. overlapping statement periods).
+            if txn.txn_id in self._existing or txn.txn_id in seen:
                 duplicate_count += 1
             else:
+                seen.add(txn.txn_id)
                 new_txns.append(txn)
         warnings = list(result.warnings)
         if duplicate_count:

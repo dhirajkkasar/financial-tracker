@@ -10,7 +10,10 @@ COMPOUNDING_FREQ = {
 
 
 def compute_fd_maturity(principal: float, rate_pct: float, compounding: str, tenure_years: float) -> float:
-    """A = P(1 + r/n)^(nt)"""
+    """A = P(1 + r/n)^(nt), except SIMPLE interest: A = P(1 + r*t)."""
+    if compounding == "SIMPLE":
+        r = rate_pct / 100
+        return principal * (1 + r * tenure_years)
     n = COMPOUNDING_FREQ[compounding]
     r = rate_pct / 100
     return principal * (1 + r / n) ** (n * tenure_years)

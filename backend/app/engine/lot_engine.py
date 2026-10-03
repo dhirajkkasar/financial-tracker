@@ -256,6 +256,9 @@ def compute_gains_summary(open_lots: list[dict], matched_sells: list[dict], asse
 
     open_lots items must have: is_short_term (bool), unrealised_gain (float|None)
     matched_sells items must have: buy_date (date), sell_date (date), realised_gain_inr (float)
+    If a matched_sells item already carries is_short_term (e.g. classified per-lot
+    with rule overrides), that flag is honoured; otherwise holding is recomputed
+    against the coarse per-asset threshold.
 
     Returns: {st_unrealised_gain, lt_unrealised_gain, st_realised_gain, lt_realised_gain}
     """
@@ -272,6 +275,15 @@ def compute_gains_summary(open_lots: list[dict], matched_sells: list[dict], asse
     st_real = 0.0
     lt_real = 0.0
     for m in matched_sells:
+        if "is_short_term" in m and m["is_short_term"] is not None:
+            # Caller already classified this match (e.g. per-lot rule with
+            # epoch/ISIN overrides) — honour it instead of recomputing
+            # with the coarse per-asset threshold.
+            if m["is_short_term"]:
+                st_real += m["realised_gain_inr"]
+            else:
+                lt_real += m["realised_gain_inr"]
+            continue
         buy_date = m["buy_date"]
         sell_date = m["sell_date"]
         # buy_date and sell_date may be date objects or strings

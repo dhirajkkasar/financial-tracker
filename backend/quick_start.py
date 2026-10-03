@@ -4,7 +4,11 @@ Guides the user through importing all investment types without knowing CLI comma
 Called via: python cli.py quick-start
 """
 import os
+import re
 import sys
+from datetime import datetime
+
+import requests
 
 from cli import (
     _api,
@@ -13,11 +17,16 @@ from cli import (
     cmd_import_cas,
     cmd_import_nps,
     cmd_import_broker_csv,
+    cmd_import_fidelity_rsu,
+    cmd_import_fidelity_sale,
     cmd_add_fd,
     cmd_add_rd,
     cmd_add_gold,
     cmd_add_real_estate,
 )
+
+PAN_RE = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
+MAX_PROMPT_ATTEMPTS = 3
 
 _HELP_TEXT = """\
 Your database already has existing data. Use individual commands to add more:
@@ -28,6 +37,8 @@ Your database already has existing data. Use individual commands to add more:
     python cli.py import cas <file> --pan <PAN>
     python cli.py import nps <file> --pan <PAN>
     python cli.py import zerodha <file> --pan <PAN>
+    python cli.py import fidelity-rsu <file> --pan <PAN> --exchange-rates '{"2025-03": 86.5}'
+    python cli.py import fidelity-sale <file> --pan <PAN> --exchange-rates '{"2025-03": 86.5}'
 
   Manual add commands:
     python cli.py add fd --name ... --pan <PAN> --bank ... --principal ... --rate ... --start ... --maturity ... --compounding ...
@@ -39,10 +50,23 @@ Your database already has existing data. Use individual commands to add more:
 
 def _check_db_empty():
     """Exit with help text if any assets already exist in the DB."""
-    assets = _api("get", "/assets")
+    try:
+        assets = _api("get", "/assets")
+    except requests.exceptions.RequestException as exc:
+        sys.exit(f"Cannot reach the API server: {exc}. Is the server running?")
     if assets:
         print(_HELP_TEXT)
         sys.exit(0)
+
+
+def _prompt_pan(prompt_text: str = "PAN (e.g. ABCDE1234F): ") -> str:
+    """Prompt for a PAN with format validation. Up to MAX_PROMPT_ATTEMPTS tries."""
+    for _ in range(MAX_PROMPT_ATTEMPTS):
+        raw = input(prompt_text).strip().upper()
+        if PAN_RE.match(raw):
+            return raw
+        print("  Invalid PAN. Expected format: 5 letters + 4 digits + 1 letter (e.g. ABCDE1234F)")
+    sys.exit("Too many invalid attempts. Aborting.")
 
 
 def _resolve_member() -> tuple[list[dict], int | None]:
@@ -51,14 +75,20 @@ def _resolve_member() -> tuple[list[dict], int | None]:
     Returns (all_members, single_member_id).
     single_member_id is None when there are 2+ members (caller must prompt per file/entry).
     """
-    members = _api("get", "/members")
+    try:
+        members = _api("get", "/members")
+    except requests.exceptions.RequestException as exc:
+        sys.exit(f"Cannot reach the API server: {exc}. Is the server running?")
     if len(members) == 0:
         print("No members found. Let's create one first.")
-        pan = input("PAN (e.g. ABCDE1234F): ").strip().upper()
+        pan = _prompt_pan()
         name = input("Name: ").strip()
         if not pan or not name:
             sys.exit("PAN and name are required.")
-        result = _api("post", "/members", json={"pan": pan, "name": name})
+        try:
+            result = _api("post", "/members", json={"pan": pan, "name": name})
+        except requests.exceptions.RequestException as exc:
+            sys.exit(f"Failed to create member: {exc}")
         print(f"  → created member: {result['name']} (PAN: {result['pan']})")
         return [result], result["id"]
     elif len(members) == 1:
@@ -110,6 +140,8 @@ def _section_file(label: str, import_fn, members: list[dict], single_member_id: 
             import_fn(file_path, member_id)
         except SystemExit as exc:
             print(f"  Import failed: {exc}")
+        except requests.exceptions.RequestException as exc:
+            print(f"  Import failed (server error): {exc}")
 
         again = input(f"Import another file for {label}? [y/N]: ").strip().lower()
         if again != "y":
@@ -132,15 +164,20 @@ def _section_manual(label: str, add_fn, members: list[dict], single_member_id: i
             add_fn(member_id)
         except SystemExit as exc:
             print(f"  Add failed: {exc}")
+        except requests.exceptions.RequestException as exc:
+            print(f"  Add failed (server error): {exc}")
 
         again = input(f"Add another {label}? [y/N]: ").strip().lower()
         if again != "y":
             break
 
 
-def _prompt(prompt_text: str, cast=str, validate=None):
-    """Prompt user for input with optional type casting and validation. Retries on bad input."""
-    while True:
+def _prompt(prompt_text: str, cast=str, validate=None, max_attempts: int = MAX_PROMPT_ATTEMPTS):
+    """Prompt user for input with optional type casting and validation.
+
+    Retries up to max_attempts times, then exits.
+    """
+    for _ in range(max_attempts):
         raw = input(prompt_text).strip()
         try:
             value = cast(raw)
@@ -149,6 +186,15 @@ def _prompt(prompt_text: str, cast=str, validate=None):
             return value
         except (ValueError, TypeError):
             print("  Invalid input. Please try again.")
+    sys.exit("Too many invalid attempts. Aborting.")
+
+
+def _prompt_date(prompt_text: str) -> str:
+    """Prompt for a YYYY-MM-DD date with validation. Up to MAX_PROMPT_ATTEMPTS tries."""
+    def _parse(v: str) -> str:
+        datetime.strptime(v.strip(), "%Y-%m-%d")
+        return v.strip()
+    return _prompt(prompt_text, cast=_parse)
 
 
 def _add_fd_interactive(member_id: int):
@@ -156,8 +202,8 @@ def _add_fd_interactive(member_id: int):
     bank = _prompt("Bank: ")
     principal = _prompt("Principal amount (INR): ", cast=float, validate=lambda x: x > 0)
     rate = _prompt("Interest rate (%): ", cast=float, validate=lambda x: x > 0)
-    start = _prompt("Start date (YYYY-MM-DD): ")
-    maturity = _prompt("Maturity date (YYYY-MM-DD): ")
+    start = _prompt_date("Start date (YYYY-MM-DD): ")
+    maturity = _prompt_date("Maturity date (YYYY-MM-DD): ")
     compounding = _prompt("Compounding [MONTHLY/QUARTERLY/HALF_YEARLY/YEARLY] (default QUARTERLY): ") or "QUARTERLY"
     cmd_add_fd(name, bank, principal, rate, start, maturity, compounding, member_id)
 
@@ -167,15 +213,15 @@ def _add_rd_interactive(member_id: int):
     bank = _prompt("Bank: ")
     installment = _prompt("Monthly installment (INR): ", cast=float, validate=lambda x: x > 0)
     rate = _prompt("Interest rate (%): ", cast=float, validate=lambda x: x > 0)
-    start = _prompt("Start date (YYYY-MM-DD): ")
-    maturity = _prompt("Maturity date (YYYY-MM-DD): ")
+    start = _prompt_date("Start date (YYYY-MM-DD): ")
+    maturity = _prompt_date("Maturity date (YYYY-MM-DD): ")
     compounding = _prompt("Compounding [MONTHLY/QUARTERLY/HALF_YEARLY/YEARLY] (default QUARTERLY): ") or "QUARTERLY"
     cmd_add_rd(name, bank, installment, rate, start, maturity, compounding, member_id)
 
 
 def _add_gold_interactive(member_id: int):
     name = _prompt("Name (e.g. Digital Gold): ")
-    date = _prompt("Purchase date (YYYY-MM-DD): ")
+    date = _prompt_date("Purchase date (YYYY-MM-DD): ")
     units = _prompt("Units (grams): ", cast=float, validate=lambda x: x > 0)
     price = _prompt("Price per unit (INR/gram): ", cast=float, validate=lambda x: x > 0)
     cmd_add_gold(name, date, units, price, member_id)
@@ -184,9 +230,9 @@ def _add_gold_interactive(member_id: int):
 def _add_real_estate_interactive(member_id: int):
     name = _prompt("Name (e.g. Venezia Flat): ")
     purchase_amount = _prompt("Purchase amount (INR): ", cast=float, validate=lambda x: x > 0)
-    purchase_date = _prompt("Purchase date (YYYY-MM-DD): ")
+    purchase_date = _prompt_date("Purchase date (YYYY-MM-DD): ")
     current_value = _prompt("Current value (INR): ", cast=float, validate=lambda x: x > 0)
-    value_date = _prompt("Value date (YYYY-MM-DD): ")
+    value_date = _prompt_date("Value date (YYYY-MM-DD): ")
     cmd_add_real_estate(name, purchase_amount, purchase_date, current_value, value_date, member_id)
 
 
@@ -210,6 +256,16 @@ def run():
     _section_file(
         "Indian Stocks (Zerodha CSV)",
         lambda path, mid: cmd_import_broker_csv(path, "zerodha", mid),
+        members, single_member_id,
+    )
+    _section_file(
+        "US Stocks — Fidelity RSU CSV (MARKET_TICKER.csv)",
+        cmd_import_fidelity_rsu,
+        members, single_member_id,
+    )
+    _section_file(
+        "US Stocks — Fidelity Sale PDF",
+        cmd_import_fidelity_sale,
         members, single_member_id,
     )
 

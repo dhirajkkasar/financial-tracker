@@ -1,6 +1,9 @@
 """Helper for validating exchange rates in Fidelity importers."""
 import json as _json
+import logging
 from app.importers.base import ImportResult, ValidationResult
+
+logger = logging.getLogger(__name__)
 
 
 class ExchangeRateValidationHelper:
@@ -67,7 +70,7 @@ class ExchangeRateValidationHelper:
         try:
             return _json.loads(exchange_rates)
         except Exception:
-            print("Failed to parse exchange_rates JSON:", exchange_rates)
+            logger.warning("Failed to parse exchange_rates JSON: %s", exchange_rates)
             return None
 
     @staticmethod
@@ -91,14 +94,20 @@ class ExchangeRateValidationHelper:
     @staticmethod
     def _extract_required_months(result: ImportResult) -> list[str]:
         """Extract unique YYYY-MM strings from all parsed transactions.
-        
+
+        Includes both the transaction date and the acquisition date (Fidelity
+        sale rows need a rate for each), when present.
+
         Args:
             result: ImportResult containing transactions
-        
+
         Returns:
             Sorted list of unique required month-year strings
         """
         required_months: set[str] = set()
         for txn in result.transactions:
             required_months.add(txn.date.strftime("%Y-%m"))
+            acquisition_date = getattr(txn, "acquisition_date", None)
+            if acquisition_date is not None:
+                required_months.add(acquisition_date.strftime("%Y-%m"))
         return sorted(required_months)

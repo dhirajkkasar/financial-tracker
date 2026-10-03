@@ -14,6 +14,7 @@ export function useGainers(n = 5) {
 
   useEffect(() => {
     setLoading(true)
+    setError(null)
     api.returns.gainers(n, selectedMemberIds)
       .then(setData)
       .catch((e) => setError(e.message))

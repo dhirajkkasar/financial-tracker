@@ -2,6 +2,7 @@
 
 import { useRef, useState, useEffect } from 'react'
 import { useMembers } from '@/context/MemberContext'
+import { Skeleton } from '@/components/ui/Skeleton'
 
 function maskPan(pan: string): string {
   return pan.length >= 6 ? `XXXX${pan.slice(4, 8)}${pan.slice(-1)}` : pan
@@ -20,7 +21,8 @@ export default function MemberSelector() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  if (loading || members.length === 0) return null
+  if (loading) return <Skeleton className="h-8 w-28" />
+  if (members.length === 0) return null
 
   const allSelected = selectedMemberIds.length === members.length
   const label = allSelected

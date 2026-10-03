@@ -2,17 +2,48 @@ import axios from 'axios'
 import { Asset, AssetType, Transaction, Valuation, FDDetail, Goal, GoalAllocation, ReturnResult, OverviewReturns, BreakdownResponse, LotsResponse, PaginatedTransactions, AllocationResponse, GainersResponse, ImportantData, BulkReturnResponse, TaxSummaryResponse, UnrealisedResponse, HarvestResponse, PortfolioSnapshot } from '@/types'
 import { Member } from '@/constants'
 
+export class ApiError extends Error {
+  status?: number
+  code?: string
+  data?: unknown
+  constructor(message: string, opts?: { status?: number; code?: string; data?: unknown }) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = opts?.status
+    this.code = opts?.code
+    this.data = opts?.data
+  }
+}
+
+const baseURL = process.env.NEXT_PUBLIC_API_URL || '/api'
+if (!process.env.NEXT_PUBLIC_API_URL) {
+  console.warn('[api] NEXT_PUBLIC_API_URL is not set — falling back to /api')
+}
+
 const client = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || '/api',
+  baseURL,
+  timeout: 10000,
   headers: { 'Content-Type': 'application/json' },
 })
+
+// Optional API token: backend allows open access when API_TOKEN is empty,
+// but send the header when a public token is configured.
+if (process.env.NEXT_PUBLIC_API_TOKEN) {
+  client.defaults.headers.common['X-API-Token'] = process.env.NEXT_PUBLIC_API_TOKEN
+}
 
 // Normalize errors
 client.interceptors.response.use(
   (res) => res,
   (err) => {
-    const message = err.response?.data?.error?.message || err.message
-    return Promise.reject(new Error(message))
+    const message = err.response?.data?.error?.message || err.message || 'Request failed'
+    return Promise.reject(
+      new ApiError(message, {
+        status: err.response?.status,
+        code: err.response?.data?.error?.code ?? err.code,
+        data: err.response?.data,
+      })
+    )
   }
 )
 

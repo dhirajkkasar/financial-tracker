@@ -14,6 +14,7 @@ export function useAllocation() {
 
   useEffect(() => {
     setLoading(true)
+    setError(null)
     api.returns.allocation(selectedMemberIds)
       .then(setData)
       .catch((e) => setError(e.message))

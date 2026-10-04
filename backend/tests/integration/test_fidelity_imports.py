@@ -1,11 +1,58 @@
+"""Integration tests for the Fidelity lots importers (open + closed, USD exports).
+
+Fixtures use fake tickers/numbers in the exact shape of the real NetBenefits
+exports. End-to-end: preview-file → commit-file, idempotent re-imports, and
+the open-snapshot prune (shrunken remainder replaces, never duplicates).
+"""
 import json
+from datetime import date
 from pathlib import Path
 
 import pytest
+
 from app.importers.base import ParsedTransaction
-from datetime import date
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
+
+RATES = {"2025-03": 86.5, "2025-06": 84.0, "2025-10": 85.0}
+
+
+def _inputs(**overrides):
+    payload = {"ticker": "FAKE", "exchange_rates": dict(RATES)}
+    payload.update(overrides)
+    return json.dumps(payload)
+
+
+def _open_bytes():
+    return (FIXTURES / "fidelity_open_lots_sample.csv").read_bytes()
+
+
+def _closed_bytes():
+    return (FIXTURES / "fidelity_closed_lots_sample.csv").read_bytes()
+
+
+def _preview(client, source, file_bytes, filename, user_inputs):
+    resp = client.post(
+        f"/import/preview-file?source={source}&format=csv",
+        data={"user_inputs": user_inputs},
+        files={"file": (filename, file_bytes, "text/csv")},
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+def _commit(client, preview_id):
+    resp = client.post(f"/import/commit-file/{preview_id}")
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+def _db_rows(db, ticker="FAKE"):
+    from app.repositories.unit_of_work import UnitOfWork
+    from app.models.asset import Asset
+    asset = db.query(Asset).filter(Asset.identifier == ticker).one()
+    uow = UnitOfWork(db)
+    return uow.transactions.list_by_asset(asset.id)
 
 
 def test_parsed_transaction_has_forex_rate_field():
@@ -18,279 +65,128 @@ def test_parsed_transaction_has_forex_rate_field():
     assert txn.forex_rate == 84.5
 
 
-# def test_commit_persists_forex_rate(db):
-#     """Committed VEST transaction stores forex_rate in DB."""
-#     from app.importers.base import ParsedTransaction
-#     from app.services.import_service import ImportService
-#     from app.repositories.transaction_repo import TransactionRepository
-#     from datetime import date
+# ---------------------------------------------------------------------------
+# open lots endpoint
+# ---------------------------------------------------------------------------
 
-#     svc = ImportService(db)
-#     txn = ParsedTransaction(
-#         source="fidelity_rsu", asset_name="AMZN", asset_identifier="AMZN",
-#         asset_type="STOCK_US", txn_type="VEST", date=date(2025, 3, 17),
-#         units=68.0, price_per_unit=196.40, amount_inr=-1_380_000.0,
-#         txn_id="fidelity_rsu_test_001", forex_rate=84.5,
-#     )
-#     preview = svc.preview(transactions=[txn])
-#     svc.commit(preview["preview_id"])
-
-#     repo = TransactionRepository(db)
-#     saved = repo.get_by_txn_id("fidelity_rsu_test_001")
-#     assert saved is not None
-#     assert saved.forex_rate == pytest.approx(84.5)
-
-
-# def test_stock_us_asset_created_with_usd_currency(db):
-#     from app.importers.base import ParsedTransaction
-#     from app.services.import_service import ImportService
-#     from app.models.asset import Asset
-#     from datetime import date
-
-#     svc = ImportService(db)
-#     txn = ParsedTransaction(
-#         source="fidelity_rsu", asset_name="AMZN2", asset_identifier="AMZN2",
-#         asset_type="STOCK_US", txn_type="VEST", date=date(2025, 3, 17),
-#         units=10.0, price_per_unit=200.0, amount_inr=-170_000.0,
-#         txn_id="fidelity_rsu_currency_test", forex_rate=85.0,
-#     )
-#     preview = svc.preview(transactions=[txn])
-#     svc.commit(preview["preview_id"])
-
-#     asset = db.query(Asset).filter(Asset.identifier == "AMZN2").first()
-#     assert asset is not None
-#     assert asset.currency == "USD"
-
-
-def test_fidelity_rsu_csv_endpoint_preview(client):
-    """POST /import/preview-file returns a valid preview for fidelity_rsu CSV."""
-    csv_bytes = (FIXTURES / "fidelity_rsu_sample.csv").read_bytes()
-    rates = {"2025-03": 86.5, "2024-09": 83.8}
-    resp = client.post(
-        "/import/preview-file?source=fidelity_rsu&format=csv",
-        data={"user_inputs": json.dumps(rates)},
-        files={"file": ("NASDAQ_AMZN.csv", csv_bytes, "text/csv")},
-    )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert "preview_id" in body
+def test_fidelity_open_endpoint_preview(client):
+    body = _preview(client, "fidelity_open", _open_bytes(), "open.csv", _inputs())
     assert body["new_count"] == 2
     assert body["duplicate_count"] == 0
+    types = {t["txn_type"] for t in body["transactions"]}
+    assert types == {"VEST", "BUY"}  # RS remainder + SP remainder
 
 
-def test_fidelity_rsu_csv_endpoint_missing_rate_returns_422(client):
-    """POST /import/preview-file with incomplete rates returns 422 validation error."""
-    csv_bytes = (FIXTURES / "fidelity_rsu_sample.csv").read_bytes()
+def test_fidelity_open_missing_ticker_returns_422(client):
     resp = client.post(
-        "/import/preview-file?source=fidelity_rsu&format=csv",
-        data={"user_inputs": json.dumps({"2025-03": 86.5})},  # missing 2024-09
-        files={"file": ("NASDAQ_AMZN.csv", csv_bytes, "text/csv")},
+        "/import/preview-file?source=fidelity_open&format=csv",
+        data={"user_inputs": json.dumps({"exchange_rates": RATES})},
+        files={"file": ("open.csv", _open_bytes(), "text/csv")},
     )
     assert resp.status_code == 422
-    assert "2024-09" in resp.text
+    assert "ticker" in resp.text
 
 
-def test_fidelity_rsu_csv_endpoint_idempotent(client):
-    """Importing the same CSV twice skips duplicates."""
-    csv_bytes = (FIXTURES / "fidelity_rsu_sample.csv").read_bytes()
-    rates = {"2025-03": 86.5, "2024-09": 83.8}
+def test_fidelity_open_missing_rate_returns_422(client):
+    resp = client.post(
+        "/import/preview-file?source=fidelity_open&format=csv",
+        data={"user_inputs": _inputs(exchange_rates={"2025-03": 86.5})},
+        files={"file": ("open.csv", _open_bytes(), "text/csv")},
+    )
+    assert resp.status_code == 422
+    assert "2025-06" in resp.text
 
-    def do_import():
-        resp = client.post(
-            "/import/preview-file?source=fidelity_rsu&format=csv",
-            data={"user_inputs": json.dumps(rates)},
-            files={"file": ("NASDAQ_AMZN.csv", csv_bytes, "text/csv")},
-        )
-        preview_id = resp.json()["preview_id"]
-        return client.post(f"/import/commit-file/{preview_id}").json()
 
-    first = do_import()
-    second = do_import()
+def test_fidelity_open_idempotent(client):
+    first = _commit(client, _preview(client, "fidelity_open", _open_bytes(), "open.csv", _inputs())["preview_id"])
     assert first["inserted"] == 2
+    second = _commit(client, _preview(client, "fidelity_open", _open_bytes(), "open.csv", _inputs())["preview_id"])
     assert second["inserted"] == 0
     assert second["skipped"] == 2
+    assert second.get("pruned", 0) == 0
 
 
-def test_fidelity_sale_pdf_endpoint_preview(client):
-    """POST /import/preview-file returns preview with BUY/SELL transactions for fidelity_sale PDF."""
-    path = FIXTURES / "fidelity_sale_sample.pdf"
-    if not path.exists():
-        pytest.skip("fidelity_sale_sample.pdf fixture not available")
-    pdf_bytes = path.read_bytes()
-    rates = {"2025-03": 86.0, "2025-09": 84.5}
+# ---------------------------------------------------------------------------
+# closed lots endpoint
+# ---------------------------------------------------------------------------
+
+def test_fidelity_closed_endpoint_preview(client):
+    body = _preview(client, "fidelity_closed", _closed_bytes(), "closed.csv", _inputs())
+    assert body["new_count"] == 6  # 3 rows × (acquisition leg + SELL)
+    assert body["duplicate_count"] == 0
+    assert any("defaulted to RS" in w for w in body["warnings"])
+
+
+def test_fidelity_closed_missing_rate_returns_422(client):
     resp = client.post(
-        "/import/preview-file?source=fidelity_sale&format=pdf",
-        data={"user_inputs": json.dumps(rates)},
-        files={"file": ("sale.pdf", pdf_bytes, "application/pdf")},
-    )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert "preview_id" in body
-    assert body["new_count"] == 2
-    txns = body["transactions"]
-    assert all(t["txn_type"] == "SELL" for t in txns)
-    assert all("Tax cover sale" in (t["notes"] or "") for t in txns)
-
-
-def test_fidelity_sale_pdf_endpoint_missing_rate_returns_422(client):
-    """POST /import/preview-file with incomplete rates returns 422 validation error."""
-    path = FIXTURES / "fidelity_sale_sample.pdf"
-    if not path.exists():
-        pytest.skip("fidelity_sale_sample.pdf fixture not available")
-    pdf_bytes = path.read_bytes()
-    resp = client.post(
-        "/import/preview-file?source=fidelity_sale&format=pdf",
-        data={"user_inputs": json.dumps({"2025-03": 86.0})},  # missing 2025-09
-        files={"file": ("sale.pdf", pdf_bytes, "application/pdf")},
+        "/import/preview-file?source=fidelity_closed&format=csv",
+        data={"user_inputs": _inputs(exchange_rates={"2025-03": 86.5})},
+        files={"file": ("closed.csv", _closed_bytes(), "text/csv")},
     )
     assert resp.status_code == 422
-    assert "2025-09" in resp.text
 
 
-def test_fidelity_sale_pdf_endpoint_idempotent(client):
-    """Importing the same PDF twice skips duplicates."""
-    path = FIXTURES / "fidelity_sale_sample.pdf"
-    if not path.exists():
-        pytest.skip("fidelity_sale_sample.pdf fixture not available")
-    pdf_bytes = path.read_bytes()
-    rates = {"2025-03": 86.0, "2025-09": 84.5}
-
-    def do_import():
-        resp = client.post(
-            "/import/preview-file?source=fidelity_sale&format=pdf",
-            data={"user_inputs": json.dumps(rates)},
-            files={"file": ("sale.pdf", pdf_bytes, "application/pdf")},
-        )
-        preview_id = resp.json()["preview_id"]
-        return client.post(f"/import/commit-file/{preview_id}").json()
-
-    first = do_import()
-    second = do_import()
-    assert first["created_count"] == 2
-    assert second["created_count"] == 0
-    assert second["skipped_count"] == 2
+def test_fidelity_closed_idempotent(client):
+    first = _commit(client, _preview(client, "fidelity_closed", _closed_bytes(), "closed.csv", _inputs())["preview_id"])
+    assert first["inserted"] == 6
+    second = _commit(client, _preview(client, "fidelity_closed", _closed_bytes(), "closed.csv", _inputs())["preview_id"])
+    assert second["inserted"] == 0
+    assert second["skipped"] == 6
 
 
 # ---------------------------------------------------------------------------
-# Integration tests: FidelityPreCommitProcessor lot resolution
+# lots link open remainders to closed sales; prune replaces shrunken snapshot
 # ---------------------------------------------------------------------------
 
-import pytest
-import hashlib as _hashlib
-from datetime import date as _date
-
-from app.models.asset import AssetType, AssetClass
-from app.models.transaction import TransactionType
-from app.importers.base import ImportResult, ParsedTransaction
-from app.repositories.unit_of_work import UnitOfWork
-from app.services.imports.post_processors.fidelity import FidelityPreCommitProcessor
+def _ttype(t) -> str:
+    return t.type.value if hasattr(t.type, "value") else str(t.type)
 
 
-def _seed_asset_and_buy(db, ticker: str, lot_id: str, buy_date, units: float):
-    """Find-or-create a STOCK_US asset and add a BUY transaction with a specific lot_id."""
-    uow = UnitOfWork(db)
-    asset = uow.assets.get_by_identifier(ticker)
-    if asset is None:
-        asset = uow.assets.create(
-            name=ticker,
-            identifier=ticker,
-            asset_type=AssetType.STOCK_US,
-            asset_class=AssetClass.EQUITY,
-            currency="USD",
-            is_active=True,
-        )
-    uow.transactions.create(
-        asset_id=asset.id,
-        txn_id=f"seed-buy-{lot_id}",
-        type=TransactionType.BUY,
-        date=buy_date,
-        units=units,
-        price_per_unit=100.0,
-        forex_rate=83.0,
-        amount_inr=-int(units * 100.0 * 83.0 * 100),
-        charges_inr=0,
-        lot_id=lot_id,
-        notes="seeded",
-    )
-    return asset
+def test_open_and_closed_share_lot_ids(client, db):
+    _commit(client, _preview(client, "fidelity_open", _open_bytes(), "open.csv", _inputs())["preview_id"])
+    sources = {"2025-03-10": "RS", "2025-06-20": "SP"}
+    _commit(client, _preview(
+        client, "fidelity_closed", _closed_bytes(), "closed.csv", _inputs(sources=sources))["preview_id"])
+
+    rows = _db_rows(db)
+    assert len(rows) == 8  # 2 open + 6 closed
+    sells = [t for t in rows if _ttype(t) == "SELL"]
+    assert len(sells) == 3
+    lots = {t.lot_id for t in rows}
+    # One economic lot per (acquired date, unit cost): Mar-10 and Jun-20
+    assert len(lots) == 2
+    for sell in sells:
+        siblings = [t for t in rows if t.lot_id == sell.lot_id and _ttype(t) != "SELL"]
+        assert siblings, "every SELL shares its lot with an acquisition leg"
+    # SP legs are BUY (open remainder + closed STC acquisition leg)
+    jun_lot = next(t.lot_id for t in rows if t.date == date(2025, 6, 20))
+    jun_types = {_ttype(t) for t in rows if t.lot_id == jun_lot}
+    assert jun_types == {"BUY", "SELL"}
 
 
-def _make_sell_txn(ticker, date_sold, date_acquired, units, proceeds_inr, cost_inr, acq_forex=83.0):
-    qty_int = round(units * 10000)
-    raw = f"fidelity_sale|{ticker}|{date_sold.isoformat()}|{date_acquired.isoformat()}|{qty_int}"
-    txn_id = "fidelity_sale_" + _hashlib.sha256(raw.encode()).hexdigest()[:16]
-    return ParsedTransaction(
-        source="fidelity_sale",
-        asset_name=ticker, asset_identifier=ticker,
-        asset_type="STOCK_US", txn_type="SELL",
-        date=date_sold, units=units,
-        amount_inr=proceeds_inr,
-        acquisition_date=date_acquired,
-        acquisition_cost=cost_inr,
-        acquisition_forex_rate=acq_forex,
-        txn_id=txn_id,
-    )
+def test_open_snapshot_prune_replaces_shrunken_remainder(client, db):
+    _commit(client, _preview(client, "fidelity_open", _open_bytes(), "open.csv", _inputs())["preview_id"])
 
+    shrunk = _open_bytes().replace(b"Mar-10-2025,40.0000,5080.00,127.00",
+                                    b"Mar-10-2025,30.0000,3810.00,127.00")
+    preview = _preview(client, "fidelity_open", shrunk, "open.csv", _inputs())
+    assert any("will be removed" in w for w in preview["warnings"])
+    result = _commit(client, preview["preview_id"])
+    assert result["inserted"] == 1   # the 30u remainder
+    assert result.get("pruned", 0) == 1  # the stale 40u remainder
 
-class TestFidelityLotResolutionIntegration:
+    rows = _db_rows(db)
+    mar = [t for t in rows if t.date == date(2025, 3, 10)]
+    assert len(mar) == 1
+    assert mar[0].units == pytest.approx(30.0)
+    assert _ttype(mar[0]) == "VEST"
+    # Jun lot untouched
+    jun = [t for t in rows if t.date == date(2025, 6, 20)]
+    assert len(jun) == 1 and jun[0].units == pytest.approx(25.0)
 
-    def test_sell_resolves_to_existing_lot_id(self, db):
-        """PDF SELL for a ticker already in DB gets the correct lot_id."""
-        lot_id = "test-lot-uuid-1"
-        _seed_asset_and_buy(db, "AMZN", lot_id, _date(2023, 1, 15), 50.0)
-
-        sell = _make_sell_txn("AMZN", _date(2024, 3, 1), _date(2023, 1, 15), 10, 1000.0, 800.0)
-        result = ImportResult(source="fidelity_sale", transactions=[sell])
-        processor = FidelityPreCommitProcessor()
-        out = processor.process(result, UnitOfWork(db))
-
-        assert len(out.transactions) == 1
-        assert out.transactions[0].lot_id == lot_id
-        assert out.transactions[0].txn_type == "SELL"
-
-    def test_sell_to_cover_creates_buy_sell_pair(self, db):
-        """When date_acquired == date_sold and no lot found, BUY+SELL pair is created."""
-        # Seed asset with no buy transactions — processor creates synthetic BUY+SELL pair
-        uow = UnitOfWork(db)
-        uow.assets.create(
-            name="MSFT", identifier="MSFT",
-            asset_type=AssetType.STOCK_US, asset_class=AssetClass.EQUITY,
-            currency="USD", is_active=True,
-        )
-        sell = _make_sell_txn("MSFT", _date(2024, 3, 1), _date(2024, 3, 1), 5, 500.0, 450.0)
-        result = ImportResult(source="fidelity_sale", transactions=[sell])
-        processor = FidelityPreCommitProcessor()
-        out = processor.process(result, UnitOfWork(db))
-
-        types = {t.txn_type for t in out.transactions}
-        assert types == {"BUY", "SELL"}
-        buy = next(t for t in out.transactions if t.txn_type == "BUY")
-        sell_out = next(t for t in out.transactions if t.txn_type == "SELL")
-        assert buy.lot_id == sell_out.lot_id
-
-    def test_reprocess_produces_same_partial_txn_ids(self, db):
-        """Running the processor twice on the same sell produces identical txn_ids."""
-        lot_id = "test-lot-uuid-2"
-        _seed_asset_and_buy(db, "AMZN", lot_id, _date(2023, 6, 1), 100.0)
-
-        sell = _make_sell_txn("AMZN", _date(2024, 6, 1), _date(2023, 6, 1), 20, 2000.0, 1600.0)
-        processor = FidelityPreCommitProcessor()
-
-        r1 = processor.process(ImportResult(source="fidelity_sale", transactions=[sell]), UnitOfWork(db))
-        r2 = processor.process(ImportResult(source="fidelity_sale", transactions=[sell]), UnitOfWork(db))
-
-        assert r1.transactions[0].txn_id == r2.transactions[0].txn_id
-
-    def test_split_across_two_same_date_lots(self, db):
-        """36 shares sold, split across two lots of 20 and 16 bought on same date."""
-        _seed_asset_and_buy(db, "AMZN", "lot-a", _date(2023, 3, 15), 20.0)
-        _seed_asset_and_buy(db, "AMZN", "lot-b", _date(2023, 3, 15), 16.0)
-
-        sell = _make_sell_txn("AMZN", _date(2024, 3, 1), _date(2023, 3, 15), 36, 3600.0, 2800.0)
-        result = ImportResult(source="fidelity_sale", transactions=[sell])
-        out = FidelityPreCommitProcessor().process(result, UnitOfWork(db))
-
-        assert len(out.transactions) == 2
-        assert sum(t.units for t in out.transactions) == pytest.approx(36.0)
-        lot_ids = {t.lot_id for t in out.transactions}
-        assert lot_ids == {"lot-a", "lot-b"}
+    # Re-importing the same shrunk snapshot is a clean no-op
+    again_preview = _preview(client, "fidelity_open", shrunk, "open.csv", _inputs())
+    assert not any("will be removed" in w for w in again_preview["warnings"])
+    again = _commit(client, again_preview["preview_id"])
+    assert again["inserted"] == 0
+    assert again.get("pruned", 0) == 0

@@ -8,8 +8,8 @@ Usage (server must be running):
   python cli.py import cas <file> --pan ABCDE1234F [--member-name "Dhiraj"]
   python cli.py import nps <file> --pan ABCDE1234F [--member-name "Dhiraj"]
   python cli.py import zerodha <file> --pan ABCDE1234F [--member-name "Dhiraj"]
-  python cli.py import fidelity-rsu <file> --pan ABCDE1234F [--member-name "Dhiraj"]
-  python cli.py import fidelity-sale <file> --pan ABCDE1234F [--member-name "Dhiraj"]
+  python cli.py import fidelity-lots --open open.csv --closed closed.csv --ticker AMZN --pan ABCDE1234F [--member-name "Dhiraj"]
+  python cli.py import ibkr <file> --pan ABCDE1234F [--member-name "Dhiraj"]
 
   # Register a member explicitly (optional — any import/add command can also create one)
   python cli.py add-member --pan ABCDE1234F --member-name "Dhiraj"
@@ -206,26 +206,41 @@ def cmd_import_broker_csv(file_path: str, broker: str, member_id: int) -> dict:
     return result
 
 
-def cmd_import_fidelity_rsu(file_path: str, member_id: int,
-                            exchange_rates: dict[str, float] | None = None,
-                            auto_yes: bool = False) -> None:
-    """Import Fidelity RSU holding CSV (MARKET_TICKER.csv format).
-    Prompts for USD/INR exchange rate per vest month unless --exchange-rates was given.
-    """
-    _check_file(file_path, (".csv",))
-    from app.importers.fidelity_rsu_csv_importer import FidelityRSUImporter
+def cmd_import_fidelity_lots(open_path: str, closed_path: str, member_id: int,
+                           ticker: str | None = None,
+                           exchange_rates: dict[str, float] | None = None,
+                           auto_yes: bool = False) -> None:
+    """Import Fidelity open-lots (holdings snapshot) + closed-lots (sale history) CSVs.
 
-    # Step 1: Parse CSV locally to find required month-years
-    with open(file_path, "rb") as f:
-        csv_bytes = f.read()
-    months_list = FidelityRSUImporter.extract_required_month_years(csv_bytes)
-    months = set(months_list)
+    Both files must be the USD export. Runs two imports: open first (remainder
+    VESTs), then closed (sold-portion VESTs + SELLs). Closed-lot share sources
+    are derived from the open file by acquisition date (defaults to RS → VEST).
+    Prompts for ticker and USD/INR rates unless flags were given.
+    """
+    _check_file(open_path, (".csv",))
+    _check_file(closed_path, (".csv",))
+    from app.importers.fidelity_lots_importer import (
+        FidelityOpenLotsImporter, FidelityClosedLotsImporter,
+    )
+
+    with open(open_path, "rb") as f:
+        open_bytes = f.read()
+    with open(closed_path, "rb") as f:
+        closed_bytes = f.read()
+    months = set(FidelityOpenLotsImporter.extract_required_month_years(open_bytes))
+    months |= set(FidelityClosedLotsImporter.extract_required_month_years(closed_bytes))
 
     if not months:
-        print("No vest rows found in file.")
+        print("No lot rows found in files.")
         return
 
-    # Step 2: Exchange rates — flag value or interactive prompt
+    if ticker is None:
+        if not sys.stdin.isatty():
+            sys.exit("Refusing to prompt for ticker: stdin is not interactive. Pass --ticker AMZN.")
+        ticker = input("Ticker for these lots (e.g. AMZN): ").strip().upper()
+    if not ticker:
+        sys.exit("Ticker is required (e.g. --ticker AMZN).")
+
     if exchange_rates is None:
         if not sys.stdin.isatty():
             sys.exit("Refusing to prompt for exchange rates: stdin is not interactive. "
@@ -237,11 +252,106 @@ def cmd_import_fidelity_rsu(file_path: str, member_id: int,
             sys.exit(f"--exchange-rates is missing months: {', '.join(missing)} "
                      f"(required: {', '.join(sorted(months))})")
 
-    # Step 3: Call API with file + rates
+    open_inputs = {"ticker": ticker, "exchange_rates": exchange_rates}
+    with open(open_path, "rb") as f:
+        open_preview = _api(
+            "post",
+            f"/import/preview-file?source=fidelity_open&format=csv&member_id={member_id}",
+            files={"file": (os.path.basename(open_path), f, "text/csv")},
+            data={"user_inputs": json.dumps(open_inputs)},
+        )
+    print(f"\nOpen lots preview: {open_preview['new_count']} new, "
+          f"{open_preview['duplicate_count']} duplicate")
+    for w in open_preview.get("warnings", []):
+        print(f"  ! {w}")
+
+    # Share sources for closed rows come from the open file (same vest lots).
+    import io as _io
+    import csv as _csv
+    from datetime import datetime as _dt
+    sources: dict[str, str] = {}
+    for row in _csv.DictReader(_io.StringIO(open_bytes.decode("utf-8-sig"))):
+        d = (row.get("Date acquired") or "").strip()
+        s = (row.get("Share source") or "").strip().upper()
+        if d and s:
+            try:
+                sources[_dt.strptime(d, "%b-%d-%Y").date().isoformat()] = s
+            except ValueError:
+                pass
+    closed_inputs = {"ticker": ticker, "exchange_rates": exchange_rates, "sources": sources}
+    with open(closed_path, "rb") as f:
+        closed_preview = _api(
+            "post",
+            f"/import/preview-file?source=fidelity_closed&format=csv&member_id={member_id}",
+            files={"file": (os.path.basename(closed_path), f, "text/csv")},
+            data={"user_inputs": json.dumps(closed_inputs)},
+        )
+    print(f"Closed lots preview: {closed_preview['new_count']} new, "
+          f"{closed_preview['duplicate_count']} duplicate")
+    for w in closed_preview.get("warnings", [])[:10]:
+        print(f"  ! {w}")
+
+    if open_preview["new_count"] == 0 and closed_preview["new_count"] == 0:
+        print("Nothing to import.")
+        return
+
+    if not auto_yes:
+        confirm = input("Commit both? [y/N] ").strip().lower()
+        if confirm != "y":
+            print("Aborted.")
+            return
+
+    if open_preview["new_count"] > 0:
+        result = _api("post", f"/import/commit-file/{open_preview['preview_id']}")
+        _print_import_summary(
+            "Fidelity open lots",
+            inserted=result.get("inserted", 0),
+            skipped=result.get("skipped", 0),
+            errors=result.get("errors", []),
+        )
+        if result.get("pruned"):
+            print(f"  → pruned {result['pruned']} stale holding lot(s)")
+    if closed_preview["new_count"] > 0:
+        result = _api("post", f"/import/commit-file/{closed_preview['preview_id']}")
+        _print_import_summary(
+            "Fidelity closed lots",
+            inserted=result.get("inserted", 0),
+            skipped=result.get("skipped", 0),
+            errors=result.get("errors", []),
+        )
+    cmd_refresh_prices()
+
+
+def cmd_import_ibkr(file_path: str, member_id: int,
+                    exchange_rates: dict[str, float] | None = None,
+                    auto_yes: bool = False) -> None:
+    """Import IBKR Activity Flex Query Trades CSV (STOCK_US BUY/SELL)."""
+    _check_file(file_path, (".csv",))
+    from app.importers.ibkr_csv_importer import IBKRTradesImporter
+
+    with open(file_path, "rb") as f:
+        csv_bytes = f.read()
+    months = set(IBKRTradesImporter.extract_required_month_years(csv_bytes))
+
+    if not months:
+        print("No trade rows found in file.")
+        return
+
+    if exchange_rates is None:
+        if not sys.stdin.isatty():
+            sys.exit("Refusing to prompt for exchange rates: stdin is not interactive. "
+                     "Pass --exchange-rates '{\"YYYY-MM\": rate, ...}'.")
+        exchange_rates = _prompt_exchange_rates(months)
+    else:
+        missing = sorted(months - set(exchange_rates))
+        if missing:
+            sys.exit(f"--exchange-rates is missing months: {', '.join(missing)} "
+                     f"(required: {', '.join(sorted(months))})")
+
     with open(file_path, "rb") as f:
         preview = _api(
             "post",
-            f"/import/preview-file?source=fidelity_rsu&format=csv&member_id={member_id}",
+            f"/import/preview-file?source=ibkr&format=csv&member_id={member_id}",
             files={"file": (os.path.basename(file_path), f, "text/csv")},
             data={"user_inputs": json.dumps(exchange_rates)},
         )
@@ -260,69 +370,7 @@ def cmd_import_fidelity_rsu(file_path: str, member_id: int,
     result = _api("post", f"/import/commit-file/{preview['preview_id']}")
     cmd_refresh_prices()
     _print_import_summary(
-        "Fidelity RSU",
-        inserted=result.get("inserted", 0),
-        skipped=result.get("skipped", 0),
-        errors=[],
-    )
-
-
-def cmd_import_fidelity_sale(file_path: str, member_id: int,
-                             exchange_rates: dict[str, float] | None = None,
-                             auto_yes: bool = False) -> None:
-    """Import Fidelity tax-cover SELL transactions from a transaction summary PDF.
-    Parses the PDF locally (pdfplumber) to find required month-years, prompts for rates
-    unless --exchange-rates was given, then calls one API endpoint with file + rates.
-    """
-    _check_file(file_path, (".pdf",))
-    from app.importers.fidelity_pdf_importer import FidelityPDFImporter
-
-    # Step 1: Parse PDF locally to find required month-years
-    with open(file_path, "rb") as f:
-        pdf_bytes = f.read()
-    months_list = FidelityPDFImporter.extract_required_month_years(pdf_bytes)
-    months = set(months_list)
-
-    if not months:
-        print("No sale transactions found in PDF.")
-        return
-
-    # Step 2: Exchange rates — flag value or interactive prompt
-    if exchange_rates is None:
-        if not sys.stdin.isatty():
-            sys.exit("Refusing to prompt for exchange rates: stdin is not interactive. "
-                     "Pass --exchange-rates '{\"YYYY-MM\": rate, ...}'.")
-        print("\nEnter USD/INR exchange rate for each sale month (use RBI monthly average):")
-        exchange_rates = _prompt_exchange_rates(months)
-    else:
-        missing = sorted(months - set(exchange_rates))
-        if missing:
-            sys.exit(f"--exchange-rates is missing months: {', '.join(missing)} "
-                     f"(required: {', '.join(sorted(months))})")
-
-    # Step 3: Call single API endpoint with file + rates
-    with open(file_path, "rb") as f:
-        preview = _api(
-            "post",
-            f"/import/preview-file?source=fidelity_sale&format=pdf&member_id={member_id}",
-            files={"file": (os.path.basename(file_path), f, "application/pdf")},
-            data={"user_inputs": json.dumps(exchange_rates)},
-        )
-
-    print(f"\nPreview: {preview['new_count']} new, {preview['duplicate_count']} duplicate")
-    if preview["new_count"] == 0:
-        print("Nothing to import.")
-        return
-
-    if not auto_yes:
-        confirm = input("Commit? [y/N] ").strip().lower()
-        if confirm != "y":
-            print("Aborted.")
-            return
-
-    result = _api("post", f"/import/commit-file/{preview['preview_id']}")
-    _print_import_summary(
-        "Fidelity Sale PDF",
+        "IBKR",
         inserted=result.get("inserted", 0),
         skipped=result.get("skipped", 0),
         errors=[],
@@ -789,8 +837,10 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--member-name", dest="member_name", default=None,
                    help="Member display name — only used when creating a new member")
 
-    s = import_sub.add_parser("fidelity-rsu", help="Import Fidelity RSU holding CSV (MARKET_TICKER.csv)")
-    s.add_argument("file", help="Path to CSV file")
+    s = import_sub.add_parser("fidelity-lots", help="Import Fidelity open-lots + closed-lots CSVs (USD export)")
+    s.add_argument("--open", required=True, help="Path to open lots CSV (holdings snapshot)")
+    s.add_argument("--closed", required=True, help="Path to closed lots CSV (sale history)")
+    s.add_argument("--ticker", default=None, help="Ticker symbol, e.g. AMZN (prompts if omitted)")
     s.add_argument("--pan", required=True, help="PAN of the member")
     s.add_argument("--member-name", dest="member_name", default=None,
                    help="Member display name — only used when creating a new member")
@@ -799,13 +849,13 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--yes", dest="auto_yes", action="store_true",
                    help="Commit without asking (use with --exchange-rates for scripts)")
 
-    s = import_sub.add_parser("fidelity-sale", help="Import Fidelity tax-cover sale PDF")
-    s.add_argument("file", help="Path to PDF file")
+    s = import_sub.add_parser("ibkr", help="Import IBKR Activity Flex Query Trades CSV")
+    s.add_argument("file", help="Path to CSV file")
     s.add_argument("--pan", required=True, help="PAN of the member")
     s.add_argument("--member-name", dest="member_name", default=None,
                    help="Member display name — only used when creating a new member")
     s.add_argument("--exchange-rates", dest="exchange_rates", default=None,
-                   help="JSON map of YYYY-MM → USD/INR rate, e.g. '{\"2025-03\": 86.5}' (skips prompt)")
+                   help="JSON map of YYYY-MM → USD/INR rate, e.g. '{\"2026-05\": 86.0}' (skips prompt)")
     s.add_argument("--yes", dest="auto_yes", action="store_true",
                    help="Commit without asking (use with --exchange-rates for scripts)")
 
@@ -1022,14 +1072,15 @@ def main():
             cmd_import_nps(args.file, member_id)
         elif args.source == "zerodha":
             cmd_import_broker_csv(args.file, broker="zerodha", member_id=member_id)
-        elif args.source == "fidelity-rsu":
-            cmd_import_fidelity_rsu(args.file, member_id,
-                                    exchange_rates=_parse_exchange_rates_json(args.exchange_rates),
-                                    auto_yes=args.auto_yes)
-        elif args.source == "fidelity-sale":
-            cmd_import_fidelity_sale(args.file, member_id,
+        elif args.source == "fidelity-lots":
+            cmd_import_fidelity_lots(args.open, args.closed, member_id,
+                                     ticker=args.ticker,
                                      exchange_rates=_parse_exchange_rates_json(args.exchange_rates),
                                      auto_yes=args.auto_yes)
+        elif args.source == "ibkr":
+            cmd_import_ibkr(args.file, member_id,
+                            exchange_rates=_parse_exchange_rates_json(args.exchange_rates),
+                            auto_yes=args.auto_yes)
 
     elif args.command == "add-member":
         cmd_add_member(args.pan, args.member_name)

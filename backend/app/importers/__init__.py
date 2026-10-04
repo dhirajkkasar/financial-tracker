@@ -8,8 +8,9 @@ from app.importers.cas_importer import CASImporter
 from app.importers.nps_csv_importer import NPSImporter
 from app.importers.ppf_csv_importer import PPFCSVImporter
 from app.importers.epf_pdf_importer import EPFPDFImporter
-from app.importers.fidelity_rsu_csv_importer import FidelityRSUImporter
-from app.importers.fidelity_pdf_importer import FidelityPDFImporter
+from app.importers.fidelity_lots_importer import FidelityOpenLotsImporter
+from app.importers.fidelity_lots_importer import FidelityClosedLotsImporter
+from app.importers.ibkr_csv_importer import IBKRTradesImporter
 
 __all__ = [
     "ZerodhaImporter",
@@ -17,7 +18,8 @@ __all__ = [
     "NPSImporter",
     "PPFCSVImporter",
     "EPFPDFImporter",
-    "FidelityRSUImporter",
-    "FidelityPDFImporter",
+    "FidelityOpenLotsImporter",
+    "FidelityClosedLotsImporter",
+    "IBKRTradesImporter",
     "ValidationResult",
 ]

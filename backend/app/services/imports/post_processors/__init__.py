@@ -1,1 +1,1 @@
-from app.services.imports.post_processors.fidelity import FidelityPreCommitProcessor
+"""Post-processor package — asset-type post-commit hooks live in sibling modules."""

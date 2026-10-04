@@ -45,6 +45,7 @@ class InMemoryDeduplicator:
             errors=result.errors,
             warnings=warnings,
             duplicate_count=duplicate_count,
+            all_txn_ids=[t.txn_id for t in result.transactions],
         )
         return new_result
 

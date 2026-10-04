@@ -30,3 +30,4 @@ class ImportCommitResponse(BaseModel):
     inserted: int
     skipped: int
     errors: List[str] = []
+    pruned: int = 0

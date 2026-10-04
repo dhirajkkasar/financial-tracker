@@ -12,16 +12,16 @@ router = APIRouter(prefix="/import", tags=["import"])
 
 @router.post("/preview-file")
 async def preview_file_import(
-    source: str = Query(..., description="Importer source: zerodha/cas/nps/ppf/epf/fidelity_rsu/fidelity_sale"),
+    source: str = Query(..., description="Importer source: zerodha/cas/nps/ppf/epf/fidelity_open/fidelity_closed/ibkr"),
     format: str = Query(..., description="File format: csv or pdf"),
     member_id: Optional[int] = Query(None, description="Member ID to associate imported assets with"),
     file: UploadFile = File(...),
-    user_inputs: str | None = Form(None, description='JSON object e.g. {"2025-03": 86.5} for fidelity sources'),
+    user_inputs: str | None = Form(None, description='JSON object; fidelity lots: {"ticker": "AMZN", "exchange_rates": {"2025-03": 86.5}}'),
     orchestrator: ImportOrchestrator = Depends(get_import_orchestrator),
 ):
     """Preview a file import using ImportOrchestrator.
 
-    For fidelity sources, user_inputs (exchange rates) is required.
+    For fidelity lots sources, user_inputs carries ticker + exchange rates.
     """
     file_bytes = await file.read()
 

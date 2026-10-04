@@ -93,10 +93,7 @@ class ExchangeRateValidationHelper:
 
     @staticmethod
     def _extract_required_months(result: ImportResult) -> list[str]:
-        """Extract unique YYYY-MM strings from all parsed transactions.
-
-        Includes both the transaction date and the acquisition date (Fidelity
-        sale rows need a rate for each), when present.
+        """Extract unique YYYY-MM strings from all parsed transaction dates.
 
         Args:
             result: ImportResult containing transactions
@@ -107,7 +104,4 @@ class ExchangeRateValidationHelper:
         required_months: set[str] = set()
         for txn in result.transactions:
             required_months.add(txn.date.strftime("%Y-%m"))
-            acquisition_date = getattr(txn, "acquisition_date", None)
-            if acquisition_date is not None:
-                required_months.add(acquisition_date.strftime("%Y-%m"))
         return sorted(required_months)

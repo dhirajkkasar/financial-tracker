@@ -71,8 +71,7 @@ def test_all_importers_are_registered():
     import app.importers.nps_csv_importer
     import app.importers.ppf_csv_importer
     import app.importers.epf_pdf_importer
-    import app.importers.fidelity_pdf_importer
-    import app.importers.fidelity_rsu_csv_importer
+    import app.importers.fidelity_lots_importer
 
     from app.importers.registry import ImporterRegistry
     registry = ImporterRegistry()
@@ -84,8 +83,8 @@ def test_all_importers_are_registered():
         ("nps", "csv"),
         ("ppf", "csv"),
         ("epf", "pdf"),
-        ("fidelity_sale", "pdf"),
-        ("fidelity_rsu", "csv"),
+        ("fidelity_open", "csv"),
+        ("fidelity_closed", "csv"),
     ]
     for key in expected:
         assert key in registered, f"Expected {key} to be registered, got: {registered}"

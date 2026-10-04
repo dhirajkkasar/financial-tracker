@@ -4,6 +4,10 @@ ImportOrchestrator — coordinates preview/commit for any file import.
 preview(): parse file → deduplicate → store in PreviewStore → return ImportPreviewResponse
 commit():  load from store → persist transactions → run post-processors → publish event
 
+Snapshot sources (e.g. fidelity_open holdings): commit replaces stale snapshot
+rows — previously imported rows for the ticker that are absent from the new
+file are pruned, so a shrunken remainder updates instead of duplicating.
+
 Adding new post-processing: create an IPostProcessor subclass, register it in
 api/dependencies.py. No changes to this file.
 """
@@ -80,6 +84,8 @@ class ImportOrchestrator:
         result = self._pipeline.run(source, fmt, file_bytes, **importer_kwargs)
         result.member_id = member_id  # attach for commit phase
         logger.info("ImportOrchestrator.preview: result.transactions=%d, duplicate_count=%s", len(result.transactions), getattr(result, 'duplicate_count', None))
+        if result.source == "fidelity_open":
+            self._warn_stale_open_lots(result, member_id, importer_kwargs)
         preview_id = self._store.put(result)
 
         txn_previews = [
@@ -116,11 +122,12 @@ class ImportOrchestrator:
         inserted = 0
         skipped = getattr(result, "duplicate_count", 0)
         errors: list[str] = []
+        pruned = 0
         assets_created: dict[int, Asset] = {}
         member_id = getattr(result, "member_id", None)
 
         with self._uow_factory() as uow:
-            # Run pre-commit processor (e.g. Fidelity lot resolution) before any DB writes
+            # Run pre-commit processor (keyed by result.source) before any DB writes
             pre_processor = self._pre_commit_processors.get(result.source)
             if pre_processor:
                 result = pre_processor.process(result, uow)
@@ -156,7 +163,26 @@ class ImportOrchestrator:
                 except Exception as exc:
                     logger.warning("Failed to import txn %s: %s", parsed_txn.txn_id, exc)
                     errors.append(str(exc))
-            
+
+            # Snapshot replace (fidelity_open holdings): prune previously imported
+            # remainder rows for the ticker that are absent from this snapshot.
+            # Skipped when any row errored — a partial snapshot must not delete.
+            if result.source == "fidelity_open" and not errors and result.transactions:
+                try:
+                    # Keep every row the file contained (dedup-skipped rows are
+                    # unchanged holdings, not stale ones).
+                    keep_ids = set(result.all_txn_ids) or {t.txn_id for t in result.transactions}
+                    for stale in self._stale_open_lots(
+                        uow, result.transactions[0].asset_identifier, member_id, keep_ids
+                    ):
+                        uow.transactions.delete(stale)
+                        pruned += 1
+                    if pruned:
+                        logger.info("ImportOrchestrator.commit: pruned %d stale fidelity_open lot(s)", pruned)
+                except Exception as exc:
+                    logger.warning("Failed to prune stale fidelity_open lots: %s", exc)
+                    errors.append(f"prune failed: {exc}")
+
             # Run post-processor for each asset type
             for _, asset in assets_created.items():
                 processor = self._processors.get(asset.asset_type.value)
@@ -174,7 +200,45 @@ class ImportOrchestrator:
             )
 
         self._store.delete(preview_id)
-        return ImportCommitResponse(inserted=inserted, skipped=skipped, errors=errors)
+        return ImportCommitResponse(inserted=inserted, skipped=skipped, errors=errors, pruned=pruned)
+
+    # ------------------------------------------------------------------
+    # fidelity_open snapshot helpers
+    # ------------------------------------------------------------------
+
+    def _stale_open_lots(self, uow, ticker: str, member_id: int | None, keep_ids: set[str]) -> list:
+        """Previously imported fidelity_open rows for ticker absent from keep_ids."""
+        candidates: list = []
+        if member_id is not None:
+            candidates = [a for a in uow.assets.list(active=None, member_ids=[member_id])
+                          if a.identifier == ticker]
+        if not candidates:
+            candidates = [a for a in uow.assets.list(active=None) if a.identifier == ticker]
+        stale = []
+        for asset in candidates:
+            for txn in uow.transactions.list_by_asset(asset.id):
+                if txn.txn_id.startswith("fidelity_open_") and txn.txn_id not in keep_ids:
+                    stale.append(txn)
+        return stale
+
+    def _warn_stale_open_lots(self, result, member_id: int | None, importer_kwargs: dict) -> None:
+        """Preview-time notice of snapshot rows commit would prune. Never fails."""
+        try:
+            import json as _json
+            raw = (importer_kwargs or {}).get("user_inputs") or "{}"
+            ticker = str(_json.loads(raw).get("ticker") or "").upper()
+            if not ticker or not result.transactions:
+                return
+            with self._uow_factory() as uow:
+                keep_ids = set(result.all_txn_ids) or {t.txn_id for t in result.transactions}
+                stale = self._stale_open_lots(uow, ticker, member_id, keep_ids)
+            if stale:
+                result.warnings.append(
+                    f"{len(stale)} previously imported holding lot(s) for {ticker} are absent "
+                    "from this snapshot and will be removed at commit."
+                )
+        except Exception as exc:
+            logger.warning("Stale-lot preview check failed: %s", exc)
 
     # ------------------------------------------------------------------
     # helpers

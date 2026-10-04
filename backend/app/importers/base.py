@@ -42,10 +42,6 @@ class ParsedTransaction:
     scheme_category: Optional[str] = None
     asset_class: Optional[str] = None     # e.g. "EQUITY", "DEBT" — overrides ASSET_CLASS_MAP if set
     forex_rate: Optional[float] = None    # USD/INR rate used for conversion
-    # Fidelity PDF acquisition metadata — used by FidelityPreCommitProcessor
-    acquisition_date: Optional[date] = None        # date_acquired from Fidelity PDF sale row
-    acquisition_cost: Optional[float] = None       # cost basis in INR (cost_usd * acquisition_forex_rate)
-    acquisition_forex_rate: Optional[float] = None # USD/INR rate at acquisition date
 
 
 @dataclass
@@ -69,6 +65,10 @@ class ImportResult:
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     duplicate_count: int = 0
+    # Every parsed txn_id before deduplication (superset of transactions'
+    # ids). Snapshot sources (fidelity_open) use it to tell unchanged rows
+    # (dedup-skipped, still current) apart from stale rows (absent, prune).
+    all_txn_ids: list[str] = field(default_factory=list)
     closing_valuation_inr: Optional[float] = None
     closing_valuation_date: Optional[date] = None
     closing_valuation_source: Optional[str] = None

@@ -17,8 +17,8 @@ from cli import (
     cmd_import_cas,
     cmd_import_nps,
     cmd_import_broker_csv,
-    cmd_import_fidelity_rsu,
-    cmd_import_fidelity_sale,
+    cmd_import_fidelity_lots,
+    cmd_import_ibkr,
     cmd_add_fd,
     cmd_add_rd,
     cmd_add_gold,
@@ -37,8 +37,8 @@ Your database already has existing data. Use individual commands to add more:
     python cli.py import cas <file> --pan <PAN>
     python cli.py import nps <file> --pan <PAN>
     python cli.py import zerodha <file> --pan <PAN>
-    python cli.py import fidelity-rsu <file> --pan <PAN> --exchange-rates '{"2025-03": 86.5}'
-    python cli.py import fidelity-sale <file> --pan <PAN> --exchange-rates '{"2025-03": 86.5}'
+    python cli.py import fidelity-lots --open open.csv --closed closed.csv --ticker AMZN --pan <PAN> --exchange-rates '{"2025-03": 86.5}'
+    python cli.py import ibkr <file> --pan <PAN> --exchange-rates '{"2026-05": 86.0}'
 
   Manual add commands:
     python cli.py add fd --name ... --pan <PAN> --bank ... --principal ... --rate ... --start ... --maturity ... --compounding ...
@@ -144,6 +144,41 @@ def _section_file(label: str, import_fn, members: list[dict], single_member_id: 
             print(f"  Import failed (server error): {exc}")
 
         again = input(f"Import another file for {label}? [y/N]: ").strip().lower()
+        if again != "y":
+            break
+
+
+def _section_fidelity_lots(members: list[dict], single_member_id: int | None):
+    """Fidelity open-lots + closed-lots pair — one ticker per pair, repeatable."""
+    answer = input("\nDo you have US Stocks — Fidelity lots CSVs (open + closed)? [y/n]: ").strip().lower()
+    if answer != "y":
+        return
+
+    while True:
+        if single_member_id is None:
+            member_id = _ask_member(members, "Fidelity lots")
+        else:
+            member_id = single_member_id
+
+        def _ask_path(kind: str) -> str:
+            while True:
+                file_path = os.path.expanduser(input(f"Enter {kind} lots file path: ").strip())
+                if os.path.isfile(file_path):
+                    return file_path
+                print(f"  File not found: {file_path}. Please try again.")
+
+        open_path = _ask_path("open")
+        closed_path = _ask_path("closed")
+        ticker = input("Ticker for these lots (e.g. AMZN): ").strip().upper()
+
+        try:
+            cmd_import_fidelity_lots(open_path, closed_path, member_id, ticker=ticker or None)
+        except SystemExit as exc:
+            print(f"  Import failed: {exc}")
+        except requests.exceptions.RequestException as exc:
+            print(f"  Import failed (server error): {exc}")
+
+        again = input("Import another Fidelity lots pair? [y/N]: ").strip().lower()
         if again != "y":
             break
 
@@ -258,14 +293,10 @@ def run():
         lambda path, mid: cmd_import_broker_csv(path, "zerodha", mid),
         members, single_member_id,
     )
+    _section_fidelity_lots(members, single_member_id)
     _section_file(
-        "US Stocks — Fidelity RSU CSV (MARKET_TICKER.csv)",
-        cmd_import_fidelity_rsu,
-        members, single_member_id,
-    )
-    _section_file(
-        "US Stocks — Fidelity Sale PDF",
-        cmd_import_fidelity_sale,
+        "US Stocks — IBKR Flex Trades CSV",
+        cmd_import_ibkr,
         members, single_member_id,
     )
 

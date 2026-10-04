@@ -35,7 +35,7 @@ class ImportPipeline:
         """Run the full import pipeline: parse → validate → deduplicate.
         
         Args:
-            source: Importer source identifier (e.g., "fidelity_rsu", "fidelity_sale")
+            source: Importer source identifier (e.g., "fidelity_open", "fidelity_closed")
             fmt: File format (e.g., "csv", "pdf")
             file_bytes: Raw file bytes to parse
             **importer_kwargs: Additional arguments passed to importer.__init__ 

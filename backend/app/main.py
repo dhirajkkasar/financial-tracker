@@ -27,6 +27,21 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+class _SuppressLLMProbeFilter(logging.Filter):
+    """Drop uvicorn access-log noise from local AI tools probing /v1/models.
+
+    Some editor/assistant extensions probe localhost:8000 for an OpenAI-compatible
+    endpoint. This repo has no /v1/* routes, so just silence the 404 access log
+    instead of adding a fake endpoint.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "/v1/models" not in record.getMessage()
+
+
+logging.getLogger("uvicorn.access").addFilter(_SuppressLLMProbeFilter())
+
+
 async def _background_price_refresh():
     """Non-blocking price refresh + snapshot triggered on startup."""
     try:

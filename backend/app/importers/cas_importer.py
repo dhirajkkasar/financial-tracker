@@ -201,8 +201,14 @@ class CASImporter(BaseImporter):
         # Map transaction type from description
         txn_type = self._map_transaction_type(description)
 
-        # Sign convention: outflows negative, inflows positive
-        if txn_type in ("BUY", "SIP", "SWITCH_IN"):
+        # Sign convention: outflows negative, inflows positive.
+        # SPLIT is a non-cash marker (cf. corp_actions_service): store amount 0,
+        # units/price None so lot/XIRR engines ignore it.
+        if txn_type == "SPLIT":
+            amount_inr = 0
+            units = None
+            price = None
+        elif txn_type in ("BUY", "SIP", "SWITCH_IN"):
             amount_inr = -amount
         elif txn_type in ("REDEMPTION", "DIVIDEND", "SWITCH_OUT"):
             amount_inr = amount
@@ -299,6 +305,11 @@ class CASImporter(BaseImporter):
 
     def _map_transaction_type(self, description: str) -> str:
         desc_upper = description.upper()
+        # Face-value change / sub-division (e.g. "Switch Out Face value changed
+        # from Rs.1000.00 to Rs.100.00") is a non-cash split, not an economic
+        # switch — must be SPLIT (excluded from XIRR). Check before SWITCH.
+        if "FACE VALUE" in desc_upper or "SUB-DIVISION" in desc_upper or "SUBDIVISION" in desc_upper:
+            return "SPLIT"
         # SYSTEMATIC must be checked before generic SIP/"PURCHASE" so that
         # "PURCHASE SYSTEMATIC" maps to SIP (it contains neither bare "SIP" first).
         if "PURCHASE SYSTEMATIC" in desc_upper:

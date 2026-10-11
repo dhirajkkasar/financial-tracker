@@ -56,8 +56,6 @@ def _zero_result(asset) -> AssetTaxGainsResult:
         asset_type=asset.asset_type.value,
         asset_class=asset.asset_class.value,
         st_gain=0.0, lt_gain=0.0,
-        st_tax_estimate=0.0, lt_tax_estimate=0.0,
-        ltcg_exemption_used=0.0,
         has_slab=False,
         ltcg_exempt_eligible=False,
         ltcg_slab=True,
@@ -79,7 +77,6 @@ class AccruedInterestTaxGainsStrategy(TaxGainsStrategy):
         fy: str,
         fy_start: date,
         fy_end: date,
-        slab_rate_pct: float,
     ) -> AssetTaxGainsResult:
         fd = uow.fd.get_by_asset_id(asset.id)
         if fd is None:
@@ -106,8 +103,6 @@ class AccruedInterestTaxGainsStrategy(TaxGainsStrategy):
             window_end = min(fy_end, fd.maturity_date)
             interest = _rd_interest_in_window(fd, window_start, window_end)
 
-        st_tax = interest * slab_rate_pct / 100.0
-
         return AssetTaxGainsResult(
             asset_id=asset.id,
             asset_name=asset.name,
@@ -115,9 +110,6 @@ class AccruedInterestTaxGainsStrategy(TaxGainsStrategy):
             asset_class=asset.asset_class.value,
             st_gain=interest,
             lt_gain=0.0,
-            st_tax_estimate=st_tax,
-            lt_tax_estimate=0.0,
-            ltcg_exemption_used=0.0,
             has_slab=True,
             ltcg_exempt_eligible=False,
             ltcg_slab=True,

@@ -11,8 +11,7 @@ def test_asset_tax_gains_result_is_dataclass():
     r = AssetTaxGainsResult(
         asset_id=1, asset_name="Test", asset_type="STOCK_IN", asset_class="EQUITY",
         st_gain=1000.0, lt_gain=500.0,
-        st_tax_estimate=200.0, lt_tax_estimate=62.5,
-        ltcg_exemption_used=0.0, has_slab=False,
+        has_slab=False,
         ltcg_exempt_eligible=True, ltcg_slab=False,
     )
     assert r.asset_id == 1
@@ -117,7 +116,7 @@ def test_fifo_config_no_sells_returns_zero(resolver):
     asset = _make_asset()
     txns = [_make_txn("BUY", d(2023, 1, 1), 10, -1000000)]
     uow = _make_uow(transactions=txns)
-    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31))
     assert result.st_gain == 0.0
     assert result.lt_gain == 0.0
 
@@ -130,10 +129,9 @@ def test_fifo_config_st_gain_stock_in(resolver):
         _make_txn("SELL", d(2024, 9, 1), 10,  1200000, txn_id=2),
     ]
     uow = _make_uow(transactions=txns)
-    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31))
     assert result.st_gain == pytest.approx(2000.0)
     assert result.lt_gain == pytest.approx(0.0)
-    assert result.st_tax_estimate == pytest.approx(400.0)   # 2000 * 20%
     assert result.has_slab is False
     assert result.ltcg_exempt_eligible is True
 
@@ -146,9 +144,9 @@ def test_fifo_config_lt_gain_stock_in(resolver):
         _make_txn("SELL", d(2024, 6, 1), 10,  1500000, txn_id=2),
     ]
     uow = _make_uow(transactions=txns)
-    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31))
     assert result.lt_gain == pytest.approx(5000.0)
-    assert result.lt_tax_estimate == pytest.approx(625.0)   # 5000 * 12.5%
+    # LT gain verified; tax computed at service level
 
 
 def test_fifo_config_foreign_equity_slab(resolver):
@@ -159,9 +157,8 @@ def test_fifo_config_foreign_equity_slab(resolver):
         _make_txn("SELL", d(2024, 9, 1), 5,  60000, txn_id=2),
     ]
     uow = _make_uow(transactions=txns)
-    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31))
     assert result.st_gain == pytest.approx(100.0)
-    assert result.st_tax_estimate == pytest.approx(30.0)   # 100 * 30% slab
     assert result.has_slab is True
     assert result.ltcg_exempt_eligible is False
 
@@ -174,7 +171,7 @@ def test_fifo_config_gold_1095_day_threshold(resolver):
         _make_txn("SELL", d(2023, 10, 1), 10, 6000000, txn_id=2),
     ]
     uow = _make_uow(transactions=txns)
-    result = strategy.compute(asset, uow, "2023-24", d(2023, 4, 1), d(2024, 3, 31), 30.0)
+    result = strategy.compute(asset, uow, "2023-24", d(2023, 4, 1), d(2024, 3, 31))
     assert result.st_gain == pytest.approx(10000.0)
     assert result.lt_gain == pytest.approx(0.0)
     assert result.has_slab is True
@@ -188,9 +185,8 @@ def test_fifo_config_debt_mf_pre2023_ltcg(resolver):
         _make_txn("SELL", d(2024, 6, 1), 100,  1200000, txn_id=2),
     ]
     uow = _make_uow(transactions=txns)
-    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31))
     assert result.lt_gain == pytest.approx(2000.0)
-    assert result.lt_tax_estimate == pytest.approx(250.0)   # 2000 * 12.5%
 
 
 def test_fifo_config_debt_mf_post2023_all_slab(resolver):
@@ -201,11 +197,10 @@ def test_fifo_config_debt_mf_post2023_all_slab(resolver):
         _make_txn("SELL", d(2027, 12, 1), 100,  1200000, txn_id=2),
     ]
     uow = _make_uow(transactions=txns)
-    result = strategy.compute(asset, uow, "2027-28", d(2027, 4, 1), d(2028, 3, 31), 30.0)
+    result = strategy.compute(asset, uow, "2027-28", d(2027, 4, 1), d(2028, 3, 31))
     # Post-2023 debt: ltcg_rate_pct is null → slab
     # stcg_days is 730 and holding is 1644 days → classified as LT
     assert result.lt_gain == pytest.approx(2000.0)
-    assert result.lt_tax_estimate == pytest.approx(600.0)   # 2000 * 30% slab
     assert result.ltcg_slab is True
     assert result.has_slab is False
 
@@ -218,7 +213,7 @@ def test_fifo_config_sell_outside_fy_excluded(resolver):
         _make_txn("SELL", d(2024, 3, 1), 10,  1500000, txn_id=2),
     ]
     uow = _make_uow(transactions=txns)
-    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31))
     assert result.st_gain == 0.0
     assert result.lt_gain == 0.0
 
@@ -248,12 +243,11 @@ def test_accrued_interest_fd_partial_fy():
         rate_pct=7.0, compounding="QUARTERLY",
     )
     uow = _make_uow(fd_detail=fd)
-    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31))
     # Interest for Apr 2024 – Mar 2025 on a 1L FD at 7% quarterly
     assert result.st_gain > 0
     assert result.lt_gain == 0.0
     assert result.has_slab is True
-    assert result.st_tax_estimate == pytest.approx(result.st_gain * 0.30, rel=1e-3)
 
 
 def test_accrued_interest_fd_before_fy_zero():
@@ -266,7 +260,7 @@ def test_accrued_interest_fd_before_fy_zero():
         maturity_date=d(2023, 12, 31),   # matured before FY 2024-25
     )
     uow = _make_uow(fd_detail=fd)
-    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31))
     assert result.st_gain == 0.0
 
 
@@ -276,9 +270,8 @@ def test_accrued_interest_no_fd_detail_returns_zero():
     strategy = AccruedInterestTaxGainsStrategy()
     asset = _make_asset(asset_type="FD", asset_class="DEBT")
     uow = _make_uow(fd_detail=None)
-    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31))
     assert result.st_gain == 0.0
-    assert result.st_tax_estimate == 0.0
 
 
 def test_real_estate_no_sell_in_fy_zero():
@@ -287,7 +280,7 @@ def test_real_estate_no_sell_in_fy_zero():
     asset = _make_asset(asset_type="REAL_ESTATE", asset_class="REAL_ESTATE")
     txns = [_make_txn("CONTRIBUTION", d(2020, 1, 1), None, -500000000, txn_id=1)]
     uow = _make_uow(transactions=txns)
-    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31))
     assert result.st_gain == 0.0
     assert result.lt_gain == 0.0
 
@@ -302,10 +295,9 @@ def test_real_estate_lt_gain_over_2_years():
         _make_txn("SELL",         d(2024, 6, 1), None,  700000000, txn_id=2),
     ]
     uow = _make_uow(transactions=txns)
-    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31))
     assert result.lt_gain == pytest.approx(2_000_000.0)
     assert result.st_gain == pytest.approx(0.0)
-    assert result.lt_tax_estimate == pytest.approx(250_000.0)   # 2M × 12.5%
     assert result.has_slab is False
 
 
@@ -319,10 +311,9 @@ def test_real_estate_st_gain_under_2_years():
         _make_txn("SELL",         d(2024, 9, 1), None,  350000000, txn_id=2),
     ]
     uow = _make_uow(transactions=txns)
-    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31))
     assert result.st_gain == pytest.approx(500_000.0)
     assert result.lt_gain == pytest.approx(0.0)
-    assert result.st_tax_estimate == pytest.approx(150_000.0)   # 500K × 30% slab
     assert result.has_slab is True
 
 
@@ -347,9 +338,8 @@ def test_real_estate_lt_uses_resolver_rate(resolver):
     uow = MagicMock()
     uow.transactions.list_by_asset.return_value = [buy_txn, sell_txn]
 
-    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31), 30.0)
+    result = strategy.compute(asset, uow, "2024-25", d(2024, 4, 1), d(2025, 3, 31))
     assert result.lt_gain == pytest.approx(5000.0)
-    assert result.lt_tax_estimate == pytest.approx(625.0)   # 5000 * 12.5% from config
     assert result.st_gain == pytest.approx(0.0)
 
 
@@ -363,7 +353,7 @@ def test_tax_summary_returns_stcg_ltcg_interest_split():
     uow_factory.return_value.__exit__ = MagicMock(return_value=False)
     uow.assets.list.return_value = []  # no assets
 
-    svc = TaxService(uow_factory=uow_factory, slab_rate_pct=30.0)
+    svc = TaxService(uow_factory=uow_factory)
     result = svc.get_tax_summary("2024-25")
 
     assert result["fy"] == "2024-25"
@@ -384,11 +374,11 @@ def test_register_tax_strategy_instance():
     from datetime import date
 
     class DummyStrategy(TaxGainsStrategy):
-        def compute(self, asset, uow, fy, fy_start, fy_end, slab_rate_pct):
+        def compute(self, asset, uow, fy, fy_start, fy_end):
             return AssetTaxGainsResult(
                 asset_id=0, asset_name="", asset_type="", asset_class="",
-                st_gain=0, lt_gain=0, st_tax_estimate=0, lt_tax_estimate=0,
-                ltcg_exemption_used=0, has_slab=False,
+                st_gain=0, lt_gain=0,
+                has_slab=False,
                 ltcg_exempt_eligible=False, ltcg_slab=False,
             )
 

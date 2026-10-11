@@ -18,8 +18,7 @@ def _zero_result(asset) -> AssetTaxGainsResult:
         asset_id=asset.id, asset_name=asset.name,
         asset_type=asset.asset_type.value, asset_class=asset.asset_class.value,
         st_gain=0.0, lt_gain=0.0,
-        st_tax_estimate=0.0, lt_tax_estimate=0.0,
-        ltcg_exemption_used=0.0, has_slab=False,
+        has_slab=False,
         ltcg_exempt_eligible=False, ltcg_slab=False,
     )
 
@@ -49,7 +48,6 @@ class RealEstateTaxGainsStrategy(TaxGainsStrategy):
         fy: str,
         fy_start: date,
         fy_end: date,
-        slab_rate_pct: float,
     ) -> AssetTaxGainsResult:
         txns = uow.transactions.list_by_asset(asset.id)
 
@@ -88,10 +86,8 @@ class RealEstateTaxGainsStrategy(TaxGainsStrategy):
         if self._resolver is not None:
             rule = self._resolver.resolve(fy, "REAL_ESTATE")
             stcg_days = rule.stcg_days
-            ltcg_rate = rule.ltcg_rate_pct if rule.ltcg_rate_pct is not None else slab_rate_pct
         else:
             stcg_days = 730
-            ltcg_rate = 12.5
 
         # Per-sale holding check: each FY sale's pro-rata gain is classified by
         # (sale_date − earliest_buy). If ANY sale in the FY is LT, LT gain results.
@@ -105,15 +101,12 @@ class RealEstateTaxGainsStrategy(TaxGainsStrategy):
             else:
                 lt_gain += sale_gain
 
-        st_tax = max(0.0, st_gain) * slab_rate_pct / 100.0
-        lt_tax = max(0.0, lt_gain) * ltcg_rate / 100.0
         has_slab = st_gain > 0
 
         return AssetTaxGainsResult(
             asset_id=asset.id, asset_name=asset.name,
             asset_type=asset.asset_type.value, asset_class=asset.asset_class.value,
             st_gain=st_gain, lt_gain=lt_gain,
-            st_tax_estimate=st_tax, lt_tax_estimate=lt_tax,
-            ltcg_exemption_used=0.0, has_slab=has_slab,
+            has_slab=has_slab,
             ltcg_exempt_eligible=False, ltcg_slab=False,
         )

@@ -34,34 +34,72 @@ class InterestAssetEntry(BaseModel):
 
 class StcgSection(BaseModel):
     total_gain: float = 0.0
+    net_gain_after_setoff: float = 0.0
     total_tax: float = 0.0
-    has_slab_items: bool = False
     assets: List[StcgAssetEntry] = []
 
 
 class LtcgSection(BaseModel):
     total_gain: float = 0.0
+    net_gain_after_setoff: float = 0.0
     total_tax: float = 0.0
     ltcg_exemption_used: float = 0.0
-    has_slab_items: bool = False
     assets: List[LtcgAssetEntry] = []
 
 
 class InterestSection(BaseModel):
     total_interest: float = 0.0
     total_tax: float = 0.0
-    slab_rate_pct: float = 30.0
     assets: List[InterestAssetEntry] = []
+
+
+class CapitalGainsTaxSection(BaseModel):
+    tax_before_surcharge_cess: float = 0.0
+    surcharge: float = 0.0
+    cess: float = 0.0
+    total: float = 0.0
+
+
+class SlabIncomeTaxSection(BaseModel):
+    tax_before_surcharge_cess: float = 0.0
+    surcharge: float = 0.0
+    cess: float = 0.0
+    total: float = 0.0
+
+
+class SetoffSummary(BaseModel):
+    stcl_applied: float = 0.0
+    ltcl_applied: float = 0.0
+    stcl_carryforward_remaining: float = 0.0
+    ltcl_carryforward_remaining: float = 0.0
+
+
+class CarryForwardEntry(BaseModel):
+    fy_label: str
+    remaining_inr: float
+    expires_fy_label: str
+
+
+class CarryForwardSummary(BaseModel):
+    stcl: List[CarryForwardEntry] = []
+    ltcl: List[CarryForwardEntry] = []
 
 
 class TaxSummaryResponse(BaseModel):
     fy: str
+    member_id: Optional[int] = None
+    total_income_inr: float = 0.0
     stcg: StcgSection = StcgSection()
     ltcg: LtcgSection = LtcgSection()
     interest: InterestSection = InterestSection()
+    capital_gains_tax: CapitalGainsTaxSection = CapitalGainsTaxSection()
+    slab_income_tax: SlabIncomeTaxSection = SlabIncomeTaxSection()
+    rebate_87a: float = 0.0
+    total_tax: float = 0.0
+    setoff_summary: SetoffSummary = SetoffSummary()
+    carryforward_balances: CarryForwardSummary = CarryForwardSummary()
 
 
-# Keep existing UnrealisedGainEntry and HarvestOpportunityEntry unchanged
 class UnrealisedGainEntry(BaseModel):
     asset_id: int
     asset_name: str

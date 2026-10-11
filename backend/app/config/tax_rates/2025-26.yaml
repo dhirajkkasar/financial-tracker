@@ -89,3 +89,41 @@ EPF:
   stcg_days: 365
   ltcg_exemption_inr: 0
   ltcg_exempt_eligible: false
+
+# ── Income tax (new regime) ───────────────────────────────────────────────────
+# Slab rates on total income (salary + interest + capital gains).
+# Surcharge applies on tax; capped at 15% for capital gains u/s 111A/112/112A.
+# Cess 4% on (tax + surcharge). 87A rebate for income ≤ threshold.
+income_tax:
+  slabs:
+    - up_to_inr: 400000
+      rate_pct: 0
+    - up_to_inr: 800000
+      rate_pct: 5
+    - up_to_inr: 1200000
+      rate_pct: 10
+    - up_to_inr: 1600000
+      rate_pct: 15
+    - up_to_inr: 2000000
+      rate_pct: 20
+    - up_to_inr: 2400000
+      rate_pct: 25
+    - up_to_inr: null
+      rate_pct: 30
+  surcharge:
+    - income_above_inr: 5000000
+      rate_pct: 10
+      cap_pct_for_capital_gains: 15
+    - income_above_inr: 10000000
+      rate_pct: 15
+      cap_pct_for_capital_gains: 15
+    - income_above_inr: 20000000
+      rate_pct: 25
+      cap_pct_for_capital_gains: 15
+    - income_above_inr: 50000000
+      rate_pct: 37
+      cap_pct_for_capital_gains: 15
+  cess_pct: 4
+  rebate_87a:
+    income_threshold_inr: 700000
+    max_rebate_inr: 15000

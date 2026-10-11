@@ -28,8 +28,6 @@ class FifoTaxGainsStrategy(TaxGainsStrategy):
             asset_type=asset.asset_type.value,
             asset_class=asset.asset_class.value,
             st_gain=0.0, lt_gain=0.0,
-            st_tax_estimate=0.0, lt_tax_estimate=0.0,
-            ltcg_exemption_used=0.0,
             has_slab=False,
             ltcg_exempt_eligible=False,
             ltcg_slab=False,
@@ -42,7 +40,6 @@ class FifoTaxGainsStrategy(TaxGainsStrategy):
         fy: str,
         fy_start: date,
         fy_end: date,
-        slab_rate_pct: float,
     ) -> AssetTaxGainsResult:
         if self._resolver is None:
             raise RuntimeError(
@@ -67,7 +64,6 @@ class FifoTaxGainsStrategy(TaxGainsStrategy):
         matched = match_lots(lots, sells, stcg_days=default_rule.stcg_days)
 
         st_gain, lt_gain = 0.0, 0.0
-        st_tax, lt_tax = 0.0, 0.0
         has_slab = False
         ltcg_slab = False
         ltcg_exempt_eligible = False
@@ -93,16 +89,10 @@ class FifoTaxGainsStrategy(TaxGainsStrategy):
 
             if holding_days < rule.stcg_days:
                 st_gain += gain
-                rate = rule.stcg_rate_pct if rule.stcg_rate_pct is not None else slab_rate_pct
-                if gain > 0:
-                    st_tax += gain * rate / 100.0
                 if rule.stcg_rate_pct is None:
                     has_slab = True
             else:
                 lt_gain += gain
-                rate = rule.ltcg_rate_pct if rule.ltcg_rate_pct is not None else slab_rate_pct
-                if gain > 0:
-                    lt_tax += gain * rate / 100.0
                 if rule.ltcg_rate_pct is None:
                     ltcg_slab = True
 
@@ -116,9 +106,6 @@ class FifoTaxGainsStrategy(TaxGainsStrategy):
             asset_class=asset_class,
             st_gain=st_gain,
             lt_gain=lt_gain,
-            st_tax_estimate=st_tax if st_gain > 0 else 0.0,
-            lt_tax_estimate=lt_tax if lt_gain > 0 else 0.0,
-            ltcg_exemption_used=0.0,
             has_slab=has_slab,
             ltcg_exempt_eligible=ltcg_exempt_eligible,
             ltcg_slab=ltcg_slab,

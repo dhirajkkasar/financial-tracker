@@ -15,10 +15,7 @@ class AssetTaxGainsResult:
     asset_class: str
     st_gain: float
     lt_gain: float
-    st_tax_estimate: float        # always numeric — slab items use injected slab_rate_pct
-    lt_tax_estimate: float        # always numeric, pre-exemption for ltcg_exempt_eligible
-    ltcg_exemption_used: float    # always 0.0 here — exemption applied at entry level
-    has_slab: bool                # True if slab_rate_pct was used for any gain
+    has_slab: bool                # True if STCG is slab-rated
     ltcg_exempt_eligible: bool    # True for STOCK_IN and equity MF (Section 112A)
     ltcg_slab: bool               # True if LTCG is slab-rated (Debt MF, FD/RD)
 
@@ -32,7 +29,6 @@ class TaxGainsStrategy(ABC):
         fy: str,
         fy_start: date,
         fy_end: date,
-        slab_rate_pct: float,
     ) -> AssetTaxGainsResult:
         ...
 

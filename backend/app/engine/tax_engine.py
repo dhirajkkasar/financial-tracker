@@ -10,6 +10,8 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
+from app.engine.income_tax import IncomeTaxConfig, load_income_tax_config
+
 # ₹1.25L LTCG exemption — Section 112A (equity and equity MF only)
 LTCG_EXEMPTION_LIMIT = 125_000.0
 
@@ -123,6 +125,7 @@ class TaxRuleResolver:
     def __init__(self, config_dir: Path):
         self._config_dir = config_dir
         self._cache: dict[str, dict] = {}
+        self._income_tax_cache: dict[str, IncomeTaxConfig] = {}
 
     def resolve(
         self,
@@ -162,6 +165,12 @@ class TaxRuleResolver:
         result.pop("overrides", None)
 
         return ResolvedTaxRule(**result)
+
+    def get_income_tax_config(self, fy: str) -> IncomeTaxConfig:
+        """Load income tax config (slabs, surcharge, cess, 87A) for a FY."""
+        if fy not in self._income_tax_cache:
+            self._income_tax_cache[fy] = load_income_tax_config(fy, self._config_dir)
+        return self._income_tax_cache[fy]
 
     def _load(self, fy: str) -> dict:
         if fy not in self._cache:
@@ -214,19 +223,128 @@ class TaxRuleResolver:
 
 # ── Harvest opportunities ─────────────────────────────────────────────────────
 
-def find_harvest_opportunities(open_lots: list[dict]) -> list[dict]:
+LTCG_EXEMPTION_LIMIT = 125_000.0  # ₹1.25L Section 112A
+
+
+def find_harvest_opportunities(
+    open_lots: list[dict],
+    total_income_inr: float = 25_000_000.0,
+    income_tax_config=None,
+) -> list[dict]:
     """
     Return lots with negative unrealised_gain (tax-loss harvesting candidates),
-    sorted by largest unrealised loss first.
+    sorted by tax benefit (highest first).
 
-    Adds 'unrealised_loss' field (absolute value) for convenience.
+    Adds fields:
+      - unrealised_loss: absolute value of loss
+      - loss_type: 'STCL' or 'LTCL'
+      - tax_benefit: estimated tax saved by realising this loss
+      - priority: 'high' | 'medium' | 'low' based on tax benefit per rupee
+      - guardrail: warning message if harvest may be suboptimal
+
+    STCL can offset STCG (slab) and LTCG (12.5%/slab) — more flexible.
+    LTCL can only offset LTCG — less flexible.
     """
+    from app.engine.income_tax import compute_slab_tax
+
     opportunities = []
     for lot in open_lots:
         gain = lot.get("unrealised_gain")
         if gain is None or gain >= 0:
             continue
-        opportunities.append({**lot, "unrealised_loss": abs(gain)})
 
-    opportunities.sort(key=lambda o: o["unrealised_loss"], reverse=True)
+        loss = abs(gain)
+        is_st = lot.get("is_short_term", True)
+        loss_type = "STCL" if is_st else "LTCL"
+
+        # Compute marginal tax rate for slab-rated gains
+        if income_tax_config is not None:
+            _, marginal_rate = compute_slab_tax(total_income_inr, income_tax_config)
+        else:
+            marginal_rate = 30.0
+
+        # Tax benefit: STCL offsets STCG at slab rate (or LTCG at 12.5%)
+        # LTCL only offsets LTCG at 12.5%
+        if is_st:
+            # STCL: can offset STCG (slab) or LTCG (12.5%)
+            # Benefit = loss * max(slab_rate, 12.5%) — but capped by available gains
+            tax_benefit = loss * max(marginal_rate, 12.5) / 100.0
+        else:
+            # LTCL: only offsets LTCG at 12.5%
+            tax_benefit = loss * 12.5 / 100.0
+
+        # Priority based on tax benefit per rupee of loss
+        if is_st and marginal_rate > 20.0:
+            priority = "high"  # STCL at high slab rate
+        elif is_st:
+            priority = "medium"  # STCL at lower slab rate
+        else:
+            priority = "low"  # LTCL only offsets 12.5% LTCG
+
+        # Guardrails
+        guardrail = None
+        if not is_st and marginal_rate < 15.0:
+            guardrail = (
+                "LTCL only offsets LTCG at 12.5%. "
+                "If your slab rate is low, consider holding for STCL conversion."
+            )
+        elif is_st and total_income_inr < 500_000:
+            guardrail = (
+                "Income below ₹5L: STCL may not provide immediate tax benefit "
+                "if no STCG/LTCG to offset. Loss will carry forward."
+            )
+
+        opportunities.append({
+            **lot,
+            "unrealised_loss": loss,
+            "loss_type": loss_type,
+            "tax_benefit": tax_benefit,
+            "priority": priority,
+            "guardrail": guardrail,
+        })
+
+    # Sort by tax benefit (highest first)
+    opportunities.sort(key=lambda o: o["tax_benefit"], reverse=True)
+    return opportunities
+
+
+def find_gain_harvesting_opportunities(
+    open_lots: list[dict],
+    ltcg_exemption_remaining: float = LTCG_EXEMPTION_LIMIT,
+) -> list[dict]:
+    """
+    Return lots where realising LTCG up to the remaining ₹1.25L exemption is tax-free.
+
+    These are lots with positive unrealised_gain that are long-term and
+    exemption-eligible (STOCK_IN, equity MF).
+
+    Adds fields:
+      - potential_ltcg: gain that can be realised tax-free
+      - exemption_remaining: remaining ₹1.25L exemption after this realisation
+    """
+    opportunities = []
+    for lot in open_lots:
+        gain = lot.get("unrealised_gain")
+        if gain is None or gain <= 0:
+            continue
+        is_st = lot.get("is_short_term", True)
+        if is_st:
+            continue  # Only LTCG qualifies for 112A exemption
+
+        atype = lot.get("asset_type", "")
+        if atype not in {"STOCK_IN", "MF"}:
+            continue  # Only equity + equity MF eligible
+
+        potential_ltcg = min(gain, ltcg_exemption_remaining)
+        if potential_ltcg <= 0:
+            continue
+
+        opportunities.append({
+            **lot,
+            "potential_ltcg": potential_ltcg,
+            "exemption_remaining": ltcg_exemption_remaining - potential_ltcg,
+        })
+
+    # Sort by potential LTCG (highest first)
+    opportunities.sort(key=lambda o: o["potential_ltcg"], reverse=True)
     return opportunities

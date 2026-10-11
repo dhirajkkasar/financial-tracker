@@ -36,13 +36,12 @@ class EPFTaxGainsStrategy(TaxGainsStrategy):
             asset_id=asset.id, asset_name=asset.name,
             asset_type=asset.asset_type.value, asset_class=asset.asset_class.value,
             st_gain=0.0, lt_gain=0.0,
-            st_tax_estimate=0.0, lt_tax_estimate=0.0,
-            ltcg_exemption_used=0.0, has_slab=False,
+            has_slab=False,
             ltcg_exempt_eligible=False, ltcg_slab=True,
         )
 
     def compute(self, asset, uow: UnitOfWork, fy: str,
-                fy_start: date, fy_end: date, slab_rate_pct: float) -> AssetTaxGainsResult:
+                fy_start: date, fy_end: date) -> AssetTaxGainsResult:
         txns = uow.transactions.list_by_asset(asset.id)
         emp_contrib = 0.0
         has_employer = False
@@ -69,7 +68,6 @@ class EPFTaxGainsStrategy(TaxGainsStrategy):
             asset_id=asset.id, asset_name=asset.name,
             asset_type=asset.asset_type.value, asset_class=asset.asset_class.value,
             st_gain=taxable, lt_gain=0.0,
-            st_tax_estimate=taxable * slab_rate_pct / 100.0, lt_tax_estimate=0.0,
-            ltcg_exemption_used=0.0, has_slab=True,
+            has_slab=True,
             ltcg_exempt_eligible=False, ltcg_slab=True,
         )

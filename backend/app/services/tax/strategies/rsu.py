@@ -36,13 +36,12 @@ class RSUTaxGainsStrategy(TaxGainsStrategy):
             asset_id=asset.id, asset_name=asset.name,
             asset_type=asset.asset_type.value, asset_class=asset.asset_class.value,
             st_gain=0.0, lt_gain=0.0,
-            st_tax_estimate=0.0, lt_tax_estimate=0.0,
-            ltcg_exemption_used=0.0, has_slab=False,
+            has_slab=False,
             ltcg_exempt_eligible=False, ltcg_slab=False,
         )
 
     def compute(self, asset, uow: UnitOfWork, fy: str,
-                fy_start: date, fy_end: date, slab_rate_pct: float) -> AssetTaxGainsResult:
+                fy_start: date, fy_end: date) -> AssetTaxGainsResult:
         if self._resolver is None:
             raise RuntimeError("RSUTaxGainsStrategy requires a TaxRuleResolver.")
         txns = uow.transactions.list_by_asset(asset.id)
@@ -54,10 +53,8 @@ class RSUTaxGainsStrategy(TaxGainsStrategy):
         )
 
         lots, sells = LotHelper(stcg_days=730).build_lots_sells(txns)
-        st_gain, lt_gain, st_tax, lt_tax = perquisite, 0.0, 0.0, 0.0
+        st_gain, lt_gain = perquisite, 0.0
         has_slab = perquisite > 0
-        if perquisite > 0:
-            st_tax += perquisite * slab_rate_pct / 100.0
 
         if lots and sells:
             matched = match_lots(lots, sells, stcg_days=730)
@@ -78,16 +75,10 @@ class RSUTaxGainsStrategy(TaxGainsStrategy):
                 gain = m["realised_gain_inr"]
                 if holding < rule.stcg_days:
                     st_gain += gain
-                    if gain > 0:
-                        rate = rule.stcg_rate_pct if rule.stcg_rate_pct is not None else slab_rate_pct
-                        st_tax += gain * rate / 100.0
-                        if rule.stcg_rate_pct is None:
-                            has_slab = True
+                    if rule.stcg_rate_pct is None:
+                        has_slab = True
                 else:
                     lt_gain += gain
-                    if gain > 0:
-                        rate = rule.ltcg_rate_pct if rule.ltcg_rate_pct is not None else slab_rate_pct
-                        lt_tax += gain * rate / 100.0
 
         if st_gain == 0 and lt_gain == 0:
             return self._zero(asset)
@@ -95,8 +86,6 @@ class RSUTaxGainsStrategy(TaxGainsStrategy):
             asset_id=asset.id, asset_name=asset.name,
             asset_type=asset.asset_type.value, asset_class=asset.asset_class.value,
             st_gain=st_gain, lt_gain=lt_gain,
-            st_tax_estimate=st_tax if st_gain > 0 else 0.0,
-            lt_tax_estimate=lt_tax if lt_gain > 0 else 0.0,
-            ltcg_exemption_used=0.0, has_slab=has_slab,
+            has_slab=has_slab,
             ltcg_exempt_eligible=False, ltcg_slab=False,
         )

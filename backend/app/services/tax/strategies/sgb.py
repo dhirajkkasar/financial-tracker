@@ -51,26 +51,25 @@ class SGBTaxGainsStrategy(TaxGainsStrategy):
             asset_id=asset.id, asset_name=asset.name,
             asset_type=asset.asset_type.value, asset_class=asset.asset_class.value,
             st_gain=0.0, lt_gain=0.0,
-            st_tax_estimate=0.0, lt_tax_estimate=0.0,
-            ltcg_exemption_used=0.0, has_slab=False,
+            has_slab=False,
             ltcg_exempt_eligible=False, ltcg_slab=False,
         )
 
     def compute(self, asset, uow: UnitOfWork, fy: str,
-                fy_start: date, fy_end: date, slab_rate_pct: float) -> AssetTaxGainsResult:
+                fy_start: date, fy_end: date) -> AssetTaxGainsResult:
         if self._resolver is None:
             raise RuntimeError("SGBTaxGainsStrategy requires a TaxRuleResolver.")
         txns = uow.transactions.list_by_asset(asset.id)
         lots, sells = LotHelper(stcg_days=365).build_lots_sells(txns)
         if not lots or not sells:
             # No sales — but the interest coupon may still be taxable
-            return self._with_interest_only(asset, uow, fy_start, fy_end, slab_rate_pct)
+            return self._with_interest_only(asset, uow, fy_start, fy_end)
 
         matched = match_lots(lots, sells, stcg_days=365)
         secondary = _is_secondary(asset)
         new_rule = _fy_start_year(fy) >= NEW_SGB_RULE_FROM_FY_START
 
-        st_gain, lt_gain, st_tax, lt_tax = 0.0, 0.0, 0.0, 0.0
+        st_gain, lt_gain = 0.0, 0.0
         has_slab = False
         for m in matched:
             sell_date = m["sell_date"]
@@ -94,20 +93,13 @@ class SGBTaxGainsStrategy(TaxGainsStrategy):
             )
             if holding < rule.stcg_days:
                 st_gain += gain
-                if gain > 0:
-                    rate = rule.stcg_rate_pct if rule.stcg_rate_pct is not None else slab_rate_pct
-                    st_tax += gain * rate / 100.0
-                    if rule.stcg_rate_pct is None:
-                        has_slab = True
+                if rule.stcg_rate_pct is None:
+                    has_slab = True
             else:
                 lt_gain += gain
-                if gain > 0:
-                    rate = rule.ltcg_rate_pct if rule.ltcg_rate_pct is not None else slab_rate_pct
-                    lt_tax += gain * rate / 100.0
 
-        interest, interest_tax = self._fy_interest(txns, fy_start, fy_end, slab_rate_pct)
+        interest = self._fy_interest(txns, fy_start, fy_end)
         st_gain += interest
-        st_tax += interest_tax
         if interest > 0:
             has_slab = True
 
@@ -115,33 +107,28 @@ class SGBTaxGainsStrategy(TaxGainsStrategy):
             asset_id=asset.id, asset_name=asset.name,
             asset_type=asset.asset_type.value, asset_class=asset.asset_class.value,
             st_gain=st_gain, lt_gain=lt_gain,
-            st_tax_estimate=st_tax if st_gain > 0 else 0.0,
-            lt_tax_estimate=lt_tax if lt_gain > 0 else 0.0,
-            ltcg_exemption_used=0.0, has_slab=has_slab,
+            has_slab=has_slab,
             ltcg_exempt_eligible=False, ltcg_slab=False,
         )
 
-    def _fy_interest(self, txns, fy_start: date, fy_end: date,
-                     slab_rate_pct: float) -> tuple[float, float]:
+    def _fy_interest(self, txns, fy_start: date, fy_end: date) -> float:
         total = sum(
             abs(t.amount_inr / 100.0) for t in txns
             if (t.type.value if hasattr(t.type, "value") else str(t.type)) == "INTEREST"
             and fy_start <= t.date <= fy_end
         )
-        return total, total * slab_rate_pct / 100.0
+        return total
 
     def _with_interest_only(self, asset, uow: UnitOfWork,
-                            fy_start: date, fy_end: date,
-                            slab_rate_pct: float) -> AssetTaxGainsResult:
+                            fy_start: date, fy_end: date) -> AssetTaxGainsResult:
         txns = uow.transactions.list_by_asset(asset.id)
-        interest, interest_tax = self._fy_interest(txns, fy_start, fy_end, slab_rate_pct)
+        interest = self._fy_interest(txns, fy_start, fy_end)
         if interest == 0:
             return self._zero(asset)
         return AssetTaxGainsResult(
             asset_id=asset.id, asset_name=asset.name,
             asset_type=asset.asset_type.value, asset_class=asset.asset_class.value,
             st_gain=interest, lt_gain=0.0,
-            st_tax_estimate=interest_tax, lt_tax_estimate=0.0,
-            ltcg_exemption_used=0.0, has_slab=True,
+            has_slab=True,
             ltcg_exempt_eligible=False, ltcg_slab=False,
         )

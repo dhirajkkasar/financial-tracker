@@ -171,10 +171,8 @@ def get_snapshot_service(db: Session = Depends(get_db)) -> SnapshotService:
 
 
 def get_tax_service(db: Session = Depends(get_db)) -> TaxService:
-    slab_rate_pct = float(os.environ.get("SLAB_RATE", "30.0"))
     return TaxService(
         uow_factory=lambda: UnitOfWork(db),
-        slab_rate_pct=slab_rate_pct,
         resolver=_tax_resolver,
     )
 

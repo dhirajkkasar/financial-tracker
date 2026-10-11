@@ -9,6 +9,8 @@ from app.models.goal import Goal, GoalAllocation
 from app.models.important_data import ImportantData, ImportantDataCategory
 from app.models.snapshot import PortfolioSnapshot
 from app.models.cas_snapshot import CasSnapshot
+from app.models.member_tax_profile import MemberTaxProfile
+from app.models.tax_loss_carryforward import TaxLossCarryForward, LossType
 
 __all__ = [
     "Member",
@@ -22,4 +24,6 @@ __all__ = [
     "ImportantData", "ImportantDataCategory",
     "PortfolioSnapshot",
     "CasSnapshot",
+    "MemberTaxProfile",
+    "TaxLossCarryForward", "LossType",
 ]

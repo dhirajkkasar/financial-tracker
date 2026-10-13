@@ -464,9 +464,8 @@ class TaxService:
         Compute LTCG tax with 112A exemption.
         Returns (tax, exemption_used).
         """
-        if net_ltcg <= 0:
-            return 0.0, 0.0
-
+        # Always compute exemption if there are exempt-eligible gains,
+        # even if net_ltcg is zero or negative (e.g., after set-off).
         exempt_eligible = sum(
             max(0.0, r.lt_gain) for r in results if r.ltcg_exempt_eligible
         )

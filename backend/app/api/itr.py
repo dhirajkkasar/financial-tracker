@@ -1,12 +1,13 @@
 import logging
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 
 from app.api.dependencies import get_itr_service
 from app.middleware.error_handler import NotFoundError
 from app.models.itr_return import ItrReturn
 from app.schemas.itr import (
     ItrFiscalYearsResponse,
+    ItrForm16UploadResponse,
     ItrPrepareRequest,
     ItrReturnDetail,
     ItrReturnListResponse,
@@ -67,3 +68,15 @@ def update_input(
     svc.update_input(return_id, body)
     record = svc.get(return_id)
     return _detail(record, svc)
+
+
+@router.post("/returns/{return_id}/form16", response_model=ItrForm16UploadResponse)
+async def upload_form16(
+    return_id: int,
+    file: UploadFile = File(...),
+    svc: ItrService = Depends(get_itr_service),
+):
+    """Parse a Form 16 PDF and merge it into this return's salary entries."""
+    data = await file.read()
+    inp, warnings = svc.attach_form16(return_id, data)
+    return ItrForm16UploadResponse(input=inp, warnings=warnings)

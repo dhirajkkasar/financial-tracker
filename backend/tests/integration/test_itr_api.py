@@ -1,4 +1,7 @@
 """ITR API — prepare, list, detail, input update."""
+from pathlib import Path
+
+from fpdf import FPDF
 
 
 def _member(client, pan="ABCDE1234F", name="Dhiraj"):
@@ -82,3 +85,93 @@ def test_returns_are_isolated_per_member(client):
     b = _member(client, pan="ZYXWV9876Q", name="B")
     client.post("/itr/returns", json={"member_id": a["id"], "fy": "2025-26"})
     assert client.get(f"/itr/returns?member_id={b['id']}").json()["returns"] == []
+
+
+# ── Form 16 upload ────────────────────────────────────────────────────────────
+
+_F16 = Path(__file__).parent.parent / "fixtures" / "form16_sample.txt"
+
+
+def _pdf_bytes(text: str) -> bytes:
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Helvetica", size=10)
+    for line in text.splitlines():
+        pdf.cell(0, 5, line, new_x="LMARGIN", new_y="NEXT")
+    return bytes(pdf.output())
+
+
+def _prepared(client, **member_kw):
+    m = _member(client, **member_kw)
+    return client.post(
+        "/itr/returns", json={"member_id": m["id"], "fy": "2025-26"}
+    ).json()
+
+
+def test_form16_upload_merges_into_input(client):
+    r = _prepared(client)
+    pdf = _pdf_bytes(_F16.read_text())
+    resp = client.post(
+        f"/itr/returns/{r['id']}/form16",
+        files={"file": ("f16.pdf", pdf, "application/pdf")},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["warnings"] == []
+    salary = body["input"]["salary"]
+    assert len(salary) == 1
+    assert salary[0]["gross_salary"] == 2000000.0
+    assert salary[0]["employer_tan"] == "ZZZZ00000Z"
+    assert salary[0]["tds"] == 250000.0
+
+
+def test_form16_upload_is_idempotent(client):
+    r = _prepared(client)
+    pdf = _pdf_bytes(_F16.read_text())
+    for _ in range(2):
+        client.post(
+            f"/itr/returns/{r['id']}/form16",
+            files={"file": ("f16.pdf", pdf, "application/pdf")},
+        )
+    detail = client.get(f"/itr/returns/{r['id']}").json()
+    assert len(detail["input"]["salary"]) == 1
+
+
+def test_form16_upload_persists(client):
+    r = _prepared(client)
+    pdf = _pdf_bytes(_F16.read_text())
+    client.post(
+        f"/itr/returns/{r['id']}/form16",
+        files={"file": ("f16.pdf", pdf, "application/pdf")},
+    )
+    detail = client.get(f"/itr/returns/{r['id']}").json()
+    assert detail["input"]["salary"][0]["employee_pan"] == "ABCDE1234F"
+
+
+def test_form16_upload_reports_missing_fields(client):
+    r = _prepared(client)
+    pdf = _pdf_bytes("Random text with no Form 16 labels\n")
+    resp = client.post(
+        f"/itr/returns/{r['id']}/form16",
+        files={"file": ("f16.pdf", pdf, "application/pdf")},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["warnings"]
+
+
+def test_form16_upload_rejects_non_pdf(client):
+    r = _prepared(client)
+    resp = client.post(
+        f"/itr/returns/{r['id']}/form16",
+        files={"file": ("f16.pdf", b"not a pdf", "application/pdf")},
+    )
+    assert resp.status_code == 422
+
+
+def test_form16_upload_unknown_return_is_404(client):
+    resp = client.post(
+        "/itr/returns/99999/form16",
+        files={"file": ("f16.pdf", b"x", "application/pdf")},
+    )
+    assert resp.status_code == 404
+

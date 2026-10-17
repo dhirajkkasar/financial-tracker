@@ -80,6 +80,45 @@ class ItrService:
         for field in ReturnInput.model_fields:
             setattr(inp, field, getattr(merged, field))
 
+    # ── Form 16 ────────────────────────────────────────────────────────────────
+
+    def attach_form16(self, return_id: int, file_bytes: bytes) -> tuple[ReturnInput, list[str]]:
+        """Parse a Form 16 PDF and merge it into the return's salary list.
+
+        Deduped by (employer TAN, period): re-uploading the same employer's Form 16
+        replaces the prior entry instead of appending a duplicate. Returns the
+        updated input document plus the parser's warnings (fields the user must fix).
+        """
+        from app.engine.form16_parser import parse_form16_pdf
+
+        with self._uow_factory() as uow:
+            record = uow.itr_returns.get(return_id)
+            if record is None:
+                raise NotFoundError(f"ITR return {return_id} not found")
+            try:
+                summary = parse_form16_pdf(file_bytes)
+            except Exception as exc:  # pdfplumber raises a variety of parse errors
+                raise ValidationError(f"Could not read Form 16 PDF: {exc}") from exc
+            current = self._load_input(record)
+            key = (summary.employer_tan, summary.period_from, summary.period_to)
+            for idx, existing in enumerate(current.salary):
+                if (existing.employer_tan, existing.period_from, existing.period_to) == key:
+                    current.salary[idx] = summary
+                    break
+            else:
+                current.salary.append(summary)
+            uow.itr_returns.save_input(return_id, current.model_dump_json())
+            return current, list(summary.warnings)
+
+    def _load_input(self, record: ItrReturn) -> ReturnInput:
+        if not record.input_json:
+            return ReturnInput(
+                member_id=record.member_id,
+                fy_label=record.fy_label,
+                ay_label=record.ay_label,
+            )
+        return ReturnInput.model_validate_json(record.input_json)
+
     def get_available_fys(self) -> list[str]:
         """Sorted FY labels that have a tax-rules config file."""
         config_dir = Path("app/config/tax_rates")
@@ -100,13 +139,7 @@ class ItrService:
             record = uow.itr_returns.get(return_id)
             if record is None:
                 raise NotFoundError(f"ITR return {return_id} not found")
-            if not record.input_json:
-                return ReturnInput(
-                    member_id=record.member_id,
-                    fy_label=record.fy_label,
-                    ay_label=record.ay_label,
-                )
-            return ReturnInput.model_validate_json(record.input_json)
+            return self._load_input(record)
 
     # ── update ─────────────────────────────────────────────────────────────────
 

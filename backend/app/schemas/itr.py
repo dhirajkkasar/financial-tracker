@@ -36,3 +36,8 @@ class ItrReturnListResponse(BaseModel):
 
 class ItrReturnDetail(ItrReturnSummary):
     input: ReturnInput
+
+
+class ItrForm16UploadResponse(BaseModel):
+    input: ReturnInput
+    warnings: list[str]

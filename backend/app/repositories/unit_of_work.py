@@ -31,6 +31,7 @@ from app.repositories.important_data_repo import ImportantDataRepository
 from app.repositories.interest_rate_repo import InterestRateRepository
 from app.repositories.member_tax_profile_repo import MemberTaxProfileRepository
 from app.repositories.tax_loss_carryforward_repo import TaxLossCarryForwardRepository
+from app.repositories.itr_return_repo import ItrReturnRepository
 
 
 class UnitOfWork:
@@ -51,6 +52,7 @@ class UnitOfWork:
         self.interest_rates = InterestRateRepository(session)
         self.member_tax_profiles = MemberTaxProfileRepository(session)
         self.tax_loss_carryforwards = TaxLossCarryForwardRepository(session)
+        self.itr_returns = ItrReturnRepository(session)
 
     def __enter__(self) -> "UnitOfWork":
         return self

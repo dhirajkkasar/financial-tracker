@@ -183,4 +183,7 @@ def get_corp_actions_service(db: Session = Depends(get_db)) -> CorpActionsServic
 
 
 def get_itr_service(db: Session = Depends(get_db)) -> ItrService:
-    return ItrService(uow_factory=lambda: UnitOfWork(db))
+    return ItrService(
+        uow_factory=lambda: UnitOfWork(db),
+        tax_service=TaxService(uow_factory=lambda: UnitOfWork(db), resolver=_tax_resolver),
+    )

@@ -18,6 +18,10 @@ class AssetTaxGainsResult:
     has_slab: bool                # True if STCG is slab-rated
     ltcg_exempt_eligible: bool    # True for STOCK_IN and equity MF (Section 112A)
     ltcg_slab: bool               # True if LTCG is slab-rated (Debt MF, FD/RD)
+    # Per-lot long-term detail (for Schedule 112A). Each item:
+    # {buy_date, sell_date, units, buy_price_per_unit, sell_price_per_unit,
+    #  jan31_2018_price}. Empty for aggregate-only strategies.
+    ltcg_lots: tuple = ()
 
 
 class TaxGainsStrategy(ABC):

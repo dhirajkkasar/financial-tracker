@@ -6,6 +6,7 @@ from app.api.dependencies import get_itr_service
 from app.middleware.error_handler import NotFoundError
 from app.models.itr_return import ItrReturn
 from app.schemas.itr import (
+    ItrDraftResponse,
     ItrFiscalYearsResponse,
     ItrForm16UploadResponse,
     ItrPrepareRequest,
@@ -80,3 +81,9 @@ async def upload_form16(
     data = await file.read()
     inp, warnings = svc.attach_form16(return_id, data)
     return ItrForm16UploadResponse(input=inp, warnings=warnings)
+
+
+@router.post("/returns/{return_id}/assemble", response_model=ItrDraftResponse)
+def assemble_return(return_id: int, svc: ItrService = Depends(get_itr_service)):
+    """Assemble the ITR draft (gains + input) and persist it on the return."""
+    return svc.assemble(return_id).to_json_dict()

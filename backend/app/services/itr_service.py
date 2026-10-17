@@ -26,8 +26,9 @@ _SEED_BLOCKS = ("address", "bank_accounts", "creation", "regime",
 
 
 class ItrService:
-    def __init__(self, uow_factory: IUnitOfWorkFactory):
+    def __init__(self, uow_factory: IUnitOfWorkFactory, tax_service=None):
         self._uow_factory = uow_factory
+        self._tax_service = tax_service
 
     # ── prepare / read ─────────────────────────────────────────────────────────
 
@@ -118,6 +119,28 @@ class ItrService:
                 ay_label=record.ay_label,
             )
         return ReturnInput.model_validate_json(record.input_json)
+
+    # ── assemble ──────────────────────────────────────────────────────────────
+
+    def assemble(self, return_id: int):
+        """Build the ITR draft from portfolio gains + the return input document."""
+        from app.services.itr_assembler import assemble_draft
+
+        if self._tax_service is None:
+            raise RuntimeError("ItrService.assemble requires a TaxService")
+        record = self.get(return_id)
+        if record is None:
+            raise NotFoundError(f"ITR return {return_id} not found")
+        inp = self.get_input(return_id)
+        summary = self._tax_service.get_tax_summary(
+            record.fy_label, member_id=record.member_id
+        )
+        draft = assemble_draft(inp, summary)
+        with self._uow_factory() as uow:
+            uow.itr_returns.save_draft(
+                return_id, json.dumps(draft.to_json_dict()), form_type=draft.form
+            )
+        return draft
 
     def get_available_fys(self) -> list[str]:
         """Sorted FY labels that have a tax-rules config file."""

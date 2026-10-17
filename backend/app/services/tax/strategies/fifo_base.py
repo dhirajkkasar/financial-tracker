@@ -67,6 +67,7 @@ class FifoTaxGainsStrategy(TaxGainsStrategy):
         has_slab = False
         ltcg_slab = False
         ltcg_exempt_eligible = False
+        ltcg_lots: list[dict] = []
 
         for m in matched:
             sell_date = m["sell_date"]
@@ -99,6 +100,16 @@ class FifoTaxGainsStrategy(TaxGainsStrategy):
             if rule.ltcg_exempt_eligible:
                 ltcg_exempt_eligible = True
 
+            if holding_days >= rule.stcg_days:
+                ltcg_lots.append({
+                    "buy_date": buy_date.isoformat(),
+                    "sell_date": sell_date.isoformat(),
+                    "units": m["units_sold"],
+                    "buy_price_per_unit": m["buy_price_per_unit"],
+                    "sell_price_per_unit": m["sell_price_per_unit"],
+                    "jan31_2018_price": None,
+                })
+
         return AssetTaxGainsResult(
             asset_id=asset.id,
             asset_name=asset.name,
@@ -109,4 +120,5 @@ class FifoTaxGainsStrategy(TaxGainsStrategy):
             has_slab=has_slab,
             ltcg_exempt_eligible=ltcg_exempt_eligible,
             ltcg_slab=ltcg_slab,
+            ltcg_lots=tuple(ltcg_lots),
         )

@@ -132,6 +132,7 @@ class TaxService:
         income_tax_config = self._get_income_tax_config(fy_label)
 
         all_results: list[AssetTaxGainsResult] = []
+        asset_identifiers: dict[int, str] = {}
         member_ids = [member_id] if member_id else None
 
         with self._uow_factory() as uow:
@@ -145,6 +146,7 @@ class TaxService:
                 strategy = self._registry.get(atype, asset.asset_class.value)
                 if strategy is None:
                     continue
+                asset_identifiers[asset.id] = asset.identifier
                 try:
                     result = strategy.compute(asset, uow, fy_label, fy_start, fy_end)
                 except Exception as e:
@@ -296,6 +298,8 @@ class TaxService:
                 "is_slab": r.ltcg_slab,
                 "tax_rate_pct": None if r.ltcg_slab else (tax / r.lt_gain * 100 if r.lt_gain > 0 else None),
                 "ltcg_exempt_eligible": r.ltcg_exempt_eligible,
+                "ltcg_lots": list(r.ltcg_lots),
+                "isin": asset_identifiers.get(r.asset_id, ""),
             })
 
         interest_assets = [

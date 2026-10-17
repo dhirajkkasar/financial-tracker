@@ -47,3 +47,17 @@ class ItrReturnRepository:
         self.db.flush()
         self.db.refresh(record)
         return record
+
+    def save_draft(
+        self, return_id: int, draft_json: str, form_type: Optional[str] = None
+    ) -> ItrReturn:
+        record = self.get(return_id)
+        if record is None:
+            raise ValueError(f"ITR return {return_id} not found")
+        record.draft_json = draft_json
+        if form_type:
+            record.form_type = form_type
+        record.updated_at = datetime.utcnow()
+        self.db.flush()
+        self.db.refresh(record)
+        return record

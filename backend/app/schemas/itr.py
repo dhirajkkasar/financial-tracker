@@ -41,3 +41,18 @@ class ItrReturnDetail(ItrReturnSummary):
 class ItrForm16UploadResponse(BaseModel):
     input: ReturnInput
     warnings: list[str]
+
+
+class ItrDraftResponse(BaseModel):
+    member_id: int
+    fy_label: str
+    ay_label: str
+    form: str
+    form_reasons: list[str]
+    salary_taxable: float
+    buckets: dict
+    tax: dict
+    schedule_112a: dict
+    setoff: dict
+    carryforward: dict
+    warnings: list[str]

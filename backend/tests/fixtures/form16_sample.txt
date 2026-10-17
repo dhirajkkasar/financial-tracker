@@ -1,0 +1,30 @@
+FORM NO. 16
+Certificate under section 203 of the Income-tax Act, 1961 for tax deducted at source on salary
+
+PART A
+
+Name and address of the Employer: Acme Technologies Private Limited, 5 Example Park, Pune 411001
+TAN of the Deductor: ZZZZ00000Z
+PAN of the Deductor: AAAAA0000A
+Name and address of the Employee: Test Taxpayer, 1 Example Road, Pune 411002
+PAN of the Employee: ABCDE1234F
+Period with the Employer: From 2025-04-01 To 2026-03-31
+
+Summary of amount paid/credited and tax deducted at source thereon in respect of the employee
+Quarter   Receipt Numbers   Amount paid/credited (Rs.)   Amount of tax deducted (Rs.)
+Q1        001               450000.00                    52000.00
+Q2        002               500000.00                    60000.00
+Q3        003               520000.00                    68000.00
+Q4        004               530000.00                    70000.00
+Total                       2000000.00                   250000.00
+
+PART B
+
+Details of salary paid and any other income and tax deducted
+1   Gross Salary                                2000000.00
+2   Exemptions under section 10                 50000.00
+3   Perquisites                                 0
+4   Standard deduction under section 16(ia)     75000.00
+5   Professional tax under section 16(iii)      2500.00
+6   Total Taxable Income                        1872500.00
+Total amount of tax deducted                    250000.00

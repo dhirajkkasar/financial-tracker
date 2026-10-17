@@ -715,10 +715,10 @@ FIX = Path(__file__).parent.parent / "fixtures" / "form16_sample.txt"
 
 def test_parses_identity_and_salary():
     summary = parse_form16_text(FIX.read_text())
-    assert summary.employer_tan == "BLRA05499E"
-    assert summary.employee_pan == "BQEPK6167M"
-    assert summary.gross_salary == 4520000.0
-    assert summary.tds == 1200000.0
+    assert summary.employer_tan == "ZZZZ00000Z"
+    assert summary.employee_pan == "ABCDE1234F"
+    assert summary.gross_salary == 2000000.0
+    assert summary.tds == 250000.0
 
 
 def test_missing_fields_are_warned_not_silently_zeroed():
@@ -772,8 +772,8 @@ def _pdf_bytes(text: str) -> bytes:
 
 def test_parse_pdf_matches_text_path():
     summary = parse_form16_pdf(_pdf_bytes(FIX.read_text()))
-    assert summary.employer_tan == "BLRA05499E"
-    assert summary.gross_salary == 4520000.0
+    assert summary.employer_tan == "ZZZZ00000Z"
+    assert summary.gross_salary == 2000000.0
 ```
 
 - [ ] **Step 2: Run to verify failure**, then **Step 3: implement** `parse_form16_pdf(file_bytes)` using `pdfplumber.open(io.BytesIO(...))`, joining page text (same approach as `app/importers/epf_pdf_importer.py:140`).

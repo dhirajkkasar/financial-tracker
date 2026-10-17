@@ -14,3 +14,13 @@ def make_transaction(**overrides):
 
 def make_cashflow(date_, amount):
     return (date_, amount)
+
+
+def make_member(db, pan="ABCDE1234F", name="Test Member", **overrides):
+    """Create and flush a Member on the given session; returns the ORM object."""
+    from app.models.member import Member
+
+    member = Member(pan=pan, name=name, **overrides)
+    db.add(member)
+    db.flush()
+    return member

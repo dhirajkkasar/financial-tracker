@@ -985,13 +985,14 @@ Add cases: 87A at the threshold (FY 2025-26 ₹12L → ₹60k; FY 2024-25 ₹12.
 - Create: `backend/app/engine/itr/schema_validation.py`
 - Create: `backend/tests/unit/test_schema_validation.py`
 
-- [ ] Failing tests: a known-good minimal JSON passes; a camelCase-keyed HP block fails;
+- [x] Failing tests: a known-good minimal JSON passes; a camelCase-keyed HP block fails;
   a schedule with a total but no itemised rows fails the **semantic** audit; a Table-F/BFLA
   mismatch fails; a **CG B3a ≠ 112A col-14 total** fails (rule 134); a **CFL↔BFLA
   tie** break fails (rules 234/235); `ScheduleFA` absent while
   `AssetOutIndiaFlag=YES` fails (rule 746). Implement
   `validate_itr_json(doc, ay) -> ValidationReport` using `jsonschema.Draft4Validator` +
-  the §8.4/§8.6 rules. Commit.
+  the §8.4/§8.6 rules. Commit. **(done after D3/D4 — the "known-good JSON" test needed the
+  builder first. Rules encoded: schema, itemised-rows audit, 134, 234/235, 746.)**
 
 ### Task D3: `Itr2BuilderAY2026` — metadata, personal, salary, OS
 

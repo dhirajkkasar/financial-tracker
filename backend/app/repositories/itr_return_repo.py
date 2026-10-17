@@ -61,3 +61,18 @@ class ItrReturnRepository:
         self.db.flush()
         self.db.refresh(record)
         return record
+
+    def save_output(
+        self, return_id: int, output_json: str, schema_version: Optional[str] = None
+    ) -> ItrReturn:
+        record = self.get(return_id)
+        if record is None:
+            raise ValueError(f"ITR return {return_id} not found")
+        record.output_json = output_json
+        record.schema_version = schema_version
+        record.status = "generated"
+        record.generated_at = datetime.utcnow()
+        record.updated_at = datetime.utcnow()
+        self.db.flush()
+        self.db.refresh(record)
+        return record

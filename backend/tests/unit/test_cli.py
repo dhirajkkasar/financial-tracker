@@ -686,3 +686,36 @@ class TestFetchCorpActions:
     def test_parser_with_asset_id(self):
         args = cli.build_parser().parse_args(["fetch-corp-actions", "--asset-id", "42"])
         assert args.asset_id == 42
+
+
+# ── itr generate ──────────────────────────────────────────────────────────────
+
+ITR_SUMMARY = {"id": 7, "status": "generated", "schema_version": "V1.2", "form_type": "ITR2"}
+
+
+class TestItrGenerate:
+    def test_calls_generate_endpoint(self, requests_mock):
+        requests_mock.post(f"{BASE}/itr/returns/7/generate", json=ITR_SUMMARY)
+        cli.cmd_itr_generate(7)
+        assert requests_mock.last_request.path == "/api/itr/returns/7/generate"
+
+    def test_writes_file_when_out_given(self, requests_mock, tmp_path):
+        requests_mock.post(f"{BASE}/itr/returns/7/generate", json=ITR_SUMMARY)
+        requests_mock.get(f"{BASE}/itr/returns/7/json", json={"ITR": {"ITR2": {"Form_ITR2": {}}}})
+        out = tmp_path / "itr.json"
+        cli.cmd_itr_generate(7, out=str(out))
+        assert out.exists()
+        assert "ITR" in out.read_text()
+
+    def test_prints_offline_utility_hint(self, requests_mock, tmp_path, capsys):
+        requests_mock.post(f"{BASE}/itr/returns/7/generate", json=ITR_SUMMARY)
+        requests_mock.get(f"{BASE}/itr/returns/7/json", json={"ITR": {}})
+        cli.cmd_itr_generate(7, out=str(tmp_path / "itr.json"))
+        assert "Common Offline Utility" in capsys.readouterr().out
+
+    def test_parser_generate(self):
+        args = cli.build_parser().parse_args(["itr", "generate", "7", "--out", "x.json"])
+        assert args.command == "itr"
+        assert args.itr_action == "generate"
+        assert args.return_id == 7
+        assert args.out == "x.json"

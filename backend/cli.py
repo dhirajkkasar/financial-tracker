@@ -744,6 +744,23 @@ def cmd_snapshot() -> dict:
     return result
 
 
+def cmd_itr_generate(return_id: int, out: str | None = None) -> dict:
+    """Generate + validate the ITR JSON for an assembled return; optionally write it."""
+    result = _api("post", f"/itr/returns/{return_id}/generate")
+    print(
+        f"✓ ITR JSON generated — return {return_id}, status={result.get('status')}, "
+        f"schema={result.get('schema_version')}"
+    )
+    if out:
+        r = requests.get(f"{BASE}/api/itr/returns/{return_id}/json")
+        if not r.ok:
+            sys.exit(f"API error {r.status_code}: {r.text}")
+        with open(out, "w") as fh:
+            fh.write(r.text)
+        print(f"✓ Wrote {out} — import it with the Common Offline Utility (offline).")
+    return result
+
+
 def cmd_backup(folder: str | None = None):
     import backup as _backup
     _backup.backup_to_drive(folder_name=folder)
@@ -1050,6 +1067,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_corp.add_argument("--asset-id", type=int, default=None, dest="asset_id",
                         help="Specific asset ID; omit to process all STOCK_IN assets")
 
+    # ── itr ───────────────────────────────────────────────────────────────────
+    p_itr = sub.add_parser("itr", help="ITR preparation (per PAN, per assessment year)")
+    itr_sub = p_itr.add_subparsers(dest="itr_action")
+    s_itr_gen = itr_sub.add_parser(
+        "generate", help="Generate + validate the ITR JSON; optionally write it to a file"
+    )
+    s_itr_gen.add_argument("return_id", type=int, help="ITR return ID from 'POST /itr/returns'")
+    s_itr_gen.add_argument("--out", default=None,
+                           help="Write the generated JSON to this file (import into the "
+                                "Common Offline Utility; do NOT upload it to the portal)")
+
     return parser
 
 
@@ -1159,6 +1187,13 @@ def main():
 
     elif args.command == "fetch-corp-actions":
         cmd_fetch_corp_actions(args.asset_id)
+
+    elif args.command == "itr":
+        if not args.itr_action:
+            parser.parse_args(["itr", "--help"])
+            return
+        if args.itr_action == "generate":
+            cmd_itr_generate(args.return_id, out=args.out)
 
     elif args.command == "refresh-prices":
         cmd_refresh_prices()

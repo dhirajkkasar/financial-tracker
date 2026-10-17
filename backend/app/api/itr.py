@@ -1,8 +1,11 @@
+import json
 import logging
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Query, Response, UploadFile, status
 
-from app.api.dependencies import get_itr_service
+from app.api.dependencies import get_itr_json_service, get_itr_service
+from app.engine.itr.schema_loader import schema_version
+from app.engine.itr.schema_validation import validate_itr_json
 from app.middleware.error_handler import NotFoundError
 from app.models.itr_return import ItrReturn
 from app.schemas.itr import (
@@ -13,7 +16,9 @@ from app.schemas.itr import (
     ItrReturnDetail,
     ItrReturnListResponse,
     ItrReturnSummary,
+    ItrValidationResponse,
 )
+from app.services.itr_json_service import ItrJsonService
 from app.services.itr_service import ItrService
 
 logger = logging.getLogger(__name__)
@@ -87,3 +92,43 @@ async def upload_form16(
 def assemble_return(return_id: int, svc: ItrService = Depends(get_itr_service)):
     """Assemble the ITR draft (gains + input) and persist it on the return."""
     return svc.assemble(return_id).to_json_dict()
+
+
+@router.get("/returns/{return_id}/validation", response_model=ItrValidationResponse)
+def validate_return(return_id: int, svc: ItrJsonService = Depends(get_itr_json_service)):
+    """Validate the current draft against the official schema + tie-out rules."""
+    doc, form, ay = svc.build_document(return_id)
+    report = validate_itr_json(doc, ay, form)
+    return ItrValidationResponse(
+        ok=report.ok,
+        form=form,
+        schema_version=schema_version(ay, form),
+        issues=[i.__dict__ for i in report.issues],
+    )
+
+
+@router.post("/returns/{return_id}/generate", response_model=ItrReturnSummary)
+def generate_return(
+    return_id: int,
+    svc: ItrJsonService = Depends(get_itr_json_service),
+    itr: ItrService = Depends(get_itr_service),
+):
+    """Build + validate the ITR JSON and persist it. 422 (with paths) if invalid."""
+    svc.generate(return_id)
+    return itr.get(return_id)
+
+
+@router.get("/returns/{return_id}/json")
+def download_json(return_id: int, svc: ItrJsonService = Depends(get_itr_json_service)):
+    """Download the generated ITR JSON — import it into the Common Offline Utility."""
+    record = svc.get_record(return_id)
+    document = svc.get_output(return_id)
+    filename = f"ITR-{record.ay_label}-{return_id}.json"
+    return Response(
+        content=json.dumps(document, indent=2),
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Import-With": "Common Offline Utility (offline import; not a portal upload)",
+        },
+    )

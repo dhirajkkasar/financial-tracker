@@ -1037,10 +1037,11 @@ Add cases: 87A at the threshold (FY 2025-26 ₹12L → ₹60k; FY 2024-25 ₹12.
 - Modify: `backend/cli.py` (`cmd_itr_generate`)
 - Create: `backend/tests/integration/test_itr_generate.py`
 
-- [ ] Failing tests: after assemble, `POST .../generate` validates, persists `output_json` +
+- [x] Failing tests: after assemble, `POST .../generate` validates, persists `output_json` +
   `schema_version` + `status="generated"`; `GET .../json` downloads it; validation failure
   ⇒ 422 with the error paths and **no** output written; CLI `generate --out` writes the file.
-  Implement. Commit: `feat(itr): generate + validate + download ITR-2 JSON`.
+  Implement. Commit: `feat(itr): generate + validate + download ITR-2 JSON`. **(done.
+  `GET .../validation` was also added — it reports the report without persisting.)**
 
 ### Task D6: Golden end-to-end
 

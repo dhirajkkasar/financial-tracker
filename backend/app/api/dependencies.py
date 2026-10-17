@@ -187,3 +187,11 @@ def get_itr_service(db: Session = Depends(get_db)) -> ItrService:
         uow_factory=lambda: UnitOfWork(db),
         tax_service=TaxService(uow_factory=lambda: UnitOfWork(db), resolver=_tax_resolver),
     )
+
+
+def get_itr_json_service(
+    db: Session = Depends(get_db), svc: ItrService = Depends(get_itr_service)
+) -> "ItrJsonService":
+    from app.services.itr_json_service import ItrJsonService
+
+    return ItrJsonService(uow_factory=lambda: UnitOfWork(db), itr_service=svc)

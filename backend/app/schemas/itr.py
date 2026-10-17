@@ -51,8 +51,22 @@ class ItrDraftResponse(BaseModel):
     form_reasons: list[str]
     salary_taxable: float
     buckets: dict
+    gross: dict
     tax: dict
     schedule_112a: dict
     setoff: dict
     carryforward: dict
     warnings: list[str]
+
+
+class ItrValidationIssue(BaseModel):
+    path: str
+    message: str
+    rule: str
+
+
+class ItrValidationResponse(BaseModel):
+    ok: bool
+    form: str
+    schema_version: str
+    issues: list[ItrValidationIssue]

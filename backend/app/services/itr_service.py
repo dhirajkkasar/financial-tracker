@@ -164,6 +164,17 @@ class ItrService:
                 raise NotFoundError(f"ITR return {return_id} not found")
             return self._load_input(record)
 
+    def get_draft(self, return_id: int):
+        """The persisted :class:`ReturnDraft`, or ``None`` if never assembled."""
+        from app.services.itr_assembler import ReturnDraft
+
+        record = self.get(return_id)
+        if record is None:
+            raise NotFoundError(f"ITR return {return_id} not found")
+        if not record.draft_json:
+            return None
+        return ReturnDraft(**json.loads(record.draft_json))
+
     # ── update ─────────────────────────────────────────────────────────────────
 
     def update_input(self, return_id: int, patch: dict) -> ReturnInput:

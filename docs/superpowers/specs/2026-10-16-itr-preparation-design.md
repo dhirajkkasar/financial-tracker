@@ -521,8 +521,20 @@ Each phase is independently shippable and leaves `main` green.
 5. **Tax-year boundary** — FY 2026-27 onward falls under the **Income-tax Act
    2025** and new Rules; this design targets FY ≤ 2025-26 (Act 1961). AY
    2027-28+ needs a fresh review.
-6. **Existing FY 2024-25 `income_tax` config appears to carry FY 2025-26
-   slabs** — verify and correct before building AY 2025-26 returns.
+6. **87A rebate config was wrong for the new regime** — `2024-25.yaml` carried the
+   *old-regime* rebate (₹5L/₹12,500) and `2025-26.yaml`/`2026-27.yaml` carried
+   ₹7L/₹15,000. All three are **corrected** (FY24-25 → ₹7L/₹25,000; FY25-26 and
+   FY26-27 → ₹12L/₹60,000, per Finance Act 2025) with the rebate excluded from
+   special-rate (111A/112/112A) income and marginal relief above the threshold.
+   Slabs themselves were already correct. Pinned by tests in
+   `tests/unit/test_itr_tax_compute.py`.
+7. **Migrations cannot run on SQLite (pre-existing).** Several older migrations
+   (e.g. `a0fa4c347bea`, `33b0d2ef25ee`) call `op.alter_column(... type_=...)`
+   without `batch_alter_table`, which SQLite rejects — `alembic upgrade head`
+   fails on a SQLite DB. The test suite is unaffected (it builds schema via
+   `Base.metadata.create_all`), and the new `itr_returns` migration is a plain
+   `CREATE TABLE` verified in isolation. **Decision: left as a known issue**;
+   fix with batch mode in a separate change (or standardise on Postgres).
 7. **Liability** — output is a **draft**, not advice. UI/CLI/docs must say the
    user verifies and signs; the offline utility's recomputation is authoritative.
 8. **Security/privacy** — PAN/Aadhaar/account numbers are sensitive; keep the

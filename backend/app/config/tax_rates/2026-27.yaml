@@ -128,5 +128,11 @@ income_tax:
       cap_pct_for_capital_gains: 15
   cess_pct: 4
   rebate_87a:
-    income_threshold_inr: 700000
-    max_rebate_inr: 15000
+    # New regime: Rs 12L threshold, Rs 60,000 max rebate (unchanged for FY 2026-27).
+    income_threshold_inr: 1200000
+    max_rebate_inr: 60000
+  itr_rates:
+    stcg_111a_rate_pct: 20.0
+    ltcg_112a_rate_pct: 12.5
+    ltcg_other_rate_pct: 12.5
+    ltcg_112a_exemption_inr: 125000

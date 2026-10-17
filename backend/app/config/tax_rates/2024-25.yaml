@@ -123,5 +123,12 @@ income_tax:
       cap_pct_for_capital_gains: 15
   cess_pct: 4
   rebate_87a:
-    income_threshold_inr: 500000
-    max_rebate_inr: 12500
+    # New regime (s.115BAC): Finance Act 2023 rebate — income <= Rs 7L, max Rs 25,000.
+    # (Rs 5L/Rs 12,500 is the OLD-regime rebate and does not belong here.)
+    income_threshold_inr: 700000
+    max_rebate_inr: 25000
+  itr_rates:
+    stcg_111a_rate_pct: 20.0
+    ltcg_112a_rate_pct: 12.5
+    ltcg_other_rate_pct: 12.5
+    ltcg_112a_exemption_inr: 125000

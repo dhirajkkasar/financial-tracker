@@ -125,5 +125,12 @@ income_tax:
       cap_pct_for_capital_gains: 15
   cess_pct: 4
   rebate_87a:
-    income_threshold_inr: 700000
-    max_rebate_inr: 15000
+    # New regime (s.115BAC(1A)): Finance Act 2025 raised the threshold to Rs 12L
+    # and the maximum rebate to Rs 60,000 (with marginal relief above Rs 12L).
+    income_threshold_inr: 1200000
+    max_rebate_inr: 60000
+  itr_rates:
+    stcg_111a_rate_pct: 20.0
+    ltcg_112a_rate_pct: 12.5
+    ltcg_other_rate_pct: 12.5
+    ltcg_112a_exemption_inr: 125000

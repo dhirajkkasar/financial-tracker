@@ -61,10 +61,14 @@ def test_fy_to_ay_rejects_bad_label():
         fy_to_ay("2024/25")
 
 
-def test_parse_ay_returns_dates():
-    start, end = parse_ay("2025-26")
-    from datetime import date
-    assert (start, end) == (date(2025, 4, 1), date(2026, 3, 31))
+def test_parse_ay_returns_income_year_dates():
+    # AY 2025-26 assesses the income of FY 2024-25.
+    assert parse_ay("2025-26") == (date(2024, 4, 1), date(2025, 3, 31))
+
+
+def test_parse_ay_matches_parse_fy_of_income_year():
+    from app.engine.tax_engine import parse_fy
+    assert parse_ay("2026-27") == parse_fy(ay_to_fy("2026-27"))
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**

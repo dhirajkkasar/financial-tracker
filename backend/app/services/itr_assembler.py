@@ -23,7 +23,8 @@ class ReturnDraft:
     form: str
     form_reasons: list[str]
     salary_taxable: float
-    buckets: dict
+    buckets: dict          # net of set-off — drives the tax computation
+    gross: dict            # current-year gains/losses *before* set-off (CG schedule)
     tax: dict
     schedule_112a: dict
     setoff: dict
@@ -221,6 +222,12 @@ def assemble_draft(inp: ReturnInput, summary: dict) -> ReturnDraft:
         form_reasons=sel.reasons,
         salary_taxable=salary,
         buckets=asdict(buckets),
+        gross={
+            **stcg_gross,
+            **ltcg_gross,
+            "stcg_loss": stcg_loss,
+            "ltcg_loss": ltcg_loss,
+        },
         tax=asdict(tax),
         schedule_112a=asdict(schedule),
         setoff=applied,

@@ -13,7 +13,9 @@ from app.services.itr_assembler import ReturnDraft
 def _draft(**kw):
     base = dict(
         member_id=1, fy_label="2025-26", ay_label="2026-27", form="ITR2",
-        form_reasons=[], salary_taxable=0.0, buckets={}, tax={},
+        form_reasons=[], salary_taxable=0.0,
+        buckets={"other_interest": 10_000.0, "dividends": 5_000.0},
+        gross={}, tax={},
         schedule_112a={}, setoff={}, carryforward={}, warnings=[],
     )
     base.update(kw)
@@ -142,3 +144,134 @@ def test_schedule_os_carries_interest_and_dividends():
     assert other["DividendGross"] == 5_000
     assert other["BalanceNoRaceHorse"] == 15_000
     assert os_sched["IncChargeable"] == 15_000
+
+
+# ── capital gains, 112A, SI, Part B, CFL ──────────────────────────────────────
+
+def _rich_draft(**overrides):
+    from dataclasses import asdict
+
+    from app.engine.itr.schedule_112a import Schedule112ALot, build_schedule_112a
+    from app.engine.itr.tax_compute import IncomeBuckets, compute_return_tax
+
+    lots = [Schedule112ALot(
+        isin="INE002A01018", name="Reliance Industries", units=100.0,
+        buy_date=date(2023, 1, 10), cost_per_unit=1500.0, sale_price_per_unit=2000.0,
+    )]
+    schedule = build_schedule_112a(lots)  # balance = 100 x (2000 - 1500) = 50,000
+    buckets = IncomeBuckets(
+        salary=1_872_500.0, other_interest=10_000.0, dividends=5_000.0,
+        stcg_111a=100_000.0, ltcg_112a=float(schedule.balance),
+    )
+    tax = compute_return_tax(buckets, "2025-26")
+    base = dict(
+        salary_taxable=1_872_500.0,
+        buckets=asdict(buckets),
+        gross={
+            "stcg_111a": 100_000.0, "stcg_slab": 0.0,
+            "ltcg_112a": float(schedule.balance), "ltcg_other_12_5": 0.0,
+            "stcg_loss": 0.0, "ltcg_loss": 0.0,
+        },
+        tax=asdict(tax),
+        schedule_112a=asdict(schedule),
+        setoff={"stcl_on_stcg": 0.0, "stcl_on_ltcg": 0.0, "ltcl_on_ltcg": 0.0,
+                "cf_stcl_used": 0.0, "cf_ltcl_used": 0.0},
+        carryforward={"brought_forward": {"stcl": 0.0, "ltcl": 0.0},
+                      "created_this_year": {"stcl": 0.0, "ltcl": 0.0}},
+    )
+    base.update(overrides)
+    return _draft(**base), tax
+
+
+def test_schedule_cg_is_itemised_with_stcg_111a_and_ltcg_112a():
+    draft, _ = _rich_draft()
+    cg = _build(draft=draft)["ITR"]["ITR2"]["ScheduleCGFor23"]
+
+    stcg_row = cg["ShortTermCapGainFor23"]["EquityMFonSTT"][0]
+    assert stcg_row["MFSectionCode"] == "1A"
+    assert stcg_row["EquityMFonSTTDtls"]["BalanceCG"] == 100_000
+    assert cg["ShortTermCapGainFor23"]["TotalSTCG"] == 100_000
+
+    lt = cg["LongTermCapGain23"]
+    assert lt["SaleOfEquityShareUs112A"]["BalanceCG"] == 50_000
+    assert lt["TotalLTCG"] == 50_000
+    assert cg["SumOfCGIncm"] == 150_000
+    assert cg["TotScheduleCGFor23"] == 150_000
+
+
+def test_cg_b3a_ties_to_schedule_112a_col14_total():
+    draft, _ = _rich_draft()
+    body = _build(draft=draft)["ITR"]["ITR2"]
+    b3a = body["ScheduleCGFor23"]["LongTermCapGain23"]["SaleOfEquityShareUs112A"]["BalanceCG"]
+    assert b3a == body["Schedule112A"]["Balance112A"] == body["Schedule112A"]["TotalBalance112A"]
+
+
+def test_schedule_112a_rows_and_totals_sum():
+    draft, _ = _rich_draft()
+    s = _build(draft=draft)["ITR"]["ITR2"]["Schedule112A"]
+    assert len(s["Schedule112ADtls"]) == 1
+    row = s["Schedule112ADtls"][0]
+    assert row["ShareOnOrBefore"] == "AE"
+    assert row["ISINCode"] == "INNOTREQUIRD"
+    assert row["TotSaleValue"] == 200_000
+    assert row["Balance"] == 50_000
+    assert s["Balance112A"] == sum(r["Balance"] for r in s["Schedule112ADtls"])
+
+
+def test_schedule_si_carries_special_rate_income():
+    draft, _ = _rich_draft()
+    si = _build(draft=draft)["ITR"]["ITR2"]["ScheduleSI"]
+    by_code = {l["SecCode"]: l for l in si["SplCodeRateTax"]}
+    assert by_code["1A"]["SplRateInc"] == 100_000
+    assert by_code["1A"]["SplRateIncTax"] == 20_000
+    assert si["TotSplRateInc"] == 100_000
+    assert si["TotSplRateIncTax"] == 20_000
+
+
+def test_part_b_ti_carries_gross_gains_and_ties_to_net():
+    draft, _ = _rich_draft()
+    ti = _build(draft=draft)["ITR"]["ITR2"]["PartB-TI"]
+    assert ti["CapGain"]["TotalCapGains"] == 150_000          # gross, before set-off
+    assert ti["CurrentYearLoss"] == 0
+    assert ti["GrossTotalIncome"] == 1_872_500 + 15_000 + 150_000
+    assert ti["TotalIncome"] == ti["GrossTotalIncome"]
+    assert ti["IncChargeTaxSplRate111A112"] == 100_000        # 112A below the 1.25L exemption
+
+
+def test_part_b_tti_recomputes_to_the_same_total_as_tax_compute():
+    draft, tax = _rich_draft()
+    tti = _build(draft=draft)["ITR"]["ITR2"]["PartB_TTI"]
+    assert tti["TotalTaxPayablDeemedTotInc"] == round(tax.total_tax_inr)
+    ctl = tti["ComputationOfTaxLiability"]
+    assert ctl["TaxPayableOnTI"]["TaxPayableOnTotInc"] == round(tax.normal_tax_inr) + round(
+        tax.stcg_111a_tax_inr + tax.ltcg_112a_tax_inr + tax.ltcg_other_tax_inr
+    )
+    assert tti["AssetOutIndiaFlag"] == "NO"
+
+
+def test_part_b_ti_current_year_loss_reduces_gross_total_income():
+    draft, _ = _rich_draft(
+        setoff={"stcl_on_stcg": 30_000.0, "stcl_on_ltcg": 0.0, "ltcl_on_ltcg": 0.0,
+                "cf_stcl_used": 0.0, "cf_ltcl_used": 0.0},
+    )
+    ti = _build(draft=draft)["ITR"]["ITR2"]["PartB-TI"]
+    assert ti["CurrentYearLoss"] == 30_000
+    assert ti["BalanceAfterSetoffLosses"] == ti["TotalTI"] - 30_000
+    assert ti["GrossTotalIncome"] == ti["BalanceAfterSetoffLosses"]
+
+
+def test_schedule_cfl_reports_carried_forward_losses():
+    draft, _ = _rich_draft(
+        carryforward={"brought_forward": {"stcl": 5_000.0, "ltcl": 0.0},
+                      "created_this_year": {"stcl": 20_000.0, "ltcl": 7_000.0}},
+    )
+    cfl = _build(draft=draft)["ITR"]["ITR2"]["ScheduleCFL"]
+    assert cfl["TotalLossCFSummary"]["LossSummaryDetail"]["TotalSTCGPTILossCF"] == 20_000
+    assert cfl["TotalLossCFSummary"]["LossSummaryDetail"]["TotalLTCGPTILossCF"] == 7_000
+    assert cfl["TotalOfBFLossesEarlierYrs"]["LossSummaryDetail"]["TotalSTCGPTILossCF"] == 5_000
+
+
+def test_full_cg_document_is_schema_valid():
+    draft, _ = _rich_draft()
+    _assert_schema_valid(_build(draft=draft))
+

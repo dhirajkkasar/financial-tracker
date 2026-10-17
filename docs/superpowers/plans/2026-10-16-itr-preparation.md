@@ -975,9 +975,9 @@ Add cases: 87A at the threshold (FY 2025-26 ₹12L → ₹60k; FY 2024-25 ₹12.
 - Create: `backend/tests/unit/test_schema_loader.py`
 - Modify: `backend/pyproject.toml` (add `jsonschema>=4.0`), run `uv lock`/`uv sync`
 
-- [ ] Write failing tests: loader resolves the AY's schema path; raises a clear error when
+- [x] Write failing tests: loader resolves the AY's schema path; raises a clear error when
   absent (never emit unvalidated output); exposes the pinned version string. Implement.
-  Commit: `feat(itr): bundle AY 2026-27 ITR-2 schema + loader`.
+  Commit: `feat(itr): bundle AY 2026-27 ITR-2 schema + loader`. **(done — `85a42d9`)**
 
 ### Task D2: Schema + semantic validation
 
@@ -999,25 +999,33 @@ Add cases: 87A at the threshold (FY 2025-26 ₹12L → ₹60k; FY 2024-25 ₹12.
 - Create: `backend/app/engine/itr/builders/__init__.py`, `base.py`, `common.py`, `itr2_ay2026.py`
 - Create: `backend/tests/unit/test_itr2_builder_ay2026.py`
 
-- [ ] Failing tests: registry resolves `(ITR2, "2026-27")`; built doc has
+- [x] Failing tests: registry resolves `(ITR2, "2026-27")`; built doc has
   `{"ITR": {"ITR2": {...}}}` with `CreationInfo`, `Form_ITR2`, `PartA_GEN1.PersonalInfo`,
   `ScheduleS`, `ScheduleOS` populated and **schema-valid**; `Form_ITR2` carries
   `FormName="ITR-2"`, `AssessmentYear="2026"`, `SchemaVer="Ver1.0"`, `FormVer="Ver1.0"`;
   `CreationInfo` carries a pattern-valid `SWCreatedBy` (`SW\d{8}` placeholder) and
   `JSONCreationDate` ≥ 2026-04-01; `Verification.Declaration` has name/father/PAN when
   known. Implement by overlaying the `ReturnInput` + draft onto a full skeleton of
-  required 0s (never totals-only). Commit.
+  required 0s (never totals-only). Commit. **(done — `b368773`; skeleton is auto-derived
+  from the bundled schema in `builders/common.py`, so a schema revision cannot silently
+  drop a required field.)**
 
 ### Task D4: `Itr2BuilderAY2026` — CG, 112A, SI, TI, TTI, CFL
 
 **Files:** Modify `itr2_ay2026.py`, `common.py`; extend `test_itr2_builder_ay2026.py`.
 
-- [ ] Failing tests: `ScheduleCGFor23` itemised (not totals-only) with STCG 111A / STCG slab /
+- [x] Failing tests: `ScheduleCGFor23` itemised (not totals-only) with STCG 111A / STCG slab /
   LTCG 112A / LTCG other split; `Schedule112A` rows sum and **CG B3a = 112A col-14 total**;
   `ScheduleSI` carries the special-rate income; `PartB-TI` carries gross gains (exemption
   only in SI); `PartB_TTI` recomputes to the same total as `tax_compute`; Table F quarters
   tie to **both BFLA (3iv/3v/3vi/3viii) and `ScheduleSI` Sl. No. 7**. Implement, then
-  assert the whole doc validates against the bundled schema. Commit.
+  assert the whole doc validates against the bundled schema. Commit. **(done for the core
+  schedules. Deviations: (1) the draft now also carries a `gross` block (assembler change
+  in this task) because `PartB-TI.CapGain` must show gains *before* set-off; (2) **Table F
+  quarterly** breakup is deferred — the AY 2026-27 `ScheduleCGFor23` exposes
+  `AccruOrRecOfCG` (accrual vs receipt), not the paper form's quarterly Table F, so
+  `ScheduleCYLA`/`ScheduleBFLA` stay at their required-only skeleton and quarterly tie-outs
+  are out of scope until Phase E. `ScheduleCFL` carry-forward is populated.)**
 
 ### Task D5: `generate` endpoint + download + report
 

@@ -744,21 +744,104 @@ def cmd_snapshot() -> dict:
     return result
 
 
-def cmd_itr_generate(return_id: int, out: str | None = None) -> dict:
-    """Generate + validate the ITR JSON for an assembled return; optionally write it."""
+def _itr_member_id(pan: str) -> int:
+    """Look up an existing member by PAN (never creates one — read paths)."""
+    pan = _validate_pan(pan)
+    for m in _api("get", "/members"):
+        if m["pan"].upper() == pan.upper():
+            return m["id"]
+    sys.exit(
+        f"No member with PAN '{pan}'.\n"
+        f"  → Run: python cli.py add-member --pan {pan} --member-name \"Your Name\""
+    )
+
+
+def _itr_lookup(pan: str, fy: str) -> tuple[int, int]:
+    """(member_id, return_id) for an existing PAN + FY, or exit with a hint."""
+    member_id = _itr_member_id(pan)
+    returns = _api("get", "/itr/returns", params={"member_id": member_id})["returns"]
+    record = next((r for r in returns if r["fy_label"] == fy), None)
+    if record is None:
+        sys.exit(
+            f"No ITR return for PAN {pan} / FY {fy}.\n"
+            f"  → Run: python cli.py itr prepare --pan {pan} --fy {fy}"
+        )
+    return member_id, record["id"]
+
+
+def _itr_write_json(return_id: int, out: str) -> None:
+    r = requests.get(f"{BASE}/api/itr/returns/{return_id}/json")
+    if not r.ok:
+        sys.exit(f"API error {r.status_code}: {r.text}")
+    with open(out, "w") as fh:
+        fh.write(r.text)
+    print(f"✓ Wrote {out} — import it with the Common Offline Utility "
+          f"(offline import; do NOT upload the JSON to the portal).")
+
+
+def cmd_itr_prepare(pan: str, fy: str, member_name: str | None = None) -> dict:
+    """Create (or return) the ITR return for a member + FY."""
+    member_id = resolve_or_create_member(pan, member_name)
+    result = _api("post", "/itr/returns", json={"member_id": member_id, "fy": fy})
+    print(f"✓ Prepared ITR return {result['id']} — FY {result['fy_label']} "
+          f"(AY {result['ay_label']}, status={result['status']})")
+    return result
+
+
+def cmd_itr_list(pan: str) -> list:
+    member_id = _itr_member_id(pan)
+    returns = _api("get", "/itr/returns", params={"member_id": member_id})["returns"]
+    print(f"{'ID':<5} {'FY':<9} {'AY':<9} {'Form':<6} {'Status':<11} Schema")
+    print("─" * 62)
+    for r in returns:
+        print(f"{r['id']:<5} {r['fy_label']:<9} {r['ay_label']:<9} "
+              f"{r.get('form_type') or '-':<6} {r['status']:<11} {r.get('schema_version') or '-'}")
+    return returns
+
+
+def cmd_itr_form16(pan: str, fy: str, file_path: str) -> dict:
+    """Parse a Form 16 PDF and merge it into the return's input document."""
+    _, return_id = _itr_lookup(pan, fy)
+    with open(file_path, "rb") as fh:
+        files = {"file": (os.path.basename(file_path), fh, "application/pdf")}
+        result = _api("post", f"/itr/returns/{return_id}/form16", files=files)
+    employers = len(result["input"]["salary"])
+    print(f"✓ Attached Form 16 to return {return_id} — {employers} employer(s) on file")
+    for warning in result.get("warnings") or []:
+        print(f"  ⚠ {warning}")
+    return result
+
+
+def cmd_itr_assemble(pan: str, fy: str) -> dict:
+    """Assemble the draft from the portfolio gains + the return input."""
+    _, return_id = _itr_lookup(pan, fy)
+    draft = _api("post", f"/itr/returns/{return_id}/assemble")
+    tax = draft.get("tax") or {}
+    print(f"✓ Assembled return {return_id} — form={draft['form']}, "
+          f"income ₹{tax.get('normal_income', 0):,.0f}, "
+          f"tax ₹{tax.get('total_tax_inr', 0):,.0f}")
+    for warning in draft.get("warnings") or []:
+        print(f"  ⚠ {warning}")
+    return draft
+
+
+def cmd_itr_generate(pan: str, fy: str, out: str | None = None) -> dict:
+    """Generate + validate the ITR JSON; optionally write it to a file."""
+    _, return_id = _itr_lookup(pan, fy)
     result = _api("post", f"/itr/returns/{return_id}/generate")
     print(
         f"✓ ITR JSON generated — return {return_id}, status={result.get('status')}, "
         f"schema={result.get('schema_version')}"
     )
     if out:
-        r = requests.get(f"{BASE}/api/itr/returns/{return_id}/json")
-        if not r.ok:
-            sys.exit(f"API error {r.status_code}: {r.text}")
-        with open(out, "w") as fh:
-            fh.write(r.text)
-        print(f"✓ Wrote {out} — import it with the Common Offline Utility (offline).")
+        _itr_write_json(return_id, out)
     return result
+
+
+def cmd_itr_download(pan: str, fy: str, out: str) -> None:
+    """Write the already-generated ITR JSON to a file."""
+    _, return_id = _itr_lookup(pan, fy)
+    _itr_write_json(return_id, out)
 
 
 def cmd_backup(folder: str | None = None):
@@ -1070,13 +1153,38 @@ def build_parser() -> argparse.ArgumentParser:
     # ── itr ───────────────────────────────────────────────────────────────────
     p_itr = sub.add_parser("itr", help="ITR preparation (per PAN, per assessment year)")
     itr_sub = p_itr.add_subparsers(dest="itr_action")
+
+    def _itr_pan_fy(p):
+        p.add_argument("--pan", required=True, help="Member PAN (e.g. ABCPE1234F)")
+        p.add_argument("--fy", required=True, help="Financial year (e.g. 2025-26)")
+
+    s_itr_prep = itr_sub.add_parser("prepare", help="Create (or fetch) a PAN's return for a FY")
+    _itr_pan_fy(s_itr_prep)
+    s_itr_prep.add_argument("--member-name", default=None, dest="member_name",
+                            help="Name to use if the member does not exist yet")
+
+    s_itr_list = itr_sub.add_parser("list", help="List a member's ITR returns")
+    s_itr_list.add_argument("--pan", required=True, help="Member PAN")
+
+    s_itr_f16 = itr_sub.add_parser("form16", help="Parse a Form 16 PDF and merge it in")
+    _itr_pan_fy(s_itr_f16)
+    s_itr_f16.add_argument("--file", required=True, help="Path to the Form 16 PDF")
+
+    s_itr_asm = itr_sub.add_parser("assemble",
+                                   help="Assemble the draft from portfolio gains + input")
+    _itr_pan_fy(s_itr_asm)
+
     s_itr_gen = itr_sub.add_parser(
         "generate", help="Generate + validate the ITR JSON; optionally write it to a file"
     )
-    s_itr_gen.add_argument("return_id", type=int, help="ITR return ID from 'POST /itr/returns'")
+    _itr_pan_fy(s_itr_gen)
     s_itr_gen.add_argument("--out", default=None,
                            help="Write the generated JSON to this file (import into the "
                                 "Common Offline Utility; do NOT upload it to the portal)")
+
+    s_itr_dl = itr_sub.add_parser("download", help="Write the already-generated JSON to a file")
+    _itr_pan_fy(s_itr_dl)
+    s_itr_dl.add_argument("--out", required=True, help="Destination file path")
 
     return parser
 
@@ -1192,8 +1300,18 @@ def main():
         if not args.itr_action:
             parser.parse_args(["itr", "--help"])
             return
-        if args.itr_action == "generate":
-            cmd_itr_generate(args.return_id, out=args.out)
+        if args.itr_action == "prepare":
+            cmd_itr_prepare(args.pan, args.fy, args.member_name)
+        elif args.itr_action == "list":
+            cmd_itr_list(args.pan)
+        elif args.itr_action == "form16":
+            cmd_itr_form16(args.pan, args.fy, args.file)
+        elif args.itr_action == "assemble":
+            cmd_itr_assemble(args.pan, args.fy)
+        elif args.itr_action == "generate":
+            cmd_itr_generate(args.pan, args.fy, out=args.out)
+        elif args.itr_action == "download":
+            cmd_itr_download(args.pan, args.fy, args.out)
 
     elif args.command == "refresh-prices":
         cmd_refresh_prices()

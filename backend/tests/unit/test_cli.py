@@ -688,34 +688,110 @@ class TestFetchCorpActions:
         assert args.asset_id == 42
 
 
-# ── itr generate ──────────────────────────────────────────────────────────────
+# ── itr ───────────────────────────────────────────────────────────────────────
 
 ITR_SUMMARY = {"id": 7, "status": "generated", "schema_version": "V1.2", "form_type": "ITR2"}
+ITR_PAN = "ABCPE1234F"
 
 
-class TestItrGenerate:
-    def test_calls_generate_endpoint(self, requests_mock):
+def _mock_lookup(requests_mock, return_id=7):
+    requests_mock.get(f"{BASE}/members",
+                      json=[{"id": 3, "pan": ITR_PAN, "name": "Test Taxpayer"}])
+    requests_mock.get(f"{BASE}/itr/returns", json={"returns": [
+        {"id": return_id, "fy_label": "2025-26", "ay_label": "2026-27",
+         "form_type": "ITR2", "status": "draft", "schema_version": None},
+    ]})
+
+
+class TestItrCommands:
+    def test_prepare_posts_return(self, requests_mock):
+        requests_mock.get(f"{BASE}/members",
+                          json=[{"id": 3, "pan": ITR_PAN, "name": "Test Taxpayer"}])
+        requests_mock.post(f"{BASE}/itr/returns", json={
+            "id": 7, "fy_label": "2025-26", "ay_label": "2026-27", "status": "draft",
+        })
+        cli.cmd_itr_prepare(ITR_PAN, "2025-26")
+        assert requests_mock.last_request.path == "/api/itr/returns"
+
+    def test_list_prints_rows(self, requests_mock, capsys):
+        _mock_lookup(requests_mock)
+        cli.cmd_itr_list(ITR_PAN)
+        out = capsys.readouterr().out
+        assert "2025-26" in out and "ITR2" in out
+
+    def test_form16_uploads_the_file(self, requests_mock, tmp_path):
+        _mock_lookup(requests_mock)
+        requests_mock.post(f"{BASE}/itr/returns/7/form16", json={
+            "input": {"salary": [{"gross_salary": 2_000_000.0}]}, "warnings": [],
+        })
+        pdf = tmp_path / "f16.pdf"
+        pdf.write_bytes(b"%PDF-1.4 fake")
+        cli.cmd_itr_form16(ITR_PAN, "2025-26", str(pdf))
+        assert requests_mock.last_request.path == "/api/itr/returns/7/form16"
+        assert b"fake" in requests_mock.last_request.body
+
+    def test_assemble_prints_warnings(self, requests_mock, capsys):
+        _mock_lookup(requests_mock)
+        requests_mock.post(f"{BASE}/itr/returns/7/assemble", json={
+            "form": "ITR2", "tax": {"normal_income": 1_925_000.0, "total_tax_inr": 211_770.0},
+            "warnings": ["No Form 16 attached — salary is taken as zero"],
+        })
+        cli.cmd_itr_assemble(ITR_PAN, "2025-26")
+        assert "No Form 16" in capsys.readouterr().out
+
+    def test_generate_calls_endpoint(self, requests_mock):
+        _mock_lookup(requests_mock)
         requests_mock.post(f"{BASE}/itr/returns/7/generate", json=ITR_SUMMARY)
-        cli.cmd_itr_generate(7)
+        cli.cmd_itr_generate(ITR_PAN, "2025-26")
         assert requests_mock.last_request.path == "/api/itr/returns/7/generate"
 
-    def test_writes_file_when_out_given(self, requests_mock, tmp_path):
+    def test_generate_writes_file_when_out_given(self, requests_mock, tmp_path):
+        _mock_lookup(requests_mock)
         requests_mock.post(f"{BASE}/itr/returns/7/generate", json=ITR_SUMMARY)
-        requests_mock.get(f"{BASE}/itr/returns/7/json", json={"ITR": {"ITR2": {"Form_ITR2": {}}}})
+        requests_mock.get(f"{BASE}/itr/returns/7/json",
+                          json={"ITR": {"ITR2": {"Form_ITR2": {}}}})
         out = tmp_path / "itr.json"
-        cli.cmd_itr_generate(7, out=str(out))
+        cli.cmd_itr_generate(ITR_PAN, "2025-26", out=str(out))
         assert out.exists()
         assert "ITR" in out.read_text()
 
-    def test_prints_offline_utility_hint(self, requests_mock, tmp_path, capsys):
+    def test_generate_prints_offline_utility_hint(self, requests_mock, tmp_path, capsys):
+        _mock_lookup(requests_mock)
         requests_mock.post(f"{BASE}/itr/returns/7/generate", json=ITR_SUMMARY)
         requests_mock.get(f"{BASE}/itr/returns/7/json", json={"ITR": {}})
-        cli.cmd_itr_generate(7, out=str(tmp_path / "itr.json"))
+        cli.cmd_itr_generate(ITR_PAN, "2025-26", out=str(tmp_path / "itr.json"))
         assert "Common Offline Utility" in capsys.readouterr().out
 
-    def test_parser_generate(self):
-        args = cli.build_parser().parse_args(["itr", "generate", "7", "--out", "x.json"])
+    def test_download_writes_file(self, requests_mock, tmp_path):
+        _mock_lookup(requests_mock)
+        requests_mock.get(f"{BASE}/itr/returns/7/json", json={"ITR": {"ITR2": {}}})
+        out = tmp_path / "itr.json"
+        cli.cmd_itr_download(ITR_PAN, "2025-26", str(out))
+        assert "ITR" in out.read_text()
+
+    # ── parser shape ──────────────────────────────────────────────────────────
+    def test_parser_prepare(self):
+        args = cli.build_parser().parse_args(
+            ["itr", "prepare", "--pan", ITR_PAN, "--fy", "2025-26"])
         assert args.command == "itr"
-        assert args.itr_action == "generate"
-        assert args.return_id == 7
-        assert args.out == "x.json"
+        assert args.itr_action == "prepare"
+        assert args.pan == ITR_PAN and args.fy == "2025-26"
+
+    def test_parser_list_takes_only_pan(self):
+        args = cli.build_parser().parse_args(["itr", "list", "--pan", ITR_PAN])
+        assert args.itr_action == "list" and args.pan == ITR_PAN
+
+    def test_parser_form16(self):
+        args = cli.build_parser().parse_args(
+            ["itr", "form16", "--pan", ITR_PAN, "--fy", "2025-26", "--file", "f16.pdf"])
+        assert args.itr_action == "form16" and args.file == "f16.pdf"
+
+    def test_parser_generate_out(self):
+        args = cli.build_parser().parse_args(
+            ["itr", "generate", "--pan", ITR_PAN, "--fy", "2025-26", "--out", "x.json"])
+        assert args.itr_action == "generate" and args.out == "x.json"
+
+    def test_parser_download_requires_out(self):
+        args = cli.build_parser().parse_args(
+            ["itr", "download", "--pan", ITR_PAN, "--fy", "2025-26", "--out", "x.json"])
+        assert args.itr_action == "download" and args.out == "x.json"

@@ -657,36 +657,19 @@ git commit -m "feat(itr): HTTP surface for returns"
 
 **Files:**
 - Modify: `backend/cli.py` (`build_parser`, `main`, new `cmd_itr_*`)
-- Create: `backend/tests/unit/test_cli_itr.py`
+- Modify: `backend/tests/unit/test_cli.py` (`TestItrCommands`)
 
-- [ ] **Step 1: Write the failing tests** (parser shape + dispatch, no network)
-
-```python
-# backend/tests/unit/test_cli_itr.py
-from cli import build_parser
-
-
-def test_parser_has_itr_subcommands():
-    parser = build_parser()
-    args = parser.parse_args(["itr", "prepare", "--pan", "ABCDE1234F", "--fy", "2025-26"])
-    assert args.command == "itr" and args.pan == "ABCDE1234F" and args.fy == "2025-26"
-
-
-def test_parser_itr_generate_out():
-    args = build_parser().parse_args(
-        ["itr", "generate", "--pan", "ABCDE1234F", "--fy", "2025-26", "--out", "itr.json"])
-    assert args.out == "itr.json"
-```
-
-- [ ] **Step 2: Run to verify failure**, then **Step 3: implement** subcommands `prepare`, `list`, `form16` (phase B), `generate` (phase D) as thin `_api(...)` calls. Resolve `--pan` → `member_id` via `GET /members`.
-
-- [ ] **Step 4: Run + commit**
-
-```bash
-cd backend && uv run pytest tests/unit/test_cli_itr.py -v
-git add backend/cli.py backend/tests/unit/test_cli_itr.py
-git commit -m "feat(itr): fintrack itr prepare/list"
-```
+- [x] Subcommands as thin `_api(...)` calls over the `itr` router: `prepare`
+  (`--pan --fy`, resolves/creates the member), `list` (`--pan`), `form16`
+  (`--pan --fy --file`, multipart PDF upload), `assemble` (`--pan --fy`),
+  `generate` (`--pan --fy [--out]`), `download` (`--pan --fy --out`). Every
+  command resolves `--pan` -> `member_id` -> `return_id` via `GET /members` +
+  `GET /itr/returns`; read paths never create a member. `--out` prints the
+  "import into the Common Offline Utility, don't upload" guidance. Tests live in
+  `tests/unit/test_cli.py::TestItrCommands` (`requests_mock`) rather than the
+  planned `test_cli_itr.py`. **(done - A7 was deferred while A1-A6 landed;
+  completed alongside D5/D6. `assemble`/`download` were added beyond the plan's
+  list so the CLI journey is usable end-to-end.)**
 
 **Milestone A acceptance:** a member can be prepared, an empty `ReturnInput` snapshot persisted, listed via API and CLI, and the full suite is green.
 

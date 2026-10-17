@@ -11,6 +11,7 @@ from app.models.snapshot import PortfolioSnapshot
 from app.models.cas_snapshot import CasSnapshot
 from app.models.member_tax_profile import MemberTaxProfile
 from app.models.tax_loss_carryforward import TaxLossCarryForward, LossType
+from app.models.itr_return import ItrReturn
 
 __all__ = [
     "Member",
@@ -26,4 +27,5 @@ __all__ = [
     "CasSnapshot",
     "MemberTaxProfile",
     "TaxLossCarryForward", "LossType",
+    "ItrReturn",
 ]

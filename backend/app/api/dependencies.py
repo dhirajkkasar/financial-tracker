@@ -83,6 +83,7 @@ from app.services.price_service import PriceService
 from app.services.snapshot_service import SnapshotService
 from app.services.tax_service import TaxService
 from app.services.corp_actions_service import CorpActionsService
+from app.services.itr_service import ItrService
 from app.engine.tax_engine import TaxRuleResolver
 from app.services.tax.strategies.base import register_tax_strategy_instance
 from app.services.tax.strategies.fifo_base import FifoTaxGainsStrategy
@@ -179,3 +180,7 @@ def get_tax_service(db: Session = Depends(get_db)) -> TaxService:
 
 def get_corp_actions_service(db: Session = Depends(get_db)) -> CorpActionsService:
     return CorpActionsService(db)
+
+
+def get_itr_service(db: Session = Depends(get_db)) -> ItrService:
+    return ItrService(uow_factory=lambda: UnitOfWork(db))

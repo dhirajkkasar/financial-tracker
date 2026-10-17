@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 from typing import Optional
 
 from app.engine.itr.ay import ay_to_fy, fy_to_ay
@@ -78,6 +79,13 @@ class ItrService:
         )
         for field in ReturnInput.model_fields:
             setattr(inp, field, getattr(merged, field))
+
+    def get_available_fys(self) -> list[str]:
+        """Sorted FY labels that have a tax-rules config file."""
+        config_dir = Path("app/config/tax_rates")
+        return sorted(
+            p.stem for p in config_dir.glob("*.yaml") if p.stem != "__init__"
+        )
 
     def get(self, return_id: int) -> Optional[ItrReturn]:
         with self._uow_factory() as uow:

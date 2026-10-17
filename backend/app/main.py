@@ -143,6 +143,7 @@ from app.api.imports import router as imports_router
 from app.api.tax import router as tax_router
 from app.api.snapshots import router as snapshots_router
 from app.api.corp_actions import router as corp_actions_router
+from app.api.itr import router as itr_router
 from app.api.auth import verify_token
 
 _auth = [Depends(verify_token)]
@@ -161,6 +162,7 @@ app.include_router(imports_router, prefix="/api", dependencies=_auth)
 app.include_router(tax_router, prefix="/api", dependencies=_auth)
 app.include_router(snapshots_router, prefix="/api", dependencies=_auth)
 app.include_router(corp_actions_router, prefix="/api", dependencies=_auth)
+app.include_router(itr_router, prefix="/api", dependencies=_auth)
 
 # Serve frontend static files — must be mounted last so API routes take priority.
 # Only active when the built frontend_static/ directory exists (i.e. inside Docker).

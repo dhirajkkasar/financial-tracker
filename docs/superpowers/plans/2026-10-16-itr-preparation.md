@@ -1049,14 +1049,21 @@ Add cases: 87A at the threshold (FY 2025-26 ₹12L → ₹60k; FY 2024-25 ₹12.
 - Create: `backend/tests/integration/test_itr_end_to_end.py`
 - Create: `backend/tests/fixtures/itr_golden_portfolio.py`
 
-- [ ] One test: seed a member with Indian equity (STCG+112A LTCG), a US stock sale, an FD,
+- [x] One test: seed a member with Indian equity (STCG+112A LTCG), a US stock sale, an FD,
   a synthetic Form 16, and savings interest → prepare → assemble → generate → assert the
   output validates against the official schema and key schedules equal hand-derived values.
-  Commit: `test(itr): golden end-to-end AY 2026-27`.
+  Commit: `test(itr): golden end-to-end AY 2026-27`. **(done. Hand-derived values live in
+  `tests/fixtures/itr_golden_portfolio.py`; the FD uses SIMPLE compounding so one full FY
+  of interest is exactly principal × rate (Rs 40,000). This task also fixed a real bug in
+  `assemble_draft`: the "Schedule 112A does not tie" warning compared the 112A schedule to
+  *all* long-term gains, so it fired spuriously whenever non-112A LTCG (US stock, property)
+  coexisted — it now ties to the 112A-eligible gain only.)**
 
 **Milestone 1 (A–D) acceptance:** upload a Form 16, assemble from the portfolio, generate a
 schema-valid ITR-2 JSON that imports into the Common Offline Utility, with a clear
-"import, don't direct-upload" message.
+"import, don't direct-upload" message. **(met — see `test_itr_end_to_end.py`; the download
+response carries `X-Import-With: Common Offline Utility (offline import; not a portal
+upload)`. The CLI `itr generate --out` prints the same guidance.)**
 
 ---
 

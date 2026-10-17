@@ -193,9 +193,11 @@ def assemble_draft(inp: ReturnInput, summary: dict) -> ReturnDraft:
 
     lots = _collect_112a_lots(summary, warnings)
     schedule = build_schedule_112a(lots)
-    if schedule.balance != round(sum(ltcg_gross.values())) and lots:
+    # Schedule 112A covers only listed-equity / equity-MF LTCG, so it must tie to
+    # the 112A-eligible gains alone — not to other LTCG (property, US stock, ...).
+    if lots and schedule.balance != round(ltcg_gross["ltcg_112a"]):
         warnings.append(
-            "Schedule 112A total does not tie to the portfolio LTCG — review the lots"
+            "Schedule 112A total does not tie to the portfolio's 112A LTCG — review the lots"
         )
 
     normal_income = salary + interest + dividends + stcg_net["stcg_slab"]

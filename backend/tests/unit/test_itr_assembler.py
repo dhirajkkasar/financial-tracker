@@ -140,6 +140,32 @@ def test_no_form16_warns():
     assert any("Form 16" in w for w in d.warnings)
 
 
+def test_112a_tie_out_ignores_non_112a_ltcg():
+    """A non-112A LTCG (US stock, property) must not make the 112A schedule
+    look untied — it ties to the 112A-eligible gain alone."""
+    summary = _summary(ltcg={"assets": [
+        {"gain": 30_000.0, "ltcg_exempt_eligible": True,
+         "asset_name": "Reliance", "isin": "INE002A01018",
+         "ltcg_lots": [{
+             "buy_date": "2023-01-01", "sell_date": "2025-06-01",
+             "units": 100.0, "buy_price_per_unit": 500.0,
+             "sell_price_per_unit": 800.0, "jan31_2018_price": None,
+         }]},
+        {"gain": 50_000.0, "ltcg_exempt_eligible": False,
+         "asset_name": "Apple", "isin": "AAPL", "ltcg_lots": []},
+    ]})
+    d = assemble_draft(_input(), summary)
+    assert d.schedule_112a["balance"] == 30_000
+    assert d.buckets["ltcg_other_12_5"] == 50_000.0
+    assert not any("112A" in w for w in d.warnings)
+
+
+def test_112a_tie_out_warns_when_the_schedule_disagrees():
+    """The summary's 112A gain and the lot-derived scrip total must match."""
+    d = assemble_draft(_input(), _summary())  # gain says 300k, lots say 30k
+    assert any("112A" in w for w in d.warnings)
+
+
 def test_plain_salary_is_itr1():
     d = assemble_draft(
         _input(),
